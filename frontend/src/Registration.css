@@ -1,0 +1,122 @@
+* {
+  box-sizing: border-box;
+}
+.reg-container {
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: linear-gradient(135deg, #764ba2, #667eea);
+  font-family: "Segoe UI", sans-serif;
+}
+
+/* Card */
+.reg-card {
+  background: #fff;
+  padding: 30px 35px;   /* 🔥 reduced top space */
+  width: 380px;
+  border-radius: 20px;
+  text-align: center;
+  box-shadow: 0 15px 40px rgba(0,0,0,0.2);
+}
+
+/* Title */
+.reg-title {
+  font-size: 24px;
+  font-weight: 600;
+  margin-bottom: 5px;
+}
+
+.reg-subtitle {
+  font-size: 13px;
+  color: gray;
+  margin-bottom: 20px;
+}
+
+/* Input wrapper */
+.reg-input {
+  margin-bottom: 18px;
+  position: relative;
+}
+
+/* Input field */
+.reg-input input {
+  width: 100%;
+  padding: 12px 45px 12px 12px;
+  border-radius: 10px;
+  border: 1px solid #ddd;
+  outline: none;
+}
+
+/* Focus effect */
+.reg-input input:focus {
+  border-color: #764ba2;
+  box-shadow: 0 0 8px rgba(118, 75, 162, 0.3);
+}
+
+/* Password input spacing */
+.password-box input {
+  padding-right: 45px;   /* 🔥 space for icon */
+}
+
+/* Eye icon */
+.eye {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.eye svg {
+  color: #777;
+  font-size: 18px;
+  transition: 0.3s;
+}
+
+.eye:hover svg {
+  color: #764ba2;
+}
+
+/* Button */
+.reg-btn {
+  width: 100%;
+  padding: 12px;
+  border-radius: 25px;
+  border: none;
+  background: linear-gradient(to right, #764ba2, #667eea);
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+  transition: 0.3s;
+}
+
+.reg-btn:hover {
+  transform: scale(1.03);
+  box-shadow: 0 8px 20px rgba(0,0,0,0.25);
+}
+
+/* Footer */
+.reg-footer {
+  margin-top: 18px;
+  font-size: 13px;
+}
+
+.reg-footer a {
+  color: #764ba2;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.reg-footer a:hover {
+  text-decoration: underline;
+}
+.login-container {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
