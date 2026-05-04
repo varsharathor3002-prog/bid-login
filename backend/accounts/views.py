@@ -3,27 +3,52 @@ from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.hashers import make_password, check_password
 import json
 
-from .models import User, BidProduct , AIOProduct, Price
+from .models import User, Product, Bid,  DesktopBid, BidModel, BidPricing, BidProduct , AIOProduct, Price
 
 
+
+# 
+# =========================
+# ✅ REGISTER (only USER)
+# =========================
 @csrf_exempt
 def register(request):
     if request.method == "POST":
-        data = json.loads(request.body)
+        try:
+            data = json.loads(request.body)
 
-        User.objects.create(
-            username=data['username'],
-            email=data['email'],
-            password=make_password(data['password']),  
-            role='user'
-        )
+            username = data.get("username")
+            email = data.get("email")
+            password = data.get("password")
 
-        return JsonResponse({"message": "User registered successfully"})
+            if not username or not email or not password:
+                return JsonResponse({"error": "All fields required"}, status=400)
 
-    return JsonResponse({"message": "Use POST method for registration"})
+            if User.objects.filter(username=username).exists():
+                return JsonResponse({"error": "Username already exists"}, status=400)
+
+            if User.objects.filter(email=email).exists():
+                return JsonResponse({"error": "Email already exists"}, status=400)
+
+            User.objects.create(
+                username=username,
+                email=email,
+                password=make_password(password),
+                role="user"   # 🔒 fixed role
+            )
+
+            return JsonResponse({
+                "message": "User registered successfully ✅"
+            })
+
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=500)
+
+    return JsonResponse({"error": "Use POST method"}, status=405)
 
 
-# ✅ LOGIN
+# =========================
+# ✅ LOGIN (ALL ROLES)
 # =========================
 @csrf_exempt
 def login(request):
@@ -33,23 +58,25 @@ def login(request):
 
             username = data.get("username")
             password = data.get("password")
+            role = data.get("role")   # 👈 ADD THIS
 
-            # 🔒 validation
             if not username or not password:
                 return JsonResponse({"error": "Username and Password required"}, status=400)
 
-            # 🔍 find user
-            try:
-                user = User.objects.get(username=username)
-            except User.DoesNotExist:
+            user = User.objects.filter(username=username).first()
+
+            if not user:
                 return JsonResponse({"error": "User not found"}, status=404)
 
-            # 🔐 check password
+            # ✅ Role validation
+            if role and user.role != role:
+                return JsonResponse({"error": "Invalid role selected"}, status=400)
+
             if check_password(password, user.password):
                 return JsonResponse({
                     "message": "Login successful ✅",
-                    "role": user.role,
-                    "username": user.username
+                    "username": user.username,
+                    "role": user.role
                 })
             else:
                 return JsonResponse({"error": "Invalid password"}, status=400)
@@ -59,8 +86,6 @@ def login(request):
 
     return JsonResponse({"error": "Use POST method"}, status=405)
 
-    # ✅ FORGOT PASSWORD
-# =========================
 @csrf_exempt
 def forgot_password(request):
     if request.method == "POST":
@@ -68,19 +93,17 @@ def forgot_password(request):
             data = json.loads(request.body)
 
             username = data.get("username")
+            email = data.get("email")   # 👈 add this
             new_password = data.get("new_password")
 
-            # 🔒 validation
-            if not username or not new_password:
+            if not username or not email or not new_password:
                 return JsonResponse({"error": "All fields are required"}, status=400)
 
-            # 🔍 find user
-            try:
-                user = User.objects.get(username=username)
-            except User.DoesNotExist:
-                return JsonResponse({"error": "User not found"}, status=404)
+            user = User.objects.filter(username=username, email=email).first()
 
-            # 🔐 update password
+            if not user:
+                return JsonResponse({"error": "Invalid username or email"}, status=404)
+
             user.password = make_password(new_password)
             user.save()
 
@@ -90,6 +113,167 @@ def forgot_password(request):
             return JsonResponse({"error": str(e)}, status=500)
 
     return JsonResponse({"error": "Use POST method"}, status=405)
+
+
+
+def get_products(request):
+    products = list(
+        Product.objects.all().order_by("id").values("id", "name")
+    )
+    return JsonResponse(products, safe=False)
+
+
+
+
+@csrf_exempt
+def add_product(request):
+    if request.method == "POST":
+        data = json.loads(request.body)
+
+        name = data.get("name")
+
+        if not name:
+            return JsonResponse({"error": "Product name required"}, status=400)
+
+        if Product.objects.filter(name=name).exists():
+            return JsonResponse({"error": "Product already exists"}, status=400)
+
+        Product.objects.create(name=name)
+
+        return JsonResponse({"message": "Product added successfully ✅"})
+
+    return JsonResponse({"error": "Use POST method"}, status=405)
+
+
+# CREATE BID (Step 1)
+
+@csrf_exempt
+def create_bid(request):
+    if request.method == "POST":
+        data = json.loads(request.body)
+
+        bid = Bid.objects.create(
+            bid_no=data.get("bid_no"),
+            dept_name=data.get("dept_name"),
+            qty=data.get("qty"),
+            atc=data.get("atc"),
+            address=data.get("address"),
+            pincode=data.get("pincode"),
+            device_type=data.get("device_type"),  # ✅ IMPORTANT
+            status="submitted"
+        )
+
+        return JsonResponse({
+            "message": "Bid Created ✅",
+            "bid_id": bid.id
+        })
+
+    return JsonResponse({"error": "POST method required"}, status=405)
+
+
+# Specification BID (Step-2)
+
+@csrf_exempt
+def create_desktop_bid(request):
+    if request.method == "POST":
+        try:
+            data = json.loads(request.body)
+
+            bid_id = data.get("bid_id")
+
+            try:
+                bid = Bid.objects.get(id=bid_id)
+            except Bid.DoesNotExist:
+                return JsonResponse({"error": "Bid not found"}, status=404)
+
+            spec = DesktopSpec.objects.create(
+                bid=bid,  # 🔥 LINKING
+
+                processor=data.get("processor"),
+                pro_descp=data.get("pro_descp"),
+                processor_price=data.get("processor_price") or 0,
+
+                ram=data.get("ram"),
+                ram_price=data.get("ram_price") or 0,
+
+                hdd=data.get("hdd"),
+                hdd_price=data.get("hdd_price") or 0,
+
+                ssd=data.get("ssd"),
+                ssd_price=data.get("ssd_price") or 0,
+
+                software1=data.get("software1"),
+                gp=data.get("gp"),
+
+                os=data.get("os"),
+                os_price=data.get("os_price") or 0,
+
+                dvd=data.get("dvd"),
+                dvd_price=data.get("dvd_price") or 0,
+
+                wifi=data.get("wifi"),
+                wifi_price=data.get("wifi_price") or 0,
+
+                monitor=data.get("monitor"),
+                monitor_price=data.get("monitor_price") or 0,
+
+                cabinet=data.get("cabinet"),
+                cabinet_price=data.get("cabinet_price") or 0,
+
+                keyboard=data.get("keyboard"),
+                keyboard_price=data.get("keyboard_price") or 0,
+
+                warranty=data.get("warranty"),
+                warranty_price=data.get("warranty_price") or 0,
+
+                motherboard=data.get("motherboard"),
+                motherboard_descp=data.get("motherboard_descp"),
+                motherboard_price=data.get("motherboard_price") or 0,
+
+                date=data.get("date"),
+                epbg=data.get("epbg") or 0,
+
+                freightInstallation=data.get("freightInstallation", "Yes"),
+                freightInstallation_price=data.get("freightInstallation_price") or 1000,
+
+                hddreturnable=data.get("hddreturnable"),
+                hddreturnable_price=data.get("hddreturnable_price") or 0,
+            )
+
+            return JsonResponse({
+                "message": "Desktop Spec Saved ✅",
+                "spec_id": spec.id
+            })
+
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=400)
+
+    return JsonResponse({"error": "Invalid request"}, status=405)
+
+# ADD MODEL NUMBER (Step 3)
+
+@csrf_exempt
+def add_model(request):
+    if request.method == "POST":
+        data = json.loads(request.body)
+
+        bid_id = data.get("bid_id")
+
+        try:
+            bid = Bid.objects.get(id=bid_id)
+        except Bid.DoesNotExist:
+            return JsonResponse({"error": "Bid not found"}, status=404)
+
+        BidModel.objects.create(
+            bid=bid,
+            model_no=data.get("model_no")
+        )
+
+        return JsonResponse({"message": "Model added ✅"})
+
+    return JsonResponse({"error": "POST method required"}, status=405)
+
+   
 
 
 def approved_bids(request):
