@@ -22,9 +22,10 @@ const UserNavbar = () => {
 
   const isActive = (path) => location.pathname === path;
 
-  // ✅ Sabhi paths /user/... ke andar hain — Outlet mein render honge
   const menuItems = [
+    // Desktop → full page open hoga (sidebar ke bina) — App.js mein /user ke bahar hai
     { name: "Desktop",     path: "/user/desktop",     icon: <FaDesktop /> },
+    // Baaki sab → sidebar ke andar Outlet mein render honge
     { name: "AIO",         path: "/user/aio",         icon: <FaLaptop /> },
     { name: "Workstation", path: "/user/workstation", icon: <FaServer /> },
     { name: "Printer",     path: "/user/printer",     icon: <FaUserTie /> },
@@ -33,12 +34,16 @@ const UserNavbar = () => {
 
   return (
     <div className="h-screen w-full flex bg-gray-100">
-      {/* SIDEBAR */}
+
+      {/* ===== SIDEBAR ===== */}
       <div className="w-64 bg-gray-900 text-white flex flex-col">
+
+        {/* Logo / Title */}
         <div className="p-4 text-xl font-bold border-b border-gray-700">
           🚀 User Panel
         </div>
 
+        {/* Menu */}
         <div className="flex-1 p-3">
           <button
             onClick={() => setOpen(!open)}
@@ -69,6 +74,7 @@ const UserNavbar = () => {
           )}
         </div>
 
+        {/* Logout */}
         <div className="p-4 border-t border-gray-700">
           <button
             onClick={handleLogout}
@@ -79,8 +85,10 @@ const UserNavbar = () => {
         </div>
       </div>
 
-      {/* RIGHT SIDE — DASHBOARD AREA */}
+      {/* ===== RIGHT SIDE — DASHBOARD AREA ===== */}
       <div className="flex-1 bg-white overflow-auto">
+
+        {/* Top Header */}
         <div className="flex justify-between items-center bg-white shadow px-6 py-4">
           <h1 className="text-lg font-semibold text-gray-700">Dashboard</h1>
           <div className="text-sm text-gray-600">
@@ -88,11 +96,12 @@ const UserNavbar = () => {
           </div>
         </div>
 
+        {/* Page Content — AIO, Workstation, Printer, Toner yahan aayenge */}
         <div className="p-6">
-          {/* ✅ Yahan Desktop, AIO, Workstation etc. render honge */}
           <Outlet />
         </div>
       </div>
+
     </div>
   );
 };

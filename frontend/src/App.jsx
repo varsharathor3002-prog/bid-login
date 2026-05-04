@@ -12,29 +12,30 @@ function App() {
   return (
     <div className="app-content">
       <Routes>
+
         {/* 🔐 AUTH ROUTES */}
         <Route path="/" element={<Login />} />
         <Route path="/register" element={<Registration />} />
 
-        {/* 👤 USER SIDEBAR LAYOUT */}
+        {/* 👤 USER SIDEBAR LAYOUT — AIO, Workstation, Printer, Toner yahan */}
         <Route path="/user" element={<UserNavbar />}>
-          {/* Default: /user → redirect to /user/desktop */}
-          <Route index element={<Navigate to="/user/desktop" replace />} />
-
-          {/* ✅ Desktop Bid Form — Sidebar ke andar Outlet mein render hoga */}
-          <Route path="desktop" element={<CreateDesktopBid />} />
-
-          <Route path="aio" element={<div>AIO Page Content</div>} />
+          {/* /user par aane par AIO pe redirect */}
+          <Route index element={<Navigate to="/user/aio" replace />} />
+          <Route path="aio"         element={<div>AIO Page Content</div>} />
           <Route path="workstation" element={<div>Workstation Content</div>} />
-          <Route path="printer" element={<div>Printer Content</div>} />
-          <Route path="toner" element={<div>Toner Content</div>} />
+          <Route path="printer"     element={<div>Printer Content</div>} />
+          <Route path="toner"       element={<div>Toner Content</div>} />
         </Route>
 
+        {/* 📄 DESKTOP BID — Full Page (Sidebar ke BINA) */}
+        <Route path="/user/desktop" element={<CreateDesktopBid />} />
+
         {/* 🧑‍💻 ADMIN ROUTES */}
-        <Route path="/admin-dashboard" element={<AdminDashboard />} />
+        <Route path="/admin-dashboard"      element={<AdminDashboard />} />
         <Route path="/desktop-bid-approval" element={<DesktopBidApproval />} />
-        <Route path="/aio-bid-approval" element={<AIOBidApproval />} />
-        <Route path="/price/:type" element={<PriceList />} />
+        <Route path="/aio-bid-approval"     element={<AIOBidApproval />} />
+        <Route path="/price/:type"          element={<PriceList />} />
+
       </Routes>
     </div>
   );
