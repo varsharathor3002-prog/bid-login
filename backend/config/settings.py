@@ -82,7 +82,7 @@ DATABASES = {
         'ENGINE': 'django.db.backends.mysql',
         'NAME': 'bid_db',
         'USER': 'root',
-        'PASSWORD': 'varsha@11',  # 👈 change this
+        'PASSWORD': 'Sunil@123',  # 👈 change this
         'HOST': 'localhost',
         'PORT': '3306',
     }

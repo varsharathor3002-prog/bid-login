@@ -25,24 +25,29 @@ function Login() {
       const data = await res.json();
 
       if (res.ok) {
+        // ✅ Role check
         if (data.role !== role) {
           alert("Selected role is incorrect ❌");
           return;
         }
 
+        // ✅ Save user data
         localStorage.setItem("role", data.role);
         localStorage.setItem("username", username);
 
-        if (data.role === "admin") {
-          navigate("/admin-dashboard");
-        } else if (data.role === "user") {
-          navigate("/user-dashboard");
-        } else if (data.role === "analyser") {
-          navigate("/analyser-dashboard");
-        }
+        // 🔥 CLEAN ROUTING (FIXED)
+        const routes = {
+          user: "/user",
+          admin: "/admin-dashboard",
+          analyser: "/analyser-dashboard",
+        };
+
+        navigate(routes[data.role]);
+
       } else {
-        alert(data.error);
+        alert(data.error || "Login failed ❌");
       }
+
     } catch (error) {
       alert("Backend not connected ❌");
     }
@@ -63,7 +68,6 @@ function Login() {
 
           {/* Role Selection */}
           <div className="flex gap-2 mb-5 text-xs">
-
             {["user", "analyser", "admin"].map((r) => (
               <label
                 key={r}
@@ -77,6 +81,7 @@ function Login() {
                   type="radio"
                   value={r}
                   hidden
+                  checked={role === r}
                   onChange={(e) => setRole(e.target.value)}
                 />
                 {r === "user"
@@ -86,7 +91,6 @@ function Login() {
                   : "Admin"}
               </label>
             ))}
-
           </div>
 
           {/* Username */}
