@@ -1,10 +1,7 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
 import { FaEye, FaEyeSlash } from "react-icons/fa";
-import { motion } from "framer-motion";
-
-// 👉 If using src/assets folder, uncomment below and place image there
-// import loginImg from "../../assets/login_img.png";
+import { useNavigate } from "react-router-dom";
+import loginImg from "../../assets/images.png";
 
 export default function Login() {
   const [username, setUsername] = useState("");
@@ -32,9 +29,6 @@ export default function Login() {
           return;
         }
 
-        localStorage.setItem("role", data.role);
-        localStorage.setItem("username", data.username);
-
         const routes = {
           user: "/user",
           admin: "/admin-dashboard",
@@ -51,105 +45,95 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-white px-4">
-      <div className="flex w-full max-w-4xl h-[560px] shadow-2xl rounded-3xl overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-r from-[#e6f0ff] to-[#cfd9df]">
 
-        {/* LEFT - FORM */}
-        <motion.div
-          initial={{ opacity: 0, x: -40 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.5 }}
-          className="w-full md:w-1/2 p-8 text-white" style={{ backgroundColor: '#1E2A56' }}
-        >
-          <h2 className="text-4xl font-bold mb-2 text-black">Welcome Back</h2>
-          <p className="text-base text-black/80 mb-6">Login to your account</p>
+      {/* MAIN CARD */}
+      <div className="flex w-[900px] h-[520px] rounded-2xl overflow-hidden shadow-2xl">
 
-          <form onSubmit={handleLogin}>
+        {/* LEFT IMAGE (CONTAINER SAME, IMAGE SMALL) */}
+        <div className="w-1/2 h-full flex items-center justify-center bg-gray-100">
+          <img
+            src={loginImg}
+            alt="login"
+            className="w-[100%] h-[200%] object-contain"
+          />
+        </div>
 
-            {/* Role */}
-            <div className="flex gap-2 mb-5 text-xs">
-              {["user", "analyser", "admin"].map((r) => (
-                <button
-                  type="button"
-                  key={r}
-                  onClick={() => setRole(r)}
-                  className={`flex-1 py-2 rounded-full transition-all duration-300 ${
-                    role === r
-                      ? "bg-white text-blue-700 font-semibold shadow"
-                      : "bg-white/20 hover:bg-white/30"
-                  }`}
-                >
-                  {r === "user"
-                    ? "Bid Data Feeding"
-                    : r === "analyser"
-                    ? "Bid Analyser"
-                    : "Admin"}
-                </button>
-              ))}
-            </div>
+        {/* RIGHT LOGIN PANEL */}
+        <div className="w-1/2 bg-[#1f4d4d] text-white flex flex-col justify-center px-10">
 
-            {/* Username */}
+          <h2 className="text-2xl font-bold mb-2 text-center">
+            Welcome Back
+          </h2>
+
+          <p className="text-sm text-gray-300 text-center mb-5">
+            Login to your account
+          </p>
+
+          {/* ROLE BUTTONS */}
+          <div className="flex gap-2 mb-4 text-xs">
+            {["user", "analyser", "admin"].map((r) => (
+              <button
+                key={r}
+                type="button"
+                onClick={() => setRole(r)}
+                className={`flex-1 py-2 rounded-full transition ${
+                  role === r
+                    ? "bg-white text-[#1f4d4d] font-semibold"
+                    : "bg-white/20 text-white"
+                }`}
+              >
+                {r === "user"
+                  ? "Bid Data Feeding"
+                  : r === "analyser"
+                  ? "Bid Analyser"
+                  : "Admin"}
+              </button>
+            ))}
+          </div>
+
+          {/* USERNAME */}
+          <input
+            type="text"
+            placeholder="Username"
+            className="mb-4 p-3 rounded-lg bg-white text-black outline-none"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            required
+          />
+
+          {/* PASSWORD */}
+          <div className="relative mb-4">
             <input
-              type="text"
-              placeholder="Username"
-              className="w-full p-3 mb-4 rounded-lg bg-white text-black outline-none focus:ring-2 focus:ring-blue-400 text-base"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              type={showPassword ? "text" : "password"}
+              placeholder="Password"
+              className="w-full p-3 pr-10 rounded-lg bg-white text-black outline-none"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
               required
             />
 
-            {/* Password */}
-            <div className="relative mb-5">
-              <input
-                type={showPassword ? "text" : "password"}
-                placeholder="Password"
-                className="w-full p-3 pr-10 rounded-lg bg-white text-black outline-none focus:ring-2 focus:ring-blue-400 text-base"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
+            <span
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer text-gray-600"
+            >
+              {showPassword ? <FaEyeSlash /> : <FaEye />}
+            </span>
+          </div>
 
-              <span
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer text-gray-600 hover:text-blue-600"
-              >
-                {showPassword ? <FaEyeSlash /> : <FaEye />}
-              </span>
-            </div>
+          {/* LOGIN BUTTON */}
+          <button
+            onClick={handleLogin}
+            className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-semibold"
+          >
+            Login
+          </button>
 
-            <button className="w-full bg-white text-blue-900 font-semibold py-3 rounded-full hover:scale-105 transition text-lg">
-              Login
-            </button>
-          </form>
-
-          {role === "user" && (
-            <p className="text-xs text-center mt-4">
-              Not a Member?{' '}
-              <Link to="/register" className="underline font-semibold">
-                Signup
-              </Link>
-            </p>
-          )}
-        </motion.div>
-
-        {/* RIGHT - IMAGE */}
-        <motion.div
-          initial={{ opacity: 0, x: 40 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.5 }}
-          className="hidden md:flex w-1/2 bg-white items-center justify-center"
-        >
-          {/* ✅ Option 1: public folder */}
-          <img
-            src="/login_img.png"
-            alt="login"
-            className="w-full h-full object-cover rounded-r-3xl"
-          />
-
-          {/* ✅ Option 2: assets import (use this instead of above if importing) */}
-          {/* <img src={loginImg} alt="login" className="w-full h-full object-cover rounded-r-3xl" /> */}
-        </motion.div>
-
+          {/* FORGOT PASSWORD */}
+          <p className="text-center text-sm mt-3 cursor-pointer hover:underline">
+            Forgot password?
+          </p>
+        </div>
       </div>
     </div>
   );
