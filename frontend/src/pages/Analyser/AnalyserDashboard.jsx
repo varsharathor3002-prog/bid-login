@@ -96,7 +96,7 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                     <table className="w-full text-sm">
                         <thead>
                             <tr className="bg-gray-50 text-gray-500 uppercase text-xs border-b border-gray-200">
-                                <th className="px-4 py-3 text-left">#</th>
+                                <th className="px-4 py-3 text-left">S.No.</th>
                                 <th className="px-4 py-3 text-left">Bid No</th>
                                 <th className="px-4 py-3 text-left">Department</th>
                                 <th className="px-4 py-3 text-left">Qty</th>

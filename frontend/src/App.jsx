@@ -10,6 +10,7 @@ import CreateDesktopBid from "./pages/user/CreateDesktopBid";
 import AnalyserNavbar from "./components/analyser/AnalyserNavbar";
 import AnalyserDashboard from "./pages/analyser/AnalyserDashboard";
 import BidDetailView from "./pages/analyser/BidDetailView";
+import ForgotPassword from "./pages/auth/ForgotPassword";
 
 const ComingSoon = ({ product }) => (
   <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
@@ -30,7 +31,7 @@ function App() {
 
            {/* 🔥 ADMIN → ADD USER (CONNECTED HERE) */}
         <Route path="/add-user" element={<Registration />} />
-
+        <Route path="/forgot-password" element={<ForgotPassword />} />
         {/* 👤 USER */}
         <Route path="/user" element={<UserNavbar />}>
           <Route index element={<div>Select a product</div>} />
