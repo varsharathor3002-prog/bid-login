@@ -142,7 +142,7 @@ export default function BidDetailView({ product = "desktop" }) {
                         </span>
                     </div>
                 </div>
-                
+
                 <div className="flex items-center gap-4">
                     <div className="flex flex-col items-end mr-4 border-r pr-6 border-gray-100">
                         <span className="text-[10px] font-bold text-gray-400 uppercase leading-none mb-1">Current Status</span>
@@ -164,10 +164,10 @@ export default function BidDetailView({ product = "desktop" }) {
                 )}
 
                 <div className="bg-white rounded-2xl border border-gray-200 p-8 shadow-sm"
-                    style={{ 
-                        display: "grid", 
-                        gridTemplateColumns: "repeat(5, 1fr)", 
-                        gap: "24px 20px" 
+                    style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(5, 1fr)",
+                        gap: "24px 20px"
                     }}>
 
                     {/* ── BID INFORMATION ── */}
@@ -219,7 +219,7 @@ export default function BidDetailView({ product = "desktop" }) {
                     <T label="Processor Description" val={form?.pro_descp} onChange={set("pro_descp")} cols={2} rows={4} />
                     <div className="col-span-1"></div> {/* Spacer for alignment */}
                     <T label="Motherboard Description" val={form?.motherboard_descp} onChange={set("motherboard_descp")} cols={2} rows={4} />
-                    
+
                     {/* Row 2 */}
                     <T label="Software / OS Description" val={form?.software1} onChange={set("software1")} cols={2} rows={4} />
                     <div className="col-span-1"></div> {/* Spacer for alignment */}

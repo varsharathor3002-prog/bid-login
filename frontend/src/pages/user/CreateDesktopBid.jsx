@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import DesktopConfig from "./DesktopConfig"; 
+import DesktopConfig from "./DesktopConfig";
 import ModelNumber from "./ModelNumber";
 
 // --- SIMPLE & CLEAN UI COMPONENTS (Full Width Version) ---
@@ -10,18 +10,18 @@ const Label = ({ children, optional }) => (
 );
 
 const Input = ({ className = "", ...props }) => (
-  <input 
+  <input
     className={`w-full bg-white border border-gray-300 text-black font-semibold rounded-md px-3 py-2 text-sm outline-none 
-    focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-all placeholder-gray-400 shadow-sm ${className}`} 
-    {...props} 
+    focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-all placeholder-gray-400 shadow-sm ${className}`}
+    {...props}
   />
 );
 
 const Textarea = ({ className = "", ...props }) => (
-  <textarea 
+  <textarea
     className={`w-full bg-white border border-gray-300 text-black font-semibold rounded-md px-3 py-2 text-sm outline-none 
-    focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-all placeholder-gray-400 resize-none shadow-sm ${className}`} 
-    {...props} 
+    focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-all placeholder-gray-400 resize-none shadow-sm ${className}`}
+    {...props}
   />
 );
 
@@ -55,7 +55,7 @@ export default function CreateBidMain() {
 
   return (
     <div className="min-h-screen bg-[#f8fafc] flex flex-col font-sans">
-      
+
       {/* Sticky Header to match the style */}
       <div className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-gray-200 px-8 py-4 shadow-sm">
         <div className="max-w-[1750px] mx-auto flex items-center justify-between">
@@ -66,10 +66,10 @@ export default function CreateBidMain() {
           </div>
 
           <div className="w-1/3 h-[6px] bg-gray-100 rounded-full overflow-hidden">
-             <div 
-               className="h-full bg-blue-600 transition-all duration-500 ease-out" 
-               style={{ width: `${(step/3)*100}%` }}
-             ></div>
+            <div
+              className="h-full bg-blue-600 transition-all duration-500 ease-out"
+              style={{ width: `${(step / 3) * 100}%` }}
+            ></div>
           </div>
         </div>
       </div>
@@ -78,9 +78,9 @@ export default function CreateBidMain() {
         {step === 1 && <Step1Form onNext={handleStep1Submit} />}
         {step === 2 && <DesktopConfig bidData={allData} onNext={handleStep2Submit} />}
         {step === 3 && (
-          <ModelNumber 
-            bidData={allData} 
-            onFinish={(final) => console.log("Final Data:", { ...allData, ...final })} 
+          <ModelNumber
+            bidData={allData}
+            onFinish={(final) => console.log("Final Data:", { ...allData, ...final })}
           />
         )}
       </div>
@@ -93,29 +93,29 @@ function Step1Form({ onNext }) {
   const [form, setForm] = useState({
     bid_no: "", deptName: "", qty: "", atc: "", address: "", pincode: "",
   });
-  
+
   const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
 
   return (
     <form onSubmit={e => { e.preventDefault(); onNext(form); }} className="space-y-6">
       <SectionCard title="General Bid Information" icon="📋">
-        
+
         {/* Fields organized in 5-column grid */}
         <div className="col-span-1">
           <Label>Bid Number</Label>
           <Input placeholder="GEM/2026/..." value={form.bid_no} onChange={set("bid_no")} required />
         </div>
-        
+
         <div className="col-span-1">
           <Label>Department Name</Label>
           <Input placeholder="e.g. Health Dept" value={form.deptName} onChange={set("deptName")} required />
         </div>
-        
+
         <div className="col-span-1">
           <Label>Quantity</Label>
           <Input type="number" placeholder="Total Units" value={form.qty} onChange={set("qty")} required />
         </div>
-        
+
         <div className="col-span-1">
           <Label>Pin Code</Label>
           <Input type="number" placeholder="Pincode" value={form.pincode} onChange={set("pincode")} required />
@@ -129,10 +129,10 @@ function Step1Form({ onNext }) {
         {/* Full width description / ATC */}
         <div className="col-span-full mt-2">
           <Label optional>Additional Terms & Conditions (ATC)</Label>
-          <Textarea 
-            placeholder="Type your custom terms here..." 
-            value={form.atc} 
-            onChange={set("atc")} 
+          <Textarea
+            placeholder="Type your custom terms here..."
+            value={form.atc}
+            onChange={set("atc")}
             rows={4}
             className="border-2 border-blue-50 focus:bg-white bg-gray-50/30"
           />
@@ -140,11 +140,11 @@ function Step1Form({ onNext }) {
       </SectionCard>
 
       <div className="flex justify-center mt-10">
-        <button 
-          type="submit" 
+        <button
+          type="submit"
           className="w-full max-w-2xl bg-green-600 hover:bg-green-700 text-white font-black py-5 rounded-2xl text-lg shadow-xl shadow-green-100 transition-all hover:-translate-y-1 active:translate-y-0 flex items-center justify-center gap-2"
         >
-          Save and Continue to Configuration 
+          Save and Continue to Configuration
           <span className="text-xl">→</span>
         </button>
       </div>

@@ -1,18 +1,18 @@
 import React, { useState } from "react";
 
 // --- DATA OPTIONS ---
-const PROCESSORS = ["Intel Core i3 12100","Intel Core i5 12400","Intel Core i5 12500","Intel Core i5 13500","Intel Core i5 14400","Intel Core i5 14500","Intel Core i7 12700","Intel Core i7 13700","Intel Core i7 14700","Intel Core i9 12900","Intel Core i9 13900","Intel Core i9 14900","AMD Ryzen 3 4300G","AMD Ryzen 3 5300G","AMD Ryzen 5 4600G","AMD Ryzen 5 5600G","AMD Ryzen 7 4700G","AMD Ryzen 7 5700G","AMD Ryzen 7 5750G","AMD Ryzen 9 3900G","12th Gen Composite i3","12th Gen Composite i5","12th Gen Composite i7"];
-const RAM = ["8GB DDR4 2666","8GB DDR4 3200","16GB DDR4 2666","8GB DDR5","16GB DDR5","16GB DDR4 3200","32GB DDR4 2666","32GB DDR4 3200","32GB DDR4 3200*2","8GB DDR5 4800","16GB DDR5 4800","32GB DDR5 4800","32GB DDR5 4800*2"];
-const HDD = ["1 TB","2 TB","None"];
-const SSD = ["128 GB SATA","256 GB SATA","512 GB SATA","1TB SATA","128 GB NVMe","256 GB NVMe","512 GB NVMe","1TB NVMe","None"];
-const OS_LIST = ["Windows 10 Home","Windows 10 Professional","Windows 11 Home","Windows 11 Professional","DOS","Linux"];
-const DVD = ["Yes","None"];
-const WIFI = ["PCI Based 4.2 Bluetooth","Wi-fi AC 4.2 Bluetooth","Wi-Fi 6 5.0 Bluetooth","Wi-Fi AX201 5.2 Bluetooth","None"];
-const MONITORS = ["18.5 inch","19.5 inch","21.5 inch","21.5 inch with Speaker","21.5 inch with DP Port","23.8 inch","23.8 inch with Speaker","23.8 inch with DP Port","23.8 inch with Speaker Webcam","27 inch"];
-const CABINET = ["SFF","Tower"];
-const KEYBOARD = ["Keyboard & Mouse Wired","Keyboard & Mouse Wireless","None"];
-const WARRANTY = ["1 Year","2 Year","3 Year","4 Year","5 Year"];
-const MOTHERBOARDS = ["H610","B760","Q670 DDR4","Q670 DDR5","AMD B650","AMD B550","AMD A520"];
+const PROCESSORS = ["Intel Core i3 12100", "Intel Core i5 12400", "Intel Core i5 12500", "Intel Core i5 13500", "Intel Core i5 14400", "Intel Core i5 14500", "Intel Core i7 12700", "Intel Core i7 13700", "Intel Core i7 14700", "Intel Core i9 12900", "Intel Core i9 13900", "Intel Core i9 14900", "AMD Ryzen 3 4300G", "AMD Ryzen 3 5300G", "AMD Ryzen 5 4600G", "AMD Ryzen 5 5600G", "AMD Ryzen 7 4700G", "AMD Ryzen 7 5700G", "AMD Ryzen 7 5750G", "AMD Ryzen 9 3900G", "12th Gen Composite i3", "12th Gen Composite i5", "12th Gen Composite i7"];
+const RAM = ["8GB DDR4 2666", "8GB DDR4 3200", "16GB DDR4 2666", "8GB DDR5", "16GB DDR5", "16GB DDR4 3200", "32GB DDR4 2666", "32GB DDR4 3200", "32GB DDR4 3200*2", "8GB DDR5 4800", "16GB DDR5 4800", "32GB DDR5 4800", "32GB DDR5 4800*2"];
+const HDD = ["1 TB", "2 TB", "None"];
+const SSD = ["128 GB SATA", "256 GB SATA", "512 GB SATA", "1TB SATA", "128 GB NVMe", "256 GB NVMe", "512 GB NVMe", "1TB NVMe", "None"];
+const OS_LIST = ["Windows 10 Home", "Windows 10 Professional", "Windows 11 Home", "Windows 11 Professional", "DOS", "Linux"];
+const DVD = ["Yes", "None"];
+const WIFI = ["PCI Based 4.2 Bluetooth", "Wi-fi AC 4.2 Bluetooth", "Wi-Fi 6 5.0 Bluetooth", "Wi-Fi AX201 5.2 Bluetooth", "None"];
+const MONITORS = ["18.5 inch", "19.5 inch", "21.5 inch", "21.5 inch with Speaker", "21.5 inch with DP Port", "23.8 inch", "23.8 inch with Speaker", "23.8 inch with DP Port", "23.8 inch with Speaker Webcam", "27 inch"];
+const CABINET = ["SFF", "Tower"];
+const KEYBOARD = ["Keyboard & Mouse Wired", "Keyboard & Mouse Wireless", "None"];
+const WARRANTY = ["1 Year", "2 Year", "3 Year", "4 Year", "5 Year"];
+const MOTHERBOARDS = ["H610", "B760", "Q670 DDR4", "Q670 DDR5", "AMD B650", "AMD B550", "AMD A520"];
 
 // --- COMPONENTS ---
 const Label = ({ children }) => (
@@ -55,20 +55,20 @@ const Field = ({ label, options, val, setVal, price, setPrice }) => (
 export default function Step2DesktopConfig({ onNext }) {
 
   const [form, setForm] = useState({
-    processor:"", pro_descp:"", ram:"", hdd:"", ssd:"",
-    os:"", dvd:"", wifi:"",
-    monitor:"", cabinet:"", keyboard:"",
-    warranty:"", motherboard:"", motherboard_descp:"",
-    software1:"", gp:"",
-    date:"", epbg:"",
-    hddreturnable:"Yes", hddreturnable_price:""
+    processor: "", pro_descp: "", ram: "", hdd: "", ssd: "",
+    os: "", dvd: "", wifi: "",
+    monitor: "", cabinet: "", keyboard: "",
+    warranty: "", motherboard: "", motherboard_descp: "",
+    software1: "", gp: "",
+    date: "", epbg: "",
+    hddreturnable: "Yes", hddreturnable_price: ""
   });
 
   const [prices, setPrices] = useState({
-    processor_price:"", ram_price:"", hdd_price:"", ssd_price:"",
-    os_price:"", dvd_price:"", wifi_price:"",
-    monitor_price:"", cabinet_price:"", keyboard_price:"",
-    warranty_price:"", motherboard_price:""
+    processor_price: "", ram_price: "", hdd_price: "", ssd_price: "",
+    os_price: "", dvd_price: "", wifi_price: "",
+    monitor_price: "", cabinet_price: "", keyboard_price: "",
+    warranty_price: "", motherboard_price: ""
   });
 
   const setF = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
@@ -110,36 +110,36 @@ export default function Step2DesktopConfig({ onNext }) {
           {/* TEXT AREAS SECTION */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
             <div>
-                <Label>Processor Description</Label>
-                <textarea className="w-full p-3 border border-gray-300 rounded-lg h-24" value={form.pro_descp} onChange={setF("pro_descp")} />
+              <Label>Processor Description</Label>
+              <textarea className="w-full p-3 border border-gray-300 rounded-lg h-24" value={form.pro_descp} onChange={setF("pro_descp")} />
             </div>
             <div>
-                <Label>Motherboard Description</Label>
-                <textarea className="w-full p-3 border border-gray-300 rounded-lg h-24" value={form.motherboard_descp} onChange={setF("motherboard_descp")} />
+              <Label>Motherboard Description</Label>
+              <textarea className="w-full p-3 border border-gray-300 rounded-lg h-24" value={form.motherboard_descp} onChange={setF("motherboard_descp")} />
             </div>
             <div>
-                <Label>Software Description</Label>
-                <textarea className="w-full p-3 border border-gray-300 rounded-lg h-24" value={form.software1} onChange={setF("software1")} />
+              <Label>Software Description</Label>
+              <textarea className="w-full p-3 border border-gray-300 rounded-lg h-24" value={form.software1} onChange={setF("software1")} />
             </div>
             <div>
-                <Label>Graphics Description</Label>
-                <textarea className="w-full p-3 border border-gray-300 rounded-lg h-24" value={form.gp} onChange={setF("gp")} />
+              <Label>Graphics Description</Label>
+              <textarea className="w-full p-3 border border-gray-300 rounded-lg h-24" value={form.gp} onChange={setF("gp")} />
             </div>
           </div>
 
           {/* EXTRA INFO SECTION */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8 bg-blue-50 p-6 rounded-xl border border-blue-100">
             <div>
-                <Label>Date</Label>
-                <input type="date" className="w-full p-3 border border-gray-300 rounded-lg" value={form.date} onChange={setF("date")} />
+              <Label>Date</Label>
+              <input type="date" className="w-full p-3 border border-gray-300 rounded-lg" value={form.date} onChange={setF("date")} />
             </div>
             <div>
-                <Label>EPBG %</Label>
-                <input placeholder="Enter EPBG %" className="w-full p-3 border border-gray-300 rounded-lg font-bold" value={form.epbg} onChange={setF("epbg")} />
+              <Label>EPBG %</Label>
+              <input placeholder="Enter EPBG %" className="w-full p-3 border border-gray-300 rounded-lg font-bold" value={form.epbg} onChange={setF("epbg")} />
             </div>
             <div>
-                <Label>HDD Return Price (₹)</Label>
-                <input placeholder="Enter Amount" className="w-full p-3 border border-gray-300 rounded-lg font-bold" value={form.hddreturnable_price} onChange={setF("hddreturnable_price")} />
+              <Label>HDD Return Price (₹)</Label>
+              <input placeholder="Enter Amount" className="w-full p-3 border border-gray-300 rounded-lg font-bold" value={form.hddreturnable_price} onChange={setF("hddreturnable_price")} />
             </div>
           </div>
 
