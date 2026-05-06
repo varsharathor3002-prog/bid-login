@@ -2,17 +2,17 @@ import React, { useState } from "react";
 import DesktopConfig from "./DesktopConfig"; 
 import ModelNumber from "./ModelNumber";
 
-// --- SIMPLE & CLEAN UI COMPONENTS (Pure Black Text) ---
+// --- SIMPLE & CLEAN UI COMPONENTS (Full Width Version) ---
 const Label = ({ children, optional }) => (
-  <label className="block text-xs font-bold uppercase tracking-wide text-black mb-1">
-    {children} {optional && <span className="text-gray-500 normal-case font-normal ml-1">— Optional</span>}
+  <label className="block text-[10px] font-bold uppercase tracking-wide text-gray-500 mb-1 leading-none">
+    {children} {optional && <span className="text-gray-400 normal-case font-normal ml-1">— Optional</span>}
   </label>
 );
 
 const Input = ({ className = "", ...props }) => (
   <input 
     className={`w-full bg-white border border-gray-300 text-black font-semibold rounded-md px-3 py-2 text-sm outline-none 
-    focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-all placeholder-gray-400 ${className}`} 
+    focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-all placeholder-gray-400 shadow-sm ${className}`} 
     {...props} 
   />
 );
@@ -20,18 +20,21 @@ const Input = ({ className = "", ...props }) => (
 const Textarea = ({ className = "", ...props }) => (
   <textarea 
     className={`w-full bg-white border border-gray-300 text-black font-semibold rounded-md px-3 py-2 text-sm outline-none 
-    focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-all placeholder-gray-400 resize-none ${className}`} 
+    focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-all placeholder-gray-400 resize-none shadow-sm ${className}`} 
     {...props} 
   />
 );
 
 const SectionCard = ({ title, icon, children }) => (
-  <div className="bg-white rounded-lg border border-gray-200 shadow-sm mb-4">
-    <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 bg-gray-50/50">
-      <span className="text-sm">{icon}</span>
-      <h3 className="text-black font-bold text-xs uppercase tracking-wider">{title}</h3>
+  <div className="bg-white rounded-2xl border border-gray-200 shadow-sm mb-6">
+    <div className="flex items-center gap-3 px-8 py-4 border-b border-gray-100 bg-gray-50/50">
+      <span className="text-xl">{icon}</span>
+      <h3 className="text-blue-700 font-black text-xs uppercase tracking-[0.15em]">{title}</h3>
     </div>
-    <div className="p-4 space-y-3">{children}</div>
+    {/* Grid set to 5 columns to match the previous display */}
+    <div className="p-8 grid grid-cols-1 md:grid-cols-5 gap-6">
+      {children}
+    </div>
   </div>
 );
 
@@ -51,17 +54,27 @@ export default function CreateBidMain() {
   };
 
   return (
-    <div className="min-h-screen bg-white p-4">
-      <div className="max-w-2xl mx-auto">
-        
-        {/* Simple Step Progress */}
-        <div className="flex items-center gap-2 mb-6 px-1">
-           <span className="text-black font-black text-lg">Step {step}</span>
-           <div className="h-[2px] flex-1 bg-gray-100">
-              <div className="h-full bg-blue-600 transition-all duration-300" style={{ width: `${(step/3)*100}%` }}></div>
-           </div>
-        </div>
+    <div className="min-h-screen bg-[#f8fafc] flex flex-col font-sans">
+      
+      {/* Sticky Header to match the style */}
+      <div className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-gray-200 px-8 py-4 shadow-sm">
+        <div className="max-w-[1750px] mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-6">
+            <span className="text-lg font-black text-gray-900 tracking-tight">Create New Bid</span>
+            <div className="h-6 w-[1px] bg-gray-200"></div>
+            <span className="text-blue-600 font-bold text-sm">Step {step} of 3</span>
+          </div>
 
+          <div className="w-1/3 h-[6px] bg-gray-100 rounded-full overflow-hidden">
+             <div 
+               className="h-full bg-blue-600 transition-all duration-500 ease-out" 
+               style={{ width: `${(step/3)*100}%` }}
+             ></div>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex-1 w-full max-w-[1750px] mx-auto p-8">
         {step === 1 && <Step1Form onNext={handleStep1Submit} />}
         {step === 2 && <DesktopConfig bidData={allData} onNext={handleStep2Submit} />}
         {step === 3 && (
@@ -84,50 +97,57 @@ function Step1Form({ onNext }) {
   const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
 
   return (
-    <form onSubmit={e => { e.preventDefault(); onNext(form); }} className="space-y-4">
-      <SectionCard title="Bid Information" icon="📋">
+    <form onSubmit={e => { e.preventDefault(); onNext(form); }} className="space-y-6">
+      <SectionCard title="General Bid Information" icon="📋">
         
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
-          <div>
-            <Label>Bid Number</Label>
-            <Input placeholder="GEM/2026/..." value={form.bid_no} onChange={set("bid_no")} required />
-          </div>
-          <div>
-            <Label>Department Name</Label>
-            <Input placeholder="Department Name" value={form.deptName} onChange={set("deptName")} required />
-          </div>
-          <div>
-            <Label>Quantity</Label>
-            <Input type="number" placeholder="Total Units" value={form.qty} onChange={set("qty")} required />
-          </div>
-          <div>
-            <Label>Pin Code</Label>
-            <Input type="number" placeholder="Pincode" value={form.pincode} onChange={set("pincode")} required />
-          </div>
+        {/* Fields organized in 5-column grid */}
+        <div className="col-span-1">
+          <Label>Bid Number</Label>
+          <Input placeholder="GEM/2026/..." value={form.bid_no} onChange={set("bid_no")} required />
+        </div>
+        
+        <div className="col-span-1">
+          <Label>Department Name</Label>
+          <Input placeholder="e.g. Health Dept" value={form.deptName} onChange={set("deptName")} required />
+        </div>
+        
+        <div className="col-span-1">
+          <Label>Quantity</Label>
+          <Input type="number" placeholder="Total Units" value={form.qty} onChange={set("qty")} required />
+        </div>
+        
+        <div className="col-span-1">
+          <Label>Pin Code</Label>
+          <Input type="number" placeholder="Pincode" value={form.pincode} onChange={set("pincode")} required />
         </div>
 
-        <div>
-          <Label>Full Address</Label>
-          <Input placeholder="Delivery Location" value={form.address} onChange={set("address")} required />
+        <div className="col-span-1">
+          <Label>Address</Label>
+          <Input placeholder="Location" value={form.address} onChange={set("address")} required />
         </div>
 
-        <div>
-          <Label optional>Additional Terms (ATC)</Label>
+        {/* Full width description / ATC */}
+        <div className="col-span-full mt-2">
+          <Label optional>Additional Terms & Conditions (ATC)</Label>
           <Textarea 
-            placeholder="Enter terms here..." 
+            placeholder="Type your custom terms here..." 
             value={form.atc} 
             onChange={set("atc")} 
-            rows={3} 
+            rows={4}
+            className="border-2 border-blue-50 focus:bg-white bg-gray-50/30"
           />
         </div>
       </SectionCard>
 
-      <button 
-        type="submit" 
-        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-md shadow-md transition-all active:scale-[0.99]"
-      >
-        Save and Continue →
-      </button>
+      <div className="flex justify-center mt-10">
+        <button 
+          type="submit" 
+          className="w-full max-w-2xl bg-green-600 hover:bg-green-700 text-white font-black py-5 rounded-2xl text-lg shadow-xl shadow-green-100 transition-all hover:-translate-y-1 active:translate-y-0 flex items-center justify-center gap-2"
+        >
+          Save and Continue to Configuration 
+          <span className="text-xl">→</span>
+        </button>
+      </div>
     </form>
   );
 }
