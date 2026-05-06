@@ -4,229 +4,210 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 const REVIEW_API = {
     desktop: (id) => `http://127.0.0.1:8000/api/desktop-bids/${id}/review/`,
 };
+
 const FETCH_API = {
     desktop: (id) => `http://127.0.0.1:8000/api/desktop-bids/${id}/`,
 };
 
 const Label = ({ children }) => (
-    <label className="block text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-0.5">{children}</label>
+    <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1">
+        {children}
+    </label>
 );
 
 const Input = (props) => (
     <input
-        className="w-full border border-gray-200 rounded px-2 py-1.5 text-xs font-semibold text-gray-800 focus:ring-1 focus:ring-blue-500 outline-none bg-white"
+        className="w-full border border-gray-200 rounded px-2 py-1.5 text-xs"
         {...props}
     />
 );
 
-const Textarea = ({ rows = 2, ...props }) => (
+const Textarea = (props) => (
     <textarea
-        rows={rows}
-        className="w-full border border-gray-200 rounded px-2 py-1.5 text-xs font-semibold text-gray-800 focus:ring-1 focus:ring-blue-500 outline-none bg-white resize-none"
+        className="w-full border border-gray-200 rounded px-2 py-1.5 text-xs"
+        rows={2}
         {...props}
     />
-);
-
-const SecHead = ({ icon, title }) => (
-    <div className="col-span-full flex items-center gap-2 pt-3 pb-1 border-b border-blue-100 mb-1">
-        <span className="text-sm">{icon}</span>
-        <span className="text-[10px] font-black uppercase tracking-widest text-blue-600">{title}</span>
-    </div>
-);
-
-const F = ({ label, val, onChange, cols = 1 }) => (
-    <div style={{ gridColumn: `span ${cols}` }}>
-        <Label>{label}</Label>
-        <Input value={val || ""} onChange={e => onChange(e.target.value)} />
-    </div>
-);
-
-const T = ({ label, val, onChange, cols = 1 }) => (
-    <div style={{ gridColumn: `span ${cols}` }}>
-        <Label>{label}</Label>
-        <Textarea value={val || ""} onChange={e => onChange(e.target.value)} />
-    </div>
 );
 
 export default function BidDetailView({ product = "desktop" }) {
-    const { state } = useLocation();
     const { id } = useParams();
+    const { state } = useLocation();
     const navigate = useNavigate();
 
     const [form, setForm] = useState(state?.bid || null);
     const [note, setNote] = useState("");
-    const [loadingBid, setLoadingBid] = useState(!state?.bid);
-    const [submitting, setSubmitting] = useState(false);
-    const [done, setDone] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
+    const [done, setDone] = useState(false);
 
-    const set = (k) => (v) => setForm(p => ({ ...p, [k]: v }));
+    const set = (k) => (v) => setForm((p) => ({ ...p, [k]: v }));
 
     useEffect(() => {
-        if (!state?.bid && id) fetchBid();
+        fetchBid();
     }, [id]);
 
     const fetchBid = async () => {
-        setLoadingBid(true);
         try {
+            setLoading(true);
             const res = await fetch(FETCH_API[product](id));
+            const data = await res.json();
+
+            console.log("FETCH DATA:", data);
+
             if (!res.ok) throw new Error();
-            setForm(await res.json());
-        } catch {
-            setError("Bid load nahi ho pa raha.");
+            setForm(data);
+            setNote(data.analyser_note || "");
+        } catch (err) {
+            console.error(err);
+            setError("Data fetch nahi ho raha");
         } finally {
-            setLoadingBid(false);
+            setLoading(false);
         }
     };
 
     const submit = async () => {
-        if (!note.trim()) { alert("Review note zaroori hai!"); return; }
-        setSubmitting(true);
-        setError("");
+        if (!note.trim()) {
+            alert("Review note zaroori hai");
+            return;
+        }
+
         try {
-            const res = await fetch(REVIEW_API[product](id || form?.id), {
+            const res = await fetch(REVIEW_API[product](id), {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    ...form,
                     analyser_note: note,
                     analyser_username: localStorage.getItem("username") || "",
                     status: "reviewed",
                 }),
             });
+
             if (!res.ok) throw new Error();
             setDone(true);
         } catch {
-            setError("Submit fail hua. Dobara try karo.");
-        } finally {
-            setSubmitting(false);
+            setError("Submit fail hua");
         }
     };
 
-    if (loadingBid) return (
-        <div className="flex items-center justify-center h-screen text-gray-400">Loading...</div>
-    );
+    if (loading) return <div className="p-10">Loading...</div>;
 
-    if (done) return (
-        <div className="flex flex-col items-center justify-center min-h-screen gap-4 bg-gray-50">
-            <div className="text-6xl">✅</div>
-            <h2 className="text-2xl font-bold text-green-600">Admin ko send kar diya!</h2>
-            <p className="text-gray-500 text-sm">Bid <strong>{form?.bid_no}</strong> forwarded successfully.</p>
-            <button onClick={() => navigate("/analyser-dashboard/desktop")}
-                className="bg-blue-600 text-white px-5 py-2 rounded-lg hover:bg-blue-700 text-sm font-semibold">
-                ← Back to Dashboard
-            </button>
-        </div>
-    );
-
-    /* ─── 6-column grid layout ─── */
-    return (
-        <div className="min-h-screen bg-gray-50 flex flex-col">
-
-            {/* ── STICKY TOPBAR ── */}
-            <div className="sticky top-0 z-20 bg-white border-b border-gray-200 shadow-sm px-5 py-2.5 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                    <button onClick={() => navigate(-1)}
-                        className="text-blue-600 text-xs font-bold hover:underline">← Back</button>
-                    <span className="text-gray-300">|</span>
-                    <span className="text-sm font-black text-gray-800">Review Bid —</span>
-                    <span className="text-sm font-black text-blue-600">{form?.bid_no}</span>
-                    <span className="text-xs text-gray-400 capitalize hidden sm:block">
-                        {product} · {form?.dept_name}
-                    </span>
-                </div>
-                <div className="flex items-center gap-2">
-                    <span className="bg-yellow-100 text-yellow-700 text-[10px] font-black px-2.5 py-1 rounded-full uppercase">
-                        Pending
-                    </span>
-                    <button onClick={submit} disabled={submitting}
-                        className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white text-xs font-black px-4 py-2 rounded-lg shadow transition">
-                        {submitting ? "Saving..." : "✓ upadte →"}
-                    </button>
-                </div>
+    if (done)
+        return (
+            <div className="p-10 text-center">
+                <h2 className="text-green-600 text-xl font-bold">
+                    ✅ Bid Reviewed Successfully
+                </h2>
+                <button
+                    onClick={() => navigate("/analyser-dashboard/desktop")}
+                    className="mt-4 bg-blue-600 text-white px-4 py-2 rounded"
+                >
+                    Back
+                </button>
             </div>
+        );
 
-            {/* ── FORM ── */}
-            <div className="flex-1 p-4">
-                {error && (
-                    <div className="bg-red-50 border border-red-200 text-red-600 text-xs px-3 py-2 rounded-lg mb-3">
-                        ❌ {error}
-                    </div>
-                )}
+    return (
+        <div className="p-4 bg-gray-50 min-h-screen">
+            {error && <div className="text-red-500 mb-3">{error}</div>}
 
-                <div className="bg-white rounded-xl border border-gray-200 p-4"
-                    style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: "10px" }}>
+            <div className="bg-white p-4 rounded shadow grid grid-cols-3 gap-3">
 
-                    {/* ── BID INFORMATION ── */}
-                    <SecHead icon="📋" title="Bid Information" />
-                    <F label="Bid Number" val={form?.bid_no} onChange={set("bid_no")} />
-                    <F label="Department" val={form?.dept_name} onChange={set("dept_name")} />
-                    <F label="Quantity" val={form?.qty} onChange={set("qty")} />
-                    <F label="Pin Code" val={form?.pincode} onChange={set("pincode")} />
-                    <F label="Address" val={form?.address} onChange={set("address")} cols={2} />
+                {/* STEP 1 */}
+                <h3 className="col-span-3 font-bold text-gray-700">Step 1: Basic Info</h3>
 
-                    <F label="Date" val={form?.date} onChange={set("date")} />
-                    <F label="EPBG %" val={form?.epbg} onChange={set("epbg")} />
-                    <F label="Model No" val={form?.model} onChange={set("model")} />
-                    <T label="ATC" val={form?.atc} onChange={set("atc")} cols={3} />
+                <Label>Bid No</Label>
+                <Input value={form?.bid_no || ""} readOnly />
 
-                    {/* ── DESKTOP CONFIG ── */}
-                    <SecHead icon="🖥️" title="Desktop Configuration" />
-                    <F label="Processor" val={form?.processor} onChange={set("processor")} />
-                    <F label="Motherboard" val={form?.motherboard} onChange={set("motherboard")} />
-                    <F label="RAM" val={form?.ram} onChange={set("ram")} />
-                    <F label="SSD" val={form?.ssd} onChange={set("ssd")} />
-                    <F label="HDD" val={form?.hdd} onChange={set("hdd")} />
-                    <F label="OS" val={form?.os} onChange={set("os")} />
+                <Label>Department</Label>
+                <Input value={form?.dept_name || ""} readOnly />
 
-                    <F label="DVD" val={form?.dvd} onChange={set("dvd")} />
-                    <F label="WiFi" val={form?.wifi} onChange={set("wifi")} />
-                    <F label="Monitor" val={form?.monitor} onChange={set("monitor")} />
-                    <F label="Cabinet" val={form?.cabinet} onChange={set("cabinet")} />
-                    <F label="Keyboard" val={form?.keyboard} onChange={set("keyboard")} />
-                    <F label="Warranty" val={form?.warranty} onChange={set("warranty")} />
+                <Label>Qty</Label>
+                <Input value={form?.qty || ""} readOnly />
 
-                    {/* ── PRICES ── */}
-                    <SecHead icon="💰" title="Prices (₹)" />
-                    <F label="Processor ₹" val={form?.processor_price} onChange={set("processor_price")} />
-                    <F label="Motherboard ₹" val={form?.motherboard_price} onChange={set("motherboard_price")} />
-                    <F label="RAM ₹" val={form?.ram_price} onChange={set("ram_price")} />
-                    <F label="SSD ₹" val={form?.ssd_price} onChange={set("ssd_price")} />
-                    <F label="HDD ₹" val={form?.hdd_price} onChange={set("hdd_price")} />
-                    <F label="OS ₹" val={form?.os_price} onChange={set("os_price")} />
+                <Label>Address</Label>
+                <Input value={form?.address || ""} readOnly />
 
-                    <F label="DVD ₹" val={form?.dvd_price} onChange={set("dvd_price")} />
-                    <F label="WiFi ₹" val={form?.wifi_price} onChange={set("wifi_price")} />
-                    <F label="Monitor ₹" val={form?.monitor_price} onChange={set("monitor_price")} />
-                    <F label="Cabinet ₹" val={form?.cabinet_price} onChange={set("cabinet_price")} />
-                    <F label="Keyboard ₹" val={form?.keyboard_price} onChange={set("keyboard_price")} />
-                    <F label="Warranty ₹" val={form?.warranty_price} onChange={set("warranty_price")} />
+                <Label>Pincode</Label>
+                <Input value={form?.pincode || ""} readOnly />
 
-                    {/* ── DESCRIPTIONS ── */}
-                    <SecHead icon="📝" title="Descriptions" />
-                    <T label="Processor Description" val={form?.pro_descp} onChange={set("pro_descp")} cols={3} />
-                    <T label="Motherboard Description" val={form?.motherboard_descp} onChange={set("motherboard_descp")} cols={3} />
-                    <T label="Software Description" val={form?.software1} onChange={set("software1")} cols={3} />
-                    <T label="Graphics Description" val={form?.gp} onChange={set("gp")} cols={3} />
+                <Label>ATC</Label>
+                <Textarea value={form?.atc || ""} readOnly />
 
-                    {/* ── ANALYSER NOTE ── */}
-                    <SecHead icon="🗒️" title="Analyser Review Note (Zaroori)" />
-                    <div className="col-span-full">
-                        <Textarea
-                            rows={2}
-                            placeholder="Apna review note likhein — changes, corrections, ya approval notes..."
-                            value={note}
-                            onChange={e => setNote(e.target.value)}
-                            className="border-blue-300 bg-blue-50"
-                        />
-                    </div>
+                {/* STEP 2 */}
+                <h3 className="col-span-3 font-bold text-gray-700 mt-4">Step 2: Configuration</h3>
 
+                <Label>Processor</Label>
+                <Input value={form?.processor || ""} readOnly />
+
+                <Label>Processor Desc</Label>
+                <Textarea value={form?.pro_descp || ""} readOnly />
+
+                <Label>RAM</Label>
+                <Input value={form?.ram || ""} readOnly />
+
+                <Label>HDD</Label>
+                <Input value={form?.hdd || ""} readOnly />
+
+                <Label>SSD</Label>
+                <Input value={form?.ssd || ""} readOnly />
+
+                <Label>OS</Label>
+                <Input value={form?.os || ""} readOnly />
+
+                <Label>DVD</Label>
+                <Input value={form?.dvd || ""} readOnly />
+
+                <Label>WiFi</Label>
+                <Input value={form?.wifi || ""} readOnly />
+
+                <Label>Monitor</Label>
+                <Input value={form?.monitor || ""} readOnly />
+
+                <Label>Cabinet</Label>
+                <Input value={form?.cabinet || ""} readOnly />
+
+                <Label>Keyboard</Label>
+                <Input value={form?.keyboard || ""} readOnly />
+
+                <Label>Warranty</Label>
+                <Input value={form?.warranty || ""} readOnly />
+
+                <Label>Motherboard</Label>
+                <Input value={form?.motherboard || ""} readOnly />
+
+                <Label>Motherboard Desc</Label>
+                <Textarea value={form?.motherboard_descp || ""} readOnly />
+
+                <Label>Software</Label>
+                <Textarea value={form?.software1 || ""} readOnly />
+
+                <Label>GP</Label>
+                <Textarea value={form?.gp || ""} readOnly />
+
+                <Label>Date</Label>
+                <Input value={form?.date || ""} readOnly />
+
+                <Label>EPBG</Label>
+                <Input value={form?.epbg || ""} readOnly />
+
+                <Label>Model</Label>
+                <Input value={form?.model || ""} readOnly />
+
+                {/* ANALYSER */}
+                <div className="col-span-3 mt-4">
+                    <Label>Analyser Note</Label>
+                    <Textarea
+                        value={note}
+                        onChange={(e) => setNote(e.target.value)}
+                    />
                 </div>
 
-                {/* Bottom submit */}
-                <button onClick={submit} disabled={submitting}
-                    className="w-full mt-3 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-black py-2.5 rounded-xl text-sm shadow transition">
-                    {submitting ? "Submitting..." : "✓  send admin →"}
+                <button
+                    onClick={submit}
+                    className="col-span-3 bg-green-600 text-white py-2 rounded mt-3"
+                >
+                    Submit Review
                 </button>
             </div>
         </div>
