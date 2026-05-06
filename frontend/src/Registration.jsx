@@ -1,9 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { FaEye, FaEyeSlash } from "react-icons/fa";
-import "./Registration.css";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
-function Registration() {
+export default function AddUser() {
   const navigate = useNavigate();
 
   const [form, setForm] = useState({
@@ -11,26 +10,32 @@ function Registration() {
     email: "",
     password: "",
     confirmPassword: "",
+    role: "user",
   });
 
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
-  // ✅ Handle input change
-  const handleChange = (e) => {
+  // ✅ Reset form on load (extra safety)
+  useEffect(() => {
     setForm({
-      ...form,
-      [e.target.name]: e.target.value,
+      username: "",
+      email: "",
+      password: "",
+      confirmPassword: "",
+      role: "user",
     });
+  }, []);
+
+  const handleChange = (e) => {
+    setForm({ ...form, [e.target.name]: e.target.value });
   };
 
-  // ✅ Handle register
-  const handleRegister = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // 🔥 Validation
     if (!form.username || !form.email || !form.password || !form.confirmPassword) {
-      alert("Fill all fields");
+      alert("All fields required");
       return;
     }
 
@@ -40,8 +45,6 @@ function Registration() {
     }
 
     try {
-      console.log("Sending request...");
-
       const res = await fetch("http://127.0.0.1:8000/api/register/", {
         method: "POST",
         headers: {
@@ -51,93 +54,99 @@ function Registration() {
       });
 
       const data = await res.json();
-      console.log("Response:", data);
 
       if (res.ok) {
-        alert(data.message);
-
-        // 🔥 Redirect to login after success
-        navigate("/");
+        alert("User Added Successfully ✅");
+        navigate("/admin-dashboard");
       } else {
-        alert(data.error || "Something went wrong");
+        alert(data.error || "Error occurred");
       }
-
-    } catch (error) {
-      console.error("Error:", error);
+    } catch {
       alert("Backend not connected ❌");
     }
   };
 
   return (
-    <div className="reg-container">
-      <div className="reg-card">
-        <h2 className="reg-title">Create Account</h2>
-        <p className="reg-subtitle">Bid Data Feeding</p>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-r from-[#e6f0ff] to-[#cfd9df]">
 
-        <form onSubmit={handleRegister}>
-          <div className="reg-input">
-            <input
-              type="text"
-              name="username"
-              placeholder="Username"
-              value={form.username}
-              onChange={handleChange}
-            />
-          </div>
+      {/* BIG CARD */}
+      <div className="w-[500px] bg-white rounded-2xl shadow-2xl p-10">
 
-          <div className="reg-input">
-            <input
-              type="email"
-              name="email"
-              placeholder="Email"
-              value={form.email}
-              onChange={handleChange}
-            />
-          </div>
+        {/* Heading */}
+        <h2 className="text-3xl font-bold text-center text-gray-700 mb-8">
+          Add New User
+        </h2>
+
+        {/* FORM */}
+        <form onSubmit={handleSubmit} autoComplete="off">
+
+          {/* Username */}
+          <input
+            type="text"
+            name="username"
+            placeholder="Username"
+            autoComplete="off"
+            value={form.username}
+            onChange={handleChange}
+            className="w-full mb-5 p-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-400 outline-none"
+          />
+
+          {/* Email */}
+          <input
+            type="email"
+            name="email"
+            placeholder="Email"
+            autoComplete="off"
+            value={form.email}
+            onChange={handleChange}
+            className="w-full mb-5 p-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-400 outline-none"
+          />
 
           {/* Password */}
-          <div className="reg-input password-box">
+          <div className="relative mb-5">
             <input
               type={showPassword ? "text" : "password"}
               name="password"
               placeholder="Password"
+              autoComplete="new-password"
               value={form.password}
               onChange={handleChange}
+              className="w-full p-3 pr-10 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-400 outline-none"
             />
             <span
               onClick={() => setShowPassword(!showPassword)}
-              className="eye"
+              className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer text-gray-500"
             >
               {showPassword ? <FaEyeSlash /> : <FaEye />}
             </span>
           </div>
 
           {/* Confirm Password */}
-          <div className="reg-input password-box">
+          <div className="relative mb-6">
             <input
               type={showConfirm ? "text" : "password"}
               name="confirmPassword"
               placeholder="Confirm Password"
+              autoComplete="new-password"
               value={form.confirmPassword}
               onChange={handleChange}
+              className="w-full p-3 pr-10 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-400 outline-none"
             />
             <span
               onClick={() => setShowConfirm(!showConfirm)}
-              className="eye"
+              className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer text-gray-500"
             >
               {showConfirm ? <FaEyeSlash /> : <FaEye />}
             </span>
           </div>
 
-          <button className="reg-btn">Register</button>
-        </form>
+          {/* Button */}
+          <button className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-semibold transition">
+            Add User
+          </button>
 
-        <p className="reg-footer">
-          Already have an account? <Link to="/">Login</Link>
-        </p>
+        </form>
       </div>
     </div>
   );
 }
-
-export default Registration;

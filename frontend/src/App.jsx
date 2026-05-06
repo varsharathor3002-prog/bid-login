@@ -28,9 +28,12 @@ function App() {
         <Route path="/" element={<Login />} />
         <Route path="/register" element={<Registration />} />
 
+           {/* 🔥 ADMIN → ADD USER (CONNECTED HERE) */}
+        <Route path="/add-user" element={<Registration />} />
+
         {/* 👤 USER */}
         <Route path="/user" element={<UserNavbar />}>
-          <Route index element={<Navigate to="/user/aio" replace />} />
+          <Route index element={<div>Select a product</div>} />
           <Route path="aio"         element={<div>AIO Page Content</div>} />
           <Route path="workstation" element={<div>Workstation Content</div>} />
           <Route path="printer"     element={<div>Printer Content</div>} />

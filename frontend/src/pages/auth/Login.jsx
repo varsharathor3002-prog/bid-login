@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
 import { FaEye, FaEyeSlash } from "react-icons/fa";
+import { useNavigate } from "react-router-dom";
+import loginImg from "../../assets/images.png";
 
-function Login() {
+export default function Login() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState("user");
@@ -16,26 +17,18 @@ function Login() {
     try {
       const res = await fetch("http://127.0.0.1:8000/api/login/", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ username, password }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password, role }),
       });
 
       const data = await res.json();
 
       if (res.ok) {
-        // ✅ Role check
         if (data.role !== role) {
           alert("Selected role is incorrect ❌");
           return;
         }
 
-        // ✅ Save user data
-        localStorage.setItem("role", data.role);
-        localStorage.setItem("username", username);
-
-        // 🔥 CLEAN ROUTING (FIXED)
         const routes = {
           user: "/user",
           admin: "/admin-dashboard",
@@ -43,72 +36,78 @@ function Login() {
         };
 
         navigate(routes[data.role]);
-
       } else {
         alert(data.error || "Login failed ❌");
       }
-
-    } catch (error) {
+    } catch {
       alert("Backend not connected ❌");
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-r from-[#e6f0ff] to-[#cfd9df]">
 
-      <div className="bg-white/20 backdrop-blur-lg border border-white/30 shadow-2xl p-8 rounded-2xl w-[350px] text-white">
+      {/* MAIN CARD */}
+      <div className="flex w-[900px] h-[520px] rounded-2xl overflow-hidden shadow-2xl">
 
-        {/* Title */}
-        <h2 className="text-2xl font-bold text-center">Welcome Back</h2>
-        <p className="text-sm text-center mb-6 text-white/80">
-          Login to your account
-        </p>
+        {/* LEFT IMAGE (CONTAINER SAME, IMAGE SMALL) */}
+        <div className="w-1/2 h-full flex items-center justify-center bg-gray-100">
+          <img
+            src={loginImg}
+            alt="login"
+            className="w-[100%] h-[200%] object-contain"
+          />
+        </div>
 
-        <form onSubmit={handleLogin}>
+        {/* RIGHT LOGIN PANEL */}
+        <div className="w-1/2 bg-[#1f4d4d] text-white flex flex-col justify-center px-10">
 
-          {/* Role Selection */}
-          <div className="flex gap-2 mb-5 text-xs">
+          <h2 className="text-2xl font-bold mb-2 text-center">
+            Welcome Back
+          </h2>
+
+          <p className="text-sm text-gray-300 text-center mb-5">
+            Login to your account
+          </p>
+
+          {/* ROLE BUTTONS */}
+          <div className="flex gap-2 mb-4 text-xs">
             {["user", "analyser", "admin"].map((r) => (
-              <label
+              <button
                 key={r}
-                className={`flex-1 text-center py-2 rounded-full cursor-pointer transition ${
+                type="button"
+                onClick={() => setRole(r)}
+                className={`flex-1 py-2 rounded-full transition ${
                   role === r
-                    ? "bg-white text-indigo-600 font-semibold shadow"
-                    : "bg-white/20 hover:bg-white/30"
+                    ? "bg-white text-[#1f4d4d] font-semibold"
+                    : "bg-white/20 text-white"
                 }`}
               >
-                <input
-                  type="radio"
-                  value={r}
-                  hidden
-                  checked={role === r}
-                  onChange={(e) => setRole(e.target.value)}
-                />
                 {r === "user"
-                  ? "Bid Data"
+                  ? "Bid Data Feeding"
                   : r === "analyser"
-                  ? "Analyzer"
+                  ? "Bid Analyser"
                   : "Admin"}
-              </label>
+              </button>
             ))}
           </div>
 
-          {/* Username */}
+          {/* USERNAME */}
           <input
             type="text"
             placeholder="Username"
-            className="w-full p-2 mb-4 rounded-lg bg-white/80 text-black outline-none focus:ring-2 focus:ring-indigo-400"
+            className="mb-4 p-3 rounded-lg bg-white text-black outline-none"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             required
           />
 
-          {/* Password */}
-          <div className="relative mb-5">
+          {/* PASSWORD */}
+          <div className="relative mb-4">
             <input
               type={showPassword ? "text" : "password"}
               placeholder="Password"
-              className="w-full p-2 pr-10 rounded-lg bg-white/80 text-black outline-none focus:ring-2 focus:ring-indigo-400"
+              className="w-full p-3 pr-10 rounded-lg bg-white text-black outline-none"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
@@ -116,32 +115,26 @@ function Login() {
 
             <span
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer text-gray-600 hover:text-indigo-600"
+              className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer text-gray-600"
             >
               {showPassword ? <FaEyeSlash /> : <FaEye />}
             </span>
           </div>
 
-          {/* Button */}
-          <button className="w-full bg-white text-indigo-600 font-semibold py-2 rounded-full hover:scale-105 transition transform">
+          {/* LOGIN BUTTON */}
+          <button
+            onClick={handleLogin}
+            className="bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-semibold"
+          >
             Login
           </button>
 
-        </form>
-
-        {/* Signup */}
-        {role === "user" && (
-          <p className="text-xs text-center mt-4 text-white/90">
-            Not a Member?{" "}
-            <Link to="/register" className="font-semibold underline">
-              Signup
-            </Link>
+          {/* FORGOT PASSWORD */}
+          <p className="text-center text-sm mt-3 cursor-pointer hover:underline">
+            Forgot password?
           </p>
-        )}
-
+        </div>
       </div>
     </div>
   );
 }
-
-export default Login;

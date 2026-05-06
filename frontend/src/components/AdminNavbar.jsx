@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { FaBars } from "react-icons/fa";
 
 function AdminNavbar() {
   const [openMenu, setOpenMenu] = useState(null);
+  const [openSide, setOpenSide] = useState(false);
   const navigate = useNavigate();
 
   const toggleMenu = (menu) => {
@@ -15,17 +17,26 @@ function AdminNavbar() {
   };
 
   return (
-    <div className="flex justify-between items-center bg-slate-800 px-8 py-3 text-white shadow-md">
+    <div className="flex justify-between items-center bg-slate-800 px-8 py-3 text-white shadow-md relative">
 
-      {/* Logo */}
-      <div className="text-lg font-bold">
-        Gem Bid Admin
+      {/* LEFT: Logo */}
+      <div className="flex items-center gap-4">
+        
+        {/* 🔥 Hamburger Icon */}
+        <FaBars
+          className="text-xl cursor-pointer hover:text-gray-300"
+          onClick={() => setOpenSide(!openSide)}
+        />
+
+        <div className="text-lg font-bold">
+          Gem Bid Admin
+        </div>
       </div>
 
-      {/* Menu */}
-      <ul className="flex gap-8 text-sm relative">
+      {/* RIGHT MENU */}
+      <ul className="flex gap-8 text-sm">
 
-        {/* 1️⃣ Bid Approval */}
+        {/* Bid Approval */}
         <li
           className="relative cursor-pointer"
           onClick={() => toggleMenu("bid")}
@@ -34,38 +45,17 @@ function AdminNavbar() {
 
           {openMenu === "bid" && (
             <ul className="absolute top-8 left-0 bg-white text-black rounded-lg shadow-lg w-52 py-2 z-50">
-
-              <li
-                className="px-4 py-2 hover:bg-gray-100 cursor-pointer"
-                onClick={() => navigate("/desktop-bid-approval")}
-              >
+              <li onClick={() => navigate("/desktop-bid-approval")} className="px-4 py-2 hover:bg-gray-100 cursor-pointer">
                 Desktop Bid Approval
               </li>
-
-              <li
-                className="px-4 py-2 hover:bg-gray-100 cursor-pointer"
-                onClick={() => navigate("/aio-bid-approval")}
-              >
+              <li onClick={() => navigate("/aio-bid-approval")} className="px-4 py-2 hover:bg-gray-100 cursor-pointer">
                 AIO Bid Approval
               </li>
-
-              <li className="px-4 py-2 hover:bg-gray-100">
-                Workstation Bid Approval
-              </li>
-
-              <li className="px-4 py-2 hover:bg-gray-100">
-                Printer Bid Approval
-              </li>
-
-              <li className="px-4 py-2 hover:bg-gray-100">
-                Bounch Bid Approval
-              </li>
-
             </ul>
           )}
         </li>
 
-        {/* 2️⃣ Price List */}
+        {/* Price List */}
         <li
           className="relative cursor-pointer"
           onClick={() => toggleMenu("price")}
@@ -74,81 +64,14 @@ function AdminNavbar() {
 
           {openMenu === "price" && (
             <ul className="absolute top-8 left-0 bg-white text-black rounded-lg shadow-lg w-64 py-2 z-50 max-h-96 overflow-y-auto">
-
               <li onClick={() => navigate("/price/monitor")} className="px-4 py-2 hover:bg-gray-100 cursor-pointer">
                 Monitor Price
               </li>
-              <li onClick={() => navigate("/price/AIOM")} className="px-4 py-2 hover:bg-gray-100 cursor-pointer">
-                AIO Monitor Price
-              </li>
-
-
-              <li onClick={() => navigate("/price/cabinet")} className="px-4 py-2 hover:bg-gray-100 cursor-pointer">
-                Cabinet Price
-              </li>
-
-              <li onClick={() => navigate("/price/processor")} className="px-4 py-2 hover:bg-gray-100 cursor-pointer">
-                Processor Price
-              </li>
-
               <li onClick={() => navigate("/price/ram")} className="px-4 py-2 hover:bg-gray-100 cursor-pointer">
                 RAM Price
               </li>
-
-              <li onClick={() => navigate("/price/hdd")} className="px-4 py-2 hover:bg-gray-100 cursor-pointer">
-                Hard Disk Drive Price
-              </li>
-
-              <li onClick={() => navigate("/price/ssd")} className="px-4 py-2 hover:bg-gray-100 cursor-pointer">
-                Solid State Drive Price
-              </li>
-
-              <li onClick={() => navigate("/price/gp")} className="px-4 py-2 hover:bg-gray-100 cursor-pointer">
-                Graphics Card Price
-              </li>
-
-              <li onClick={() => navigate("/price/os")} className="px-4 py-2 hover:bg-gray-100 cursor-pointer">
-                Operating System Price
-              </li>
-
-              <li onClick={() => navigate("/price/motherboard")} className="px-4 py-2 hover:bg-gray-100 cursor-pointer">
-                Motherboard Price
-              </li>
-              <li onClick={() => navigate("/price/AIOMotherboard")} className="px-4 py-2 hover:bg-gray-100 cursor-pointer">
-                AIO Motherboard Price
-              </li>
-
-              <li onClick={() => navigate("/price/dvd")} className="px-4 py-2 hover:bg-gray-100 cursor-pointer">
-                DVD Price
-              </li>
-
-              <li onClick={() => navigate("/price/wifi")} className="px-4 py-2 hover:bg-gray-100 cursor-pointer">
-                Wi-Fi Bluetooth Price
-              </li>
-
-              <li onClick={() => navigate("/price/keyboard")} className="px-4 py-2 hover:bg-gray-100 cursor-pointer">
-                Keyboard & Mouse Price
-              </li>
-
-              <li onClick={() => navigate("/price/warranty")} className="px-4 py-2 hover:bg-gray-100 cursor-pointer">
-                Warranty Price
-              </li>
-
-              <li onClick={() => navigate("/price/software1")} className="px-4 py-2 hover:bg-gray-100 cursor-pointer">
-                Software 1 Price
-              </li>
-
-              <li onClick={() => navigate("/price/software2")} className="px-4 py-2 hover:bg-gray-100 cursor-pointer">
-                Software 2 Price
-              </li>
-
             </ul>
           )}
-        </li>
-
-        {/* 3️⃣ Partner (no dropdown now) */}
-        <li className="cursor-pointer">
-          Partner
         </li>
 
         {/* Logout */}
@@ -160,6 +83,33 @@ function AdminNavbar() {
         </li>
 
       </ul>
+
+      {/* 🔥 SIDE DROPDOWN MENU (Hamburger) */}
+      {openSide && (
+        <div className="absolute top-14 left-6 bg-white text-black rounded-xl shadow-xl w-44 py-2 z-50">
+
+          <div
+            onClick={() => {
+              navigate("/add-user");
+              setOpenSide(false);
+            }}
+            className="px-4 py-2 hover:bg-gray-100 cursor-pointer"
+          >
+            Add User
+          </div>
+
+          <div
+            onClick={() => {
+              navigate("/add-product");
+              setOpenSide(false);
+            }}
+            className="px-4 py-2 hover:bg-gray-100 cursor-pointer"
+          >
+            Add Product
+          </div>
+
+        </div>
+      )}
     </div>
   );
 }
