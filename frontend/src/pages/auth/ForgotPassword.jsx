@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { FaEye, FaEyeSlash } from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
 
@@ -15,19 +15,6 @@ export default function ForgotPassword() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
-  // ✅ Autofill username & email from localStorage
-  useEffect(() => {
-    const username = localStorage.getItem("username");
-    const email = localStorage.getItem("email");
-
-    setForm({
-      username: username || "",
-      email: email || "",
-      new_password: "",
-      confirmPassword: "",
-    });
-  }, []);
-
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
@@ -35,8 +22,8 @@ export default function ForgotPassword() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // Validation
-    if (!form.new_password || !form.confirmPassword) {
+    // ✅ Validation
+    if (!form.username || !form.email || !form.new_password || !form.confirmPassword) {
       alert("All fields are required");
       return;
     }
@@ -63,12 +50,7 @@ export default function ForgotPassword() {
 
       if (res.ok) {
         alert("Password updated successfully ✅");
-
-        // Optional: clear storage after reset
-        localStorage.removeItem("username");
-        localStorage.removeItem("email");
-
-        navigate("/login");
+        navigate("/");
       } else {
         alert(data.error || "Something went wrong");
       }
@@ -80,7 +62,7 @@ export default function ForgotPassword() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-r from-[#e6f0ff] to-[#cfd9df]">
-      
+
       <div className="w-[500px] bg-white rounded-2xl shadow-2xl p-10">
 
         {/* Heading */}
@@ -91,22 +73,26 @@ export default function ForgotPassword() {
         {/* Form */}
         <form onSubmit={handleSubmit} autoComplete="off">
 
-          {/* Username (readonly) */}
+          {/* Username */}
           <input
             type="text"
             name="username"
+            placeholder="Enter Username"
+            autoComplete="username"
             value={form.username}
-            readOnly
-            className="w-full mb-5 p-3 rounded-lg border bg-gray-100 cursor-not-allowed"
+            onChange={handleChange}
+            className="w-full mb-5 p-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-400 outline-none"
           />
 
-          {/* Email (readonly) */}
+          {/* Email */}
           <input
             type="email"
             name="email"
+            placeholder="Enter Email"
+            autoComplete="off"
             value={form.email}
-            readOnly
-            className="w-full mb-5 p-3 rounded-lg border bg-gray-100 cursor-not-allowed"
+            onChange={handleChange}
+            className="w-full mb-5 p-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-400 outline-none"
           />
 
           {/* New Password */}
@@ -115,6 +101,7 @@ export default function ForgotPassword() {
               type={showPassword ? "text" : "password"}
               name="new_password"
               placeholder="New Password"
+              autoComplete="new-password"
               value={form.new_password}
               onChange={handleChange}
               className="w-full p-3 pr-10 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-400 outline-none"
@@ -133,6 +120,7 @@ export default function ForgotPassword() {
               type={showConfirm ? "text" : "password"}
               name="confirmPassword"
               placeholder="Confirm Password"
+              autoComplete="new-password"
               value={form.confirmPassword}
               onChange={handleChange}
               className="w-full p-3 pr-10 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-400 outline-none"

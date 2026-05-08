@@ -1,117 +1,137 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { FaBars } from "react-icons/fa";
+import { Outlet, useNavigate, useLocation } from "react-router-dom";
+import {
+  FaSignOutAlt, FaChevronDown, FaCheckCircle,
+  FaUserPlus, FaBoxOpen,
+} from "react-icons/fa";
 
-function AdminNavbar() {
-  const [openMenu, setOpenMenu] = useState(null);
-  const [openSide, setOpenSide] = useState(false);
+const bidItems = [
+  { name: "Desktop Bid Approval",     path: "/desktop-bid-approval",     ready: true  },
+  { name: "AIO Bid Approval",         path: "/aio-bid-approval",         ready: false },
+  { name: "Workstation Bid Approval", path: "/workstation-bid-approval", ready: false },
+  { name: "Printer Bid Approval",     path: "/printer-bid-approval",     ready: false },
+  { name: "Toner Bid Approval",       path: "/toner-bid-approval",       ready: false },
+];
+
+const adminItems = [
+  { name: "Add User",    path: "/add-user",    icon: <FaUserPlus /> },
+  { name: "Add Product", path: "/add-product", icon: <FaBoxOpen />  },
+];
+
+const AdminNavbar = () => {
+  const [openBid,   setOpenBid]   = useState(true);
+  const [openAdmin, setOpenAdmin] = useState(false);
   const navigate = useNavigate();
-
-  const toggleMenu = (menu) => {
-    setOpenMenu(openMenu === menu ? null : menu);
-  };
+  const location = useLocation();
 
   const handleLogout = () => {
     localStorage.clear();
     navigate("/");
   };
 
+  const isActive = (path) => location.pathname.startsWith(path);
+
   return (
-    <div className="flex justify-between items-center bg-slate-800 px-8 py-3 text-white shadow-md relative">
+    <div className="h-screen w-full flex bg-gray-100">
 
-      {/* LEFT: Logo */}
-      <div className="flex items-center gap-4">
-        
-        {/* 🔥 Hamburger Icon */}
-        <FaBars
-          className="text-xl cursor-pointer hover:text-gray-300"
-          onClick={() => setOpenSide(!openSide)}
-        />
+      {/* ===== SIDEBAR ===== */}
+      <div className="w-64 bg-gray-900 text-white flex flex-col">
 
-        <div className="text-lg font-bold">
-          Gem Bid Admin
+        {/* Title — Admin Panel dropdown */}
+        <button
+          onClick={() => setOpenAdmin(!openAdmin)}
+          className="flex items-center justify-between w-full px-4 py-4 text-xl font-bold border-b border-gray-700 hover:bg-gray-800 transition"
+        >
+          <span>🛡️ Admin Panel</span>
+          <span className={`text-sm ${openAdmin ? "rotate-180" : ""} transition duration-200`}>
+            <FaChevronDown />
+          </span>
+        </button>
+
+        {/* Admin dropdown under title */}
+        {openAdmin && (
+          <div className="bg-gray-800 border-b border-gray-700">
+            {adminItems.map((item) => (
+              <div
+                key={item.path}
+                onClick={() => { navigate(item.path); setOpenAdmin(false); }}
+                className={`flex items-center gap-3 px-6 py-2.5 text-sm cursor-pointer transition
+                  ${isActive(item.path) ? "bg-blue-600 text-white" : "text-gray-300 hover:bg-gray-700 hover:text-white"}`}
+              >
+                {item.icon}
+                {item.name}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Menu */}
+        <div className="flex-1 p-3 space-y-2 overflow-y-auto">
+
+          {/* --- Bid Approval Section --- */}
+          <button
+            onClick={() => setOpenBid(!openBid)}
+            className="flex items-center justify-between w-full px-3 py-2 bg-gray-800 rounded hover:bg-gray-700"
+          >
+            <span className="flex items-center gap-2">
+              <FaCheckCircle /> Bid Approval
+            </span>
+            <span className={`${openBid ? "rotate-180" : ""} transition duration-200`}>
+              <FaChevronDown />
+            </span>
+          </button>
+
+          {openBid && (
+            <div className="mt-1 space-y-1 ml-2">
+              {bidItems.map((item) => (
+                <div
+                  key={item.path}
+                  onClick={() => item.ready && navigate(item.path)}
+                  className={`flex items-center justify-between px-3 py-2 rounded transition
+                    ${!item.ready ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}
+                    ${isActive(item.path) ? "bg-blue-600" : item.ready ? "hover:bg-gray-700" : ""}`}
+                >
+                  <span className="flex items-center gap-2 text-sm">
+                    {item.name}
+                  </span>
+                  {!item.ready && (
+                    <span className="text-[10px] bg-gray-600 text-gray-300 px-1.5 py-0.5 rounded-full">
+                      Soon
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+        </div>
+
+        {/* Logout */}
+        <div className="p-4 border-t border-gray-700">
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-2 w-full bg-red-500 px-3 py-2 rounded hover:bg-red-600 transition"
+          >
+            <FaSignOutAlt /> Logout
+          </button>
         </div>
       </div>
 
-      {/* RIGHT MENU */}
-      <ul className="flex gap-8 text-sm">
-
-        {/* Bid Approval */}
-        <li
-          className="relative cursor-pointer"
-          onClick={() => toggleMenu("bid")}
-        >
-          Bid Approval ▾
-
-          {openMenu === "bid" && (
-            <ul className="absolute top-8 left-0 bg-white text-black rounded-lg shadow-lg w-52 py-2 z-50">
-              <li onClick={() => navigate("/desktop-bid-approval")} className="px-4 py-2 hover:bg-gray-100 cursor-pointer">
-                Desktop Bid Approval
-              </li>
-              <li onClick={() => navigate("/aio-bid-approval")} className="px-4 py-2 hover:bg-gray-100 cursor-pointer">
-                AIO Bid Approval
-              </li>
-            </ul>
-          )}
-        </li>
-
-        {/* Price List */}
-        <li
-          className="relative cursor-pointer"
-          onClick={() => toggleMenu("price")}
-        >
-          Price List ▾
-
-          {openMenu === "price" && (
-            <ul className="absolute top-8 left-0 bg-white text-black rounded-lg shadow-lg w-64 py-2 z-50 max-h-96 overflow-y-auto">
-              <li onClick={() => navigate("/price/monitor")} className="px-4 py-2 hover:bg-gray-100 cursor-pointer">
-                Monitor Price
-              </li>
-              <li onClick={() => navigate("/price/ram")} className="px-4 py-2 hover:bg-gray-100 cursor-pointer">
-                RAM Price
-              </li>
-            </ul>
-          )}
-        </li>
-
-        {/* Logout */}
-        <li
-          className="cursor-pointer text-red-400 hover:text-red-600 font-medium"
-          onClick={handleLogout}
-        >
-          Logout
-        </li>
-
-      </ul>
-
-      {/* 🔥 SIDE DROPDOWN MENU (Hamburger) */}
-      {openSide && (
-        <div className="absolute top-14 left-6 bg-white text-black rounded-xl shadow-xl w-44 py-2 z-50">
-
-          <div
-            onClick={() => {
-              navigate("/add-user");
-              setOpenSide(false);
-            }}
-            className="px-4 py-2 hover:bg-gray-100 cursor-pointer"
-          >
-            Add User
+      {/* ===== RIGHT SIDE ===== */}
+      <div className="flex-1 bg-white overflow-auto">
+        <div className="flex justify-between items-center bg-white shadow px-6 py-4">
+          <h1 className="text-lg font-semibold text-gray-700">Admin Dashboard</h1>
+          <div className="text-sm text-gray-600">
+            👤 {localStorage.getItem("username") || "Admin"}
           </div>
-
-          <div
-            onClick={() => {
-              navigate("/add-product");
-              setOpenSide(false);
-            }}
-            className="px-4 py-2 hover:bg-gray-100 cursor-pointer"
-          >
-            Add Product
-          </div>
-
         </div>
-      )}
+        <div className="p-6">
+          <Outlet />
+        </div>
+      </div>
+
     </div>
   );
-}
+};
 
 export default AdminNavbar;

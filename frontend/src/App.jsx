@@ -39,6 +39,7 @@ function App() {
           <Route path="workstation" element={<div>Workstation Content</div>} />
           <Route path="printer"     element={<div>Printer Content</div>} />
           <Route path="toner"       element={<div>Toner Content</div>} />
+          
         </Route>
 
         {/* 📄 DESKTOP FULL PAGE — User */}
