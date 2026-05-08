@@ -42,6 +42,8 @@ export default function Login() {
 
       const data = await res.json();
 
+      console.log("Login Response:", data);
+
       if (res.ok) {
 
         // ✅ ROLE CHECK
@@ -65,19 +67,16 @@ export default function Login() {
           data.role || ""
         );
 
+        localStorage.setItem(
+          "user_id",
+          data.user_id || ""
+        );
+
         if (data.email) {
 
           localStorage.setItem(
             "email",
             data.email
-          );
-        }
-
-        if (data.user_id) {
-
-          localStorage.setItem(
-            "user_id",
-            data.user_id
           );
         }
 
@@ -98,7 +97,7 @@ export default function Login() {
 
     } catch (error) {
 
-      console.log(error);
+      console.log("Login Error:", error);
 
       alert("Backend not connected ❌");
 

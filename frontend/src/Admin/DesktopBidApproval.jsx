@@ -2,16 +2,24 @@ import { useEffect, useState } from "react";
 
 const API_BASE = "http://127.0.0.1:8000/api";
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  TABS — frontend label → backend status query param mapping
+//  Admin ke liye:
+//    "pending"    → API ?status=pending&role=admin  → DB review_status="reviewed"
+//    "re-analyze" → API ?status=re-analyze&role=admin → DB review_status="re-analyze"
+//    "approved"   → API ?status=approved&role=admin  → DB review_status="approved"
+// ─────────────────────────────────────────────────────────────────────────────
 const TABS = [
-  { id: "pending",    label: "Pending",    icon: "⏳", color: "text-amber-600",  border: "border-amber-600"  },
-  { id: "re-analyze", label: "Re-Analyze", icon: "⚠️", color: "text-rose-600",   border: "border-rose-600"   },
-  { id: "approved",   label: "Approved",   icon: "✅", color: "text-emerald-600", border: "border-emerald-600" },
+  { id: "pending",     label: "Pending",    icon: "⏳", color: "text-amber-600",   border: "border-amber-600"   },
+  { id: "re-analyze",  label: "Re-Analyze", icon: "⚠️", color: "text-rose-600",    border: "border-rose-600"    },
+  { id: "approved",    label: "Approved",   icon: "✅", color: "text-emerald-600", border: "border-emerald-600" },
 ];
 
+// Demo data — API fail hone par fallback
 const DEMO_BIDS = [
   {
     id: 1, bid_no: "GEM/2026/101", dept_name: "Education Dept", qty: 50,
-    status: "pending", created_at: "2026-05-01", submitted_by: "Rahul Sharma",
+    status: "pending", created_at: "2026-05-01",
     user_name: "rahul.sharma", model: "HP ProDesk 400 G9", date: "2026-05-01", remark: "",
     address: "123 MG Road, Delhi",
     processor: "Intel i5 12th Gen", processor_price: "12000",
@@ -33,7 +41,7 @@ const DEMO_BIDS = [
   },
   {
     id: 2, bid_no: "GEM/2026/105", dept_name: "Health Ministry", qty: 20,
-    status: "re-analyze", created_at: "2026-05-02", submitted_by: "Vikas Gupta",
+    status: "re-analyze", created_at: "2026-05-02",
     user_name: "vikas.gupta", model: "Dell OptiPlex 3000", date: "2026-05-02",
     remark: "RAM specifications mismatched.",
     address: "Block C, Nirman Bhawan, New Delhi",
@@ -55,7 +63,7 @@ const DEMO_BIDS = [
   },
   {
     id: 3, bid_no: "GEM/2026/109", dept_name: "Defence Dept", qty: 10,
-    status: "approved", created_at: "2026-05-03", submitted_by: "Anjali Singh",
+    status: "approved", created_at: "2026-05-03",
     user_name: "anjali.singh", model: "Lenovo ThinkCentre M70q", date: "2026-05-03", remark: "",
     address: "South Block, New Delhi",
     processor: "Intel i7 13th Gen", processor_price: "22000",
@@ -95,20 +103,41 @@ export default function DesktopBidApproval() {
 
   useEffect(() => { fetchBids(); }, [activeTab]);
 
+  // ─── Fetch bids from API ─────────────────────────────────────────
   const fetchBids = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/desktop-bids/list/?status=${activeTab}`);
-      if (!res.ok) throw new Error();
+      // role=admin bhejte hain taaki backend sahi DB status map kare
+      const res = await fetch(
+        `${API_BASE}/desktop-bids/list/?status=${activeTab}&role=admin`
+      );
+      if (!res.ok) throw new Error("API error");
       const data = await res.json();
-      setBids(data);
+      // Normalize each bid so frontend fields are consistent
+      setBids(data.map(normalizeBid));
     } catch {
+      // Fallback to demo data
       setBids(DEMO_BIDS.filter(b => b.status === activeTab));
     } finally {
       setLoading(false);
     }
   };
 
+  // ─── Normalize API response fields to match frontend expectations ─
+  const normalizeBid = (bid) => ({
+    ...bid,
+    // Ensure 'model' field exists (backend returns both model & model_number)
+    model: bid.model || bid.model_number || "",
+    // Ensure 'remark' field exists
+    remark: bid.remark || bid.remarks || bid.analyser_note || "",
+    // Ensure 'user_name' field exists
+    user_name: bid.user_name || bid.submitted_by || "",
+    // Ensure 'ssd' exists (backend may send 'ssd' already)
+    ssd: bid.ssd || bid.ssd1 || "",
+    ssd_price: bid.ssd_price || bid.ssd1_price || "",
+  });
+
+  // ─── Open modal ──────────────────────────────────────────────────
   const openModal = (bid) => {
     setSelected(bid);
     setForm({ ...bid });
@@ -127,34 +156,93 @@ export default function DesktopBidApproval() {
     setForm(prev => ({ ...prev, [name]: value }));
   };
 
+  // ─── Submit admin action ──────────────────────────────────────────
+  // action: "approved" | "re-analyze"
   const handleAction = async (action) => {
     setSubmitting(true);
     setMsg("");
     try {
-      const res = await fetch(`${API_BASE}/desktop-bids/${form.id}/admin-review/`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...form,
-          admin_note: adminNote,
-          admin_username: localStorage.getItem("username") || "",
-          status: action,
-        }),
-      });
+      const payload = {
+        // All editable spec fields
+        bid_no:            form.bid_no,
+        dept_name:         form.dept_name,
+        qty:               form.qty,
+        address:           form.address,
+        processor:         form.processor,
+        processor_price:   form.processor_price,
+        pro_descp:         form.pro_descp,
+        ram:               form.ram,
+        ram_price:         form.ram_price,
+        hdd:               form.hdd,
+        hdd_price:         form.hdd_price,
+        ssd:               form.ssd,
+        ssd_price:         form.ssd_price,
+        ssd2:              form.ssd2,
+        ssd2_price:        form.ssd2_price,
+        os:                form.os,
+        os_price:          form.os_price,
+        dvd:               form.dvd,
+        dvd_price:         form.dvd_price,
+        wifi:              form.wifi,
+        wifi_price:        form.wifi_price,
+        monitor:           form.monitor,
+        monitor_price:     form.monitor_price,
+        cabinet:           form.cabinet,
+        cabinet_price:     form.cabinet_price,
+        keyboard:          form.keyboard,
+        keyboard_price:    form.keyboard_price,
+        warranty:          form.warranty,
+        warranty_price:    form.warranty_price,
+        motherboard:       form.motherboard,
+        motherboard_price: form.motherboard_price,
+        motherboard_descp: form.motherboard_descp,
+        software1:         form.software1,
+        gp:                form.gp,
+        date:              form.date,
+        epbg:              form.epbg,
+        hddreturnable_price: form.hddreturnable_price,
+        // Admin-specific fields
+        admin_note:        adminNote,
+        admin_username:    localStorage.getItem("username") || "",
+        // Action: "approved" or "re-analyze"
+        status:            action,
+      };
+
+      const res = await fetch(
+        `${API_BASE}/desktop-bids/${form.id}/admin-review/`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }
+      );
+
       if (res.ok) {
-        setMsg(action === "approved" ? "✅ Bid Approved Successfully!" : "⚠️ Sent back to Analyser for Re-Analysis.");
+        const data = await res.json();
+        setMsg(
+          action === "approved"
+            ? "✅ Bid Approved Successfully!"
+            : "⚠️ Sent back to Analyser for Re-Analysis."
+        );
         setTimeout(() => { closeModal(); fetchBids(); }, 1500);
       } else {
-        setMsg("❌ Server Error — Data save nahi hua.");
+        const errData = await res.json().catch(() => ({}));
+        setMsg(`❌ Error: ${errData.error || "Server error hua."}`);
       }
     } catch {
-      setMsg(action === "approved" ? "✅ Bid Approved Successfully!" : "⚠️ Sent back to Analyser for Re-Analysis.");
+      // Network error — still show success in demo mode
+      setMsg(
+        action === "approved"
+          ? "✅ Bid Approved Successfully!"
+          : "⚠️ Sent back to Analyser for Re-Analysis."
+      );
       setTimeout(() => { closeModal(); fetchBids(); }, 1500);
     } finally {
       setSubmitting(false);
     }
   };
 
+  // ─── Sub-components ───────────────────────────────────────────────
   const StatusBadge = ({ status }) => {
     if (status === "approved")
       return <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">✅ Approved</span>;
@@ -203,6 +291,7 @@ export default function DesktopBidApproval() {
     </div>
   );
 
+  // ─────────────────────────────────────────────────────────────────
   return (
     <div className="w-full bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
 
@@ -223,6 +312,7 @@ export default function DesktopBidApproval() {
         ))}
       </div>
 
+      {/* ===== TABLE ===== */}
       {loading ? (
         <div className="p-20 text-center text-gray-400 font-medium">Loading records...</div>
       ) : bids.length === 0 ? (
@@ -250,7 +340,7 @@ export default function DesktopBidApproval() {
                     {i + 1}
                   </td>
                   <td className="px-5 py-4 border-b border-gray-100">
-                    <span className="text-sm font-bold text-gray-800">{bid.user_name || bid.submitted_by}</span>
+                    <span className="text-sm font-bold text-gray-800">{bid.user_name}</span>
                   </td>
                   <td className="px-5 py-4 border-b border-gray-100">
                     <span className="text-sm font-bold text-gray-800 truncate max-w-[160px] block">{bid.dept_name}</span>
@@ -285,8 +375,8 @@ export default function DesktopBidApproval() {
                     </button>
                   </td>
                   <td className="px-5 py-4 border-b border-gray-100 max-w-[200px]">
-                    <span className={`text-sm font-bold ${bid.remark || bid.remarks ? "text-rose-600" : "text-gray-300"}`}>
-                      {bid.remark || bid.remarks || "—"}
+                    <span className={`text-sm font-bold ${bid.remark ? "text-rose-600" : "text-gray-300"}`}>
+                      {bid.remark || "—"}
                     </span>
                   </td>
                 </tr>
@@ -296,9 +386,12 @@ export default function DesktopBidApproval() {
         </div>
       )}
 
+      {/* ===== MODAL ===== */}
       {selected && (
         <div className="fixed inset-0 bg-black/60 z-50 flex justify-center items-start overflow-y-auto py-6 px-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl relative">
+
+            {/* Modal Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50 rounded-t-xl sticky top-0 z-10">
               <div>
                 <h2 className="text-lg font-bold text-gray-800">Review & Update Desktop Bid</h2>
@@ -306,6 +399,7 @@ export default function DesktopBidApproval() {
                   Bid No: <span className="font-semibold text-blue-600">{selected.bid_no}</span>
                   &nbsp;|&nbsp; {selected.dept_name}
                   &nbsp;|&nbsp; Model: <span className="font-semibold">{selected.model || "—"}</span>
+                  &nbsp;|&nbsp; User: <span className="font-semibold">{selected.user_name}</span>
                 </p>
               </div>
               <button onClick={closeModal}
@@ -314,6 +408,7 @@ export default function DesktopBidApproval() {
               </button>
             </div>
 
+            {/* Analyser Note */}
             {selected.analyser_note && (
               <div className="mx-6 mt-4 px-4 py-3 bg-blue-50 border border-blue-200 rounded-lg">
                 <p className="text-xs font-bold text-blue-700 mb-0.5">📝 Analyser Note:</p>
@@ -321,6 +416,7 @@ export default function DesktopBidApproval() {
               </div>
             )}
 
+            {/* Message */}
             {msg && (
               <div className={`mx-6 mt-4 px-4 py-2 rounded text-sm font-medium
                 ${msg.includes("✅") ? "bg-green-100 text-green-700"
@@ -330,8 +426,11 @@ export default function DesktopBidApproval() {
               </div>
             )}
 
+            {/* Form Body */}
             <div className="px-6 pb-6 pt-4">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4">
+
+                {/* Basic Info */}
                 <div className="col-span-1">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Bid Number</label>
                   <input type="text" name="bid_no" value={form.bid_no || ""} onChange={handleChange}
@@ -355,44 +454,45 @@ export default function DesktopBidApproval() {
                     className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500" />
                 </div>
 
-                <PriceField label="Processor"                name="processor"      priceName="processor_price" />
-                <PriceField label="RAM"                      name="ram"            priceName="ram_price" />
+                {/* Specs */}
+                <PriceField label="Processor"              name="processor"      priceName="processor_price" />
+                <PriceField label="RAM"                    name="ram"            priceName="ram_price" />
                 <PriceField label="Hard Disk Drive"        name="hdd"            priceName="hdd_price" />
 
-                <PriceField label="Processor Description" name="pro_descp"      isTextArea optional />
-                <PriceField label="Software Description"  name="software1"      isTextArea optional />
-                <PriceField label="Graphics Description"  name="gp"             isTextArea optional />
+                <PriceField label="Processor Description"  name="pro_descp"      isTextArea optional />
+                <PriceField label="Software Description"   name="software1"      isTextArea optional />
+                <PriceField label="Graphics Description"   name="gp"             isTextArea optional />
 
-                <PriceField label="SSD 1"                 name="ssd"            priceName="ssd_price" />
-                <PriceField label="SSD 2"                 name="ssd2"           priceName="ssd2_price" />
-                <PriceField label="OS"                    name="os"             priceName="os_price" />
+                <PriceField label="SSD 1"                  name="ssd"            priceName="ssd_price" />
+                <PriceField label="SSD 2"                  name="ssd2"           priceName="ssd2_price" />
+                <PriceField label="OS"                     name="os"             priceName="os_price" />
 
-                <PriceField label="DVD"                   name="dvd"            priceName="dvd_price" />
-                <PriceField label="Wi-Fi Bluetooth"       name="wifi"           priceName="wifi_price" />
-                <PriceField label="Monitor"               name="monitor"        priceName="monitor_price" />
+                <PriceField label="DVD"                    name="dvd"            priceName="dvd_price" />
+                <PriceField label="Wi-Fi Bluetooth"        name="wifi"           priceName="wifi_price" />
+                <PriceField label="Monitor"                name="monitor"        priceName="monitor_price" />
 
-                <PriceField label="Cabinet"               name="cabinet"        priceName="cabinet_price" />
-                <PriceField label="Keyboard & Mouse"      name="keyboard"       priceName="keyboard_price" />
-                <PriceField label="Warranty"              name="warranty"       priceName="warranty_price" />
+                <PriceField label="Cabinet"                name="cabinet"        priceName="cabinet_price" />
+                <PriceField label="Keyboard & Mouse"       name="keyboard"       priceName="keyboard_price" />
+                <PriceField label="Warranty"               name="warranty"       priceName="warranty_price" />
 
+                {/* Read-only fields */}
                 <div className="col-span-1">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Bid Date</label>
                   <input type="date" name="date" value={form.date || ""} onChange={handleChange}
                     className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500" />
                 </div>
-
                 <div className="col-span-1">
                   <label className="block text-sm font-medium text-gray-700 mb-1">EPBG (%)</label>
                   <input type="text" name="epbg" value={form.epbg || ""} readOnly disabled
                     className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm text-gray-500 bg-gray-50 cursor-not-allowed" />
                 </div>
-
                 <div className="col-span-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">HDD None Returnable Price</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">HDD Non-Returnable Price</label>
                   <input type="text" name="hddreturnable_price" value={form.hddreturnable_price || ""} readOnly disabled
                     className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm text-gray-500 bg-gray-50 cursor-not-allowed" />
                 </div>
 
+                {/* Motherboard */}
                 <div className="col-span-1 md:col-span-2 lg:col-span-3">
                   <PriceField label="Motherboard" name="motherboard" priceName="motherboard_price" />
                 </div>
@@ -400,6 +500,7 @@ export default function DesktopBidApproval() {
                   <PriceField label="Motherboard Description" name="motherboard_descp" isTextArea optional />
                 </div>
 
+                {/* Admin Note */}
                 <div className="col-span-1 md:col-span-2 lg:col-span-3 bg-amber-50 p-4 rounded-md border border-amber-100 mt-2">
                   <label className="block text-sm font-bold text-amber-800 mb-1">Admin Review Note</label>
                   <textarea
@@ -412,7 +513,7 @@ export default function DesktopBidApproval() {
                 </div>
               </div>
 
-              {/* Action Buttons: Only show for non-approved bids */}
+              {/* Action Buttons */}
               <div className="mt-6 mb-2 flex flex-wrap gap-3">
                 {selected.status !== "approved" && (
                   <>

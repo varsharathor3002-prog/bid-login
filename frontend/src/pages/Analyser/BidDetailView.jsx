@@ -19,7 +19,6 @@ export default function BidDetailView({ product = "desktop" }) {
 
   const navigate = useNavigate();
 
-  // ✅ VIEW MODE
   const readOnly = state?.readOnly || false;
 
   const [form, setForm] = useState(null);
@@ -30,9 +29,9 @@ export default function BidDetailView({ product = "desktop" }) {
 
   const [msg, setMsg] = useState("");
 
-  // ─────────────────────────────────────
+  // =========================
   // FETCH BID
-  // ─────────────────────────────────────
+  // =========================
   useEffect(() => {
 
     if (id) {
@@ -50,14 +49,16 @@ export default function BidDetailView({ product = "desktop" }) {
       const res = await fetch(FETCH_API[product](id));
 
       if (!res.ok) {
-        throw new Error();
+        throw new Error("Failed to fetch bid");
       }
 
       const data = await res.json();
 
       setForm(data);
 
-    } catch {
+    } catch (error) {
+
+      console.log(error);
 
       setMsg("Error: Data load nahi ho pa raha.");
 
@@ -68,9 +69,9 @@ export default function BidDetailView({ product = "desktop" }) {
     }
   };
 
-  // ─────────────────────────────────────
+  // =========================
   // HANDLE CHANGE
-  // ─────────────────────────────────────
+  // =========================
   const handleChange = (e) => {
 
     const { name, value } = e.target;
@@ -81,9 +82,9 @@ export default function BidDetailView({ product = "desktop" }) {
     }));
   };
 
-  // ─────────────────────────────────────
-  // SUBMIT
-  // ─────────────────────────────────────
+  // =========================
+  // SUBMIT REVIEW
+  // =========================
   const handleSubmit = async (e) => {
 
     e.preventDefault();
@@ -94,6 +95,18 @@ export default function BidDetailView({ product = "desktop" }) {
 
     try {
 
+      const payload = {
+
+        ...form,
+
+        // ✅ IMPORTANT
+        status: "reviewed",
+
+        analyser_username:
+          localStorage.getItem("username") || "",
+
+      };
+
       const res = await fetch(
         REVIEW_API[product](id || form?.id),
         {
@@ -103,45 +116,52 @@ export default function BidDetailView({ product = "desktop" }) {
             "Content-Type": "application/json",
           },
 
-          body: JSON.stringify({
-            ...form,
-
-            analyser_username:
-              localStorage.getItem("username") || "",
-
-            review_status: "reviewed",
-          }),
+          body: JSON.stringify(payload),
         }
       );
 
+      const data = await res.json();
+
       if (res.ok) {
 
-        setMsg("Data Save & Forwarded to Admin");
+        setMsg("Data Save & Forwarded to Admin ✅");
 
+        // ✅ instant local update
+        setForm((prev) => ({
+          ...prev,
+          status: "reviewed",
+          review_status: "reviewed",
+        }));
+
+        // ✅ redirect
         setTimeout(() => {
 
           navigate("/analyser-dashboard/desktop");
 
-        }, 1500);
+        }, 1200);
 
       } else {
 
-        setMsg("Data Not Save");
+        setMsg(data.error || "Data Save Failed");
+
       }
 
-    } catch {
+    } catch (error) {
+
+      console.log(error);
 
       setMsg("Server error — Data save nahi hua.");
 
     } finally {
 
       setSubmitting(false);
+
     }
   };
 
-  // ─────────────────────────────────────
+  // =========================
   // LOADING
-  // ─────────────────────────────────────
+  // =========================
   if (loadingBid) {
 
     return (
@@ -151,9 +171,9 @@ export default function BidDetailView({ product = "desktop" }) {
     );
   }
 
-  // ─────────────────────────────────────
+  // =========================
   // REUSABLE FIELD
-  // ─────────────────────────────────────
+  // =========================
   const PriceField = ({
     label,
     name,
@@ -208,7 +228,6 @@ export default function BidDetailView({ product = "desktop" }) {
 
           <input
             type="text"
-            name={priceName}
             value={form?.[priceName] || ""}
             readOnly
             disabled
@@ -223,9 +242,9 @@ export default function BidDetailView({ product = "desktop" }) {
     </div>
   );
 
-  // ─────────────────────────────────────
+  // =========================
   // UI
-  // ─────────────────────────────────────
+  // =========================
   return (
 
     <div className="container mx-auto px-4 mt-4 max-w-6xl">
@@ -242,7 +261,7 @@ export default function BidDetailView({ product = "desktop" }) {
 
         <div
           className={`mb-4 px-4 py-2 rounded text-sm font-medium ${
-            msg.includes("Save") && !msg.includes("Not")
+            msg.includes("✅")
               ? "bg-green-100 text-green-700"
               : "bg-red-100 text-red-700"
           }`}
@@ -256,9 +275,8 @@ export default function BidDetailView({ product = "desktop" }) {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4">
 
-          {/* BASIC INFO */}
-
-          <div className="col-span-1">
+          {/* BID NO */}
+          <div>
 
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Bid Number
@@ -270,12 +288,13 @@ export default function BidDetailView({ product = "desktop" }) {
               value={form?.bid_no || ""}
               onChange={handleChange}
               disabled={readOnly}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm disabled:bg-gray-100"
             />
 
           </div>
 
-          <div className="col-span-1">
+          {/* MODEL */}
+          <div>
 
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Model Number
@@ -287,12 +306,13 @@ export default function BidDetailView({ product = "desktop" }) {
               value={form?.model_number || ""}
               onChange={handleChange}
               disabled={readOnly}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm disabled:bg-gray-100"
             />
 
           </div>
 
-          <div className="col-span-1">
+          {/* DEPARTMENT */}
+          <div>
 
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Department
@@ -304,29 +324,31 @@ export default function BidDetailView({ product = "desktop" }) {
               value={form?.dept_name || ""}
               onChange={handleChange}
               disabled={readOnly}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm disabled:bg-gray-100"
             />
 
           </div>
 
-          <div className="col-span-1">
+          {/* QTY */}
+          <div>
 
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Quantity
             </label>
 
             <input
-              type="text"
+              type="number"
               name="qty"
               value={form?.qty || ""}
               onChange={handleChange}
               disabled={readOnly}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm disabled:bg-gray-100"
             />
 
           </div>
 
-          <div className="col-span-1 md:col-span-2 lg:col-span-3">
+          {/* ADDRESS */}
+          <div className="md:col-span-2 lg:col-span-3">
 
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Address
@@ -338,46 +360,61 @@ export default function BidDetailView({ product = "desktop" }) {
               value={form?.address || ""}
               onChange={handleChange}
               disabled={readOnly}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm disabled:bg-gray-100"
             />
 
           </div>
 
           {/* TECHNICAL */}
-
           <PriceField label="Processor" name="processor" priceName="processor_price" />
-
-          <PriceField label="Ram" name="ram" priceName="ram_price" />
-
-          <PriceField label="Hard Disk Drive" name="hdd" priceName="hdd_price" />
-
-          <PriceField label="Processor Description" name="pro_descp" isTextArea optional />
-
-          <PriceField label="Software Description" name="software1" isTextArea optional />
-
-          <PriceField label="Graphics Description" name="gp" isTextArea optional />
-
+          <PriceField label="RAM" name="ram" priceName="ram_price" />
+          <PriceField label="HDD" name="hdd" priceName="hdd_price" />
           <PriceField label="SSD 1" name="ssd1" priceName="ssd1_price" />
-
           <PriceField label="SSD 2" name="ssd2" priceName="ssd2_price" />
-
           <PriceField label="OS" name="os" priceName="os_price" />
-
           <PriceField label="DVD" name="dvd" priceName="dvd_price" />
-
-          <PriceField label="Wi-FI Bluetooth" name="wifi" priceName="wifi_price" />
-
+          <PriceField label="WiFi" name="wifi" priceName="wifi_price" />
           <PriceField label="Monitor" name="monitor" priceName="monitor_price" />
-
           <PriceField label="Cabinet" name="cabinet" priceName="cabinet_price" />
-
-          <PriceField label="Keyboard & Mouse" name="keyboard" priceName="keyboard_price" />
-
+          <PriceField label="Keyboard" name="keyboard" priceName="keyboard_price" />
           <PriceField label="Warranty" name="warranty" priceName="warranty_price" />
 
-          {/* DATE */}
+          <PriceField
+            label="Processor Description"
+            name="pro_descp"
+            isTextArea
+            optional
+          />
 
-          <div className="col-span-1">
+          <PriceField
+            label="Software Description"
+            name="software1"
+            isTextArea
+            optional
+          />
+
+          <PriceField
+            label="Graphics Description"
+            name="gp"
+            isTextArea
+            optional
+          />
+
+          <PriceField
+            label="Motherboard"
+            name="motherboard"
+            priceName="motherboard_price"
+          />
+
+          <PriceField
+            label="Motherboard Description"
+            name="motherboard_descp"
+            isTextArea
+            optional
+          />
+
+          {/* DATE */}
+          <div>
 
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Bid Date
@@ -389,14 +426,13 @@ export default function BidDetailView({ product = "desktop" }) {
               value={form?.date || ""}
               onChange={handleChange}
               disabled={readOnly}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm disabled:bg-gray-100"
             />
 
           </div>
 
           {/* EPBG */}
-
-          <div className="col-span-1">
+          <div>
 
             <label className="block text-sm font-medium text-gray-700 mb-1">
               EPBG (%)
@@ -407,17 +443,16 @@ export default function BidDetailView({ product = "desktop" }) {
               value={form?.epbg || ""}
               readOnly
               disabled
-              className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm text-gray-500 bg-gray-50"
+              className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50"
             />
 
           </div>
 
           {/* HDD RETURNABLE */}
-
-          <div className="col-span-1">
+          <div>
 
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              HDD None Returnable Price
+              HDD Returnable Price
             </label>
 
             <input
@@ -425,38 +460,14 @@ export default function BidDetailView({ product = "desktop" }) {
               value={form?.hddreturnable_price || ""}
               readOnly
               disabled
-              className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm text-gray-500 bg-gray-50"
-            />
-
-          </div>
-
-          {/* MOTHERBOARD */}
-
-          <div className="col-span-1 md:col-span-2 lg:col-span-3">
-
-            <PriceField
-              label="Motherboard"
-              name="motherboard"
-              priceName="motherboard_price"
-            />
-
-          </div>
-
-          <div className="col-span-1 md:col-span-2 lg:col-span-3">
-
-            <PriceField
-              label="Motherboard Description"
-              name="motherboard_descp"
-              isTextArea
-              optional
+              className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50"
             />
 
           </div>
 
         </div>
 
-        {/* ACTION BUTTONS */}
-
+        {/* BUTTONS */}
         <div className="mt-8 mb-10 flex gap-3">
 
           {!readOnly && (
@@ -464,7 +475,7 @@ export default function BidDetailView({ product = "desktop" }) {
             <button
               type="submit"
               disabled={submitting}
-              className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold px-8 py-2.5 rounded-md text-sm transition shadow-lg"
+              className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold px-8 py-2.5 rounded-md text-sm transition"
             >
               {submitting
                 ? "Saving..."

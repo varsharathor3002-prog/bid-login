@@ -55,172 +55,238 @@ export default function AnalyserDashboard({ product = "desktop" }) {
     };
 
     return (
-        <div>
 
-            {/* TABS */}
-            <div className="flex gap-3 mb-5 border-b border-gray-200 pb-2">
+        <div className="w-full bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+
+            {/* ===== TABS ===== */}
+            <div className="flex gap-4 px-6 bg-gray-50 border-b border-gray-200">
 
                 <button
                     onClick={() => setActiveTab("pending")}
-                    className={`px-5 py-2 text-sm font-semibold rounded-t-lg transition
+                    className={`py-4 px-2 text-sm font-semibold transition-all flex items-center gap-2
                     ${
                         activeTab === "pending"
-                            ? "bg-yellow-500 text-white"
-                            : "text-gray-500 hover:text-yellow-600"
+                            ? "text-amber-600 border-b-2 border-amber-600"
+                            : "text-gray-500 hover:text-gray-700"
                     }`}
                 >
-                    ⏳ Pending
+                    <span>⏳</span>
+                    Pending
                 </button>
 
                 <button
                     onClick={() => setActiveTab("reviewed")}
-                    className={`px-5 py-2 text-sm font-semibold rounded-t-lg transition
+                    className={`py-4 px-2 text-sm font-semibold transition-all flex items-center gap-2
                     ${
                         activeTab === "reviewed"
-                            ? "bg-green-600 text-white"
-                            : "text-gray-500 hover:text-green-600"
+                            ? "text-emerald-600 border-b-2 border-emerald-600"
+                            : "text-gray-500 hover:text-gray-700"
                     }`}
                 >
-                    ✅ Reviewed
+                    <span>✅</span>
+                    Reviewed
                 </button>
 
                 <button
                     onClick={() => setActiveTab("re-analyze")}
-                    className={`px-5 py-2 text-sm font-semibold rounded-t-lg transition
+                    className={`py-4 px-2 text-sm font-semibold transition-all flex items-center gap-2
                     ${
                         activeTab === "re-analyze"
-                            ? "bg-red-600 text-white"
-                            : "text-red-600 hover:bg-red-50"
+                            ? "text-rose-600 border-b-2 border-rose-600"
+                            : "text-gray-500 hover:text-gray-700"
                     }`}
                 >
-                    🔴 Re-Analyse
+                    <span>⚠️</span>
+                    Re-Analyze
                 </button>
 
             </div>
 
             {/* ERROR */}
             {error && (
-                <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-2 rounded-lg mb-4">
+                <div className="mx-6 mt-4 bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">
                     ⚠️ {error}
                 </div>
             )}
 
-            {/* LOADING */}
-            {loading && (
-                <div className="flex items-center justify-center h-40 text-gray-400">
-                    Loading bids...
-                </div>
-            )}
-
-            {/* EMPTY */}
-            {!loading && bids.length === 0 && (
-                <div className="flex items-center justify-center h-40 text-gray-400 border border-dashed border-gray-200 rounded-xl">
-                    No bids found.
-                </div>
-            )}
-
             {/* TABLE */}
-            {!loading && bids.length > 0 && (
+            <div className="w-full overflow-x-auto">
 
-                <div className="overflow-x-auto rounded-xl border border-gray-200 shadow-sm">
+                <table className="w-full text-left border-separate border-spacing-0">
 
-                    <table className="w-full text-sm">
+                    <thead>
 
-                        <thead>
-                            <tr className="bg-gray-50 text-gray-500 uppercase text-xs border-b border-gray-200">
+                        <tr className="bg-slate-800">
 
-                                <th className="px-4 py-3 text-left">S.No.</th>
+                            <th className="px-5 py-4 text-[11px] tracking-wider font-bold text-white uppercase border-b border-slate-700 whitespace-nowrap">
+                                S.No.
+                            </th>
 
-                                <th className="px-4 py-3 text-left">Bid No</th>
+                            <th className="px-5 py-4 text-[11px] tracking-wider font-bold text-white uppercase border-b border-slate-700 whitespace-nowrap">
+                                Bid No
+                            </th>
 
-                                <th className="px-4 py-3 text-left">Model No.</th>
+                            <th className="px-5 py-4 text-[11px] tracking-wider font-bold text-white uppercase border-b border-slate-700 whitespace-nowrap">
+                                Model No.
+                            </th>
 
-                                <th className="px-4 py-3 text-left">Department</th>
+                            <th className="px-5 py-4 text-[11px] tracking-wider font-bold text-white uppercase border-b border-slate-700 whitespace-nowrap">
+                                Department
+                            </th>
 
-                                <th className="px-4 py-3 text-left">Qty</th>
+                            <th className="px-5 py-4 text-[11px] tracking-wider font-bold text-white uppercase border-b border-slate-700 whitespace-nowrap">
+                                Qty
+                            </th>
 
-                                <th className="px-4 py-3 text-left">Submitted By</th>
+                            <th className="px-5 py-4 text-[11px] tracking-wider font-bold text-white uppercase border-b border-slate-700 whitespace-nowrap">
+                                Submitted By
+                            </th>
 
-                                <th className="px-4 py-3 text-left">Date</th>
+                            <th className="px-5 py-4 text-[11px] tracking-wider font-bold text-white uppercase border-b border-slate-700 whitespace-nowrap">
+                                Date
+                            </th>
 
-                                <th className="px-4 py-3 text-left">Status</th>
+                            <th className="px-5 py-4 text-[11px] tracking-wider font-bold text-white uppercase border-b border-slate-700 whitespace-nowrap">
+                                Status
+                            </th>
 
-                                <th className="px-4 py-3 text-left">Action</th>
+                            <th className="px-5 py-4 text-[11px] tracking-wider font-bold text-white uppercase border-b border-slate-700 whitespace-nowrap">
+                                Action
+                            </th>
 
+                        </tr>
+
+                    </thead>
+
+                    <tbody>
+
+                        {/* LOADING */}
+                        {loading && (
+                            <tr>
+                                <td
+                                    colSpan="9"
+                                    className="text-center py-16 text-gray-400 font-medium"
+                                >
+                                    Loading bids...
+                                </td>
                             </tr>
-                        </thead>
+                        )}
 
-                        <tbody>
+                        {/* EMPTY */}
+                        {!loading && bids.length === 0 && (
+                            <tr>
+                                <td
+                                    colSpan="9"
+                                    className="text-center py-16 text-gray-400 font-medium"
+                                >
+                                    No bids found.
+                                </td>
+                            </tr>
+                        )}
 
-                            {bids.map((bid, i) => (
+                        {/* DATA */}
+                        {!loading &&
+                            bids.length > 0 &&
+                            bids.map((bid, i) => (
 
                                 <tr
                                     key={bid.id}
-                                    className="border-t border-gray-100 hover:bg-blue-50 transition"
+                                    className={`bg-white hover:bg-gray-50 transition-colors
+                                    
+                                    ${
+                                        bid.status === "reviewed"
+                                            ? "border-l-4 border-l-emerald-500"
+                                            : bid.status === "re-analyze"
+                                            ? "border-l-4 border-l-rose-500"
+                                            : "border-l-4 border-l-amber-500"
+                                    }`}
                                 >
 
-                                    <td className="px-4 py-3 text-gray-400">
+                                    {/* S.NO */}
+                                    <td className="px-5 py-4 text-sm font-bold text-gray-700 border-b border-gray-100">
                                         {i + 1}
                                     </td>
 
-                                    <td className="px-4 py-3 font-bold text-blue-700">
-                                        {bid.bid_no}
+                                    {/* BID NO */}
+                                    <td className="px-5 py-4 border-b border-gray-100">
+                                        <span className="text-sm font-bold text-blue-600">
+                                            {bid.bid_no}
+                                        </span>
                                     </td>
 
-                                    <td className="px-4 py-3 text-indigo-600 font-semibold">
-                                        {bid.model_number || "—"}
+                                    {/* MODEL */}
+                                    <td className="px-5 py-4 border-b border-gray-100">
+                                        <span className="text-sm font-bold text-indigo-600 whitespace-nowrap">
+                                            {bid.model_number || bid.model || "—"}
+                                        </span>
                                     </td>
 
-                                    <td className="px-4 py-3 text-gray-700">
-                                        {bid.dept_name}
+                                    {/* DEPARTMENT */}
+                                    <td className="px-5 py-4 border-b border-gray-100">
+                                        <span className="text-sm font-bold text-gray-800 truncate max-w-[160px] block">
+                                            {bid.dept_name || "—"}
+                                        </span>
                                     </td>
 
-                                    <td className="px-4 py-3 text-gray-700">
-                                        {bid.qty}
+                                    {/* QTY */}
+                                    <td className="px-5 py-4 border-b border-gray-100">
+                                        <span className="text-sm font-bold text-gray-700">
+                                            {bid.qty || "—"}
+                                        </span>
                                     </td>
 
-                                    <td className="px-4 py-3 text-gray-600 font-medium">
-                                        {bid.submitted_by || "—"}
+                                    {/* SUBMITTED BY */}
+                                    <td className="px-5 py-4 border-b border-gray-100">
+                                        <span className="text-sm font-bold text-gray-700">
+                                          {bid.submitted_by || bid.user_name || "—"}
+                                        </span>
                                     </td>
 
-                                    <td className="px-4 py-3 text-gray-400 text-xs">
-                                        {new Date(
-                                            bid.created_at
-                                        ).toLocaleDateString("en-IN")}
+                                    {/* DATE */}
+                                    <td className="px-5 py-4 border-b border-gray-100">
+                                        <span className="text-sm font-bold text-gray-700 whitespace-nowrap">
+
+                                            {bid.date || bid.created_at
+                                                ? new Date(
+                                                      bid.date || bid.created_at
+                                                  ).toLocaleDateString(
+                                                      "en-IN",
+                                                      {
+                                                          day: "2-digit",
+                                                          month: "short",
+                                                          year: "numeric",
+                                                      }
+                                                  )
+                                                : "—"}
+
+                                        </span>
                                     </td>
 
                                     {/* STATUS */}
-                                    <td className="px-4 py-3">
+                                    <td className="px-5 py-4 border-b border-gray-100">
 
-                                        <span
-                                            className={`px-3 py-1 rounded-full text-xs font-bold
+                                        {bid.status === "pending" && (
+                                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-700">
+                                                 Pending
+                                            </span>
+                                        )}
 
-                                            ${
-                                                bid.status === "pending"
-                                                    ? "bg-yellow-100 text-yellow-700"
-                                                    : ""
-                                            }
+                                        {bid.status === "reviewed" && (
+                                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">
+                                                ✅ Reviewed
+                                            </span>
+                                        )}
 
-                                            ${
-                                                bid.status === "reviewed"
-                                                    ? "bg-green-100 text-green-700"
-                                                    : ""
-                                            }
-
-                                            ${
-                                                bid.status === "re-analyze"
-                                                    ? "bg-red-100 text-red-700"
-                                                    : ""
-                                            }
-                                        `}
-                                        >
-                                            {bid.status}
-                                        </span>
+                                        {bid.status === "re-analyze" && (
+                                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-700">
+                                                ⚠️ Re-Analyze
+                                            </span>
+                                        )}
 
                                     </td>
 
                                     {/* ACTION */}
-                                    <td className="px-4 py-3">
+                                    <td className="px-5 py-4 border-b border-gray-100">
 
                                         {bid.status === "reviewed" ? (
 
@@ -236,9 +302,9 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                                                         }
                                                     )
                                                 }
-                                                className="bg-gray-600 hover:bg-gray-700 text-white text-xs px-3 py-1.5 rounded-lg transition font-semibold"
+                                                className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded text-[11px] font-bold uppercase tracking-widest shadow-sm transition-all whitespace-nowrap"
                                             >
-                                                View →
+                                                View
                                             </button>
 
                                         ) : (
@@ -255,9 +321,17 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                                                         }
                                                     )
                                                 }
-                                                className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1.5 rounded-lg transition font-semibold"
+                                                className={`px-4 py-2 rounded text-[11px] font-bold uppercase tracking-widest shadow-sm transition-all whitespace-nowrap text-white
+                                                
+                                                ${
+                                                    bid.status === "re-analyze"
+                                                        ? "bg-rose-600 hover:bg-rose-700"
+                                                        : "bg-amber-600 hover:bg-amber-700"
+                                                }`}
                                             >
-                                                Review →
+                                                {bid.status === "re-analyze"
+                                                    ? "Resolve"
+                                                    : "Review"}
                                             </button>
 
                                         )}
@@ -268,14 +342,13 @@ export default function AnalyserDashboard({ product = "desktop" }) {
 
                             ))}
 
-                        </tbody>
+                    </tbody>
 
-                    </table>
+                </table>
 
-                </div>
-
-            )}
+            </div>
 
         </div>
+
     );
 }
