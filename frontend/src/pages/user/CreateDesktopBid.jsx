@@ -185,7 +185,6 @@ export default function CreateBidMain() {
             </span>
 
           </div>
-
           <div className="w-1/3 h-[6px] bg-gray-100 rounded-full overflow-hidden">
 
             <div

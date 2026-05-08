@@ -14,6 +14,15 @@ export default function AnalyserDashboard({ product = "desktop" }) {
 
     const navigate = useNavigate();
 
+    const tabs = [
+        { id: "pending", label: "Pending", icon: "⏳", color: "text-amber-600", border: "border-amber-600" },
+        { id: "re-analyze", label: "Re-Analyse", icon: "🔴", color: "text-rose-600", border: "border-rose-600" },
+        { id: "reviewed", label: "Reviewed", icon: "✅", color: "text-emerald-600", border: "border-emerald-600" },
+    ];
+
+    // Notification count dummy (Sirf Re-analyse ke liye)
+    const reanalyseCount = 2; 
+
     useEffect(() => {
         fetchBids();
     }, [product, activeTab]);
