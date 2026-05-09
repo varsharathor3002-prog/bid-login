@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from "react";
 import DesktopConfig from "./DesktopConfig";
 import ModelNumber from "./ModelNumber";
+import {
+  FaUpload,
+  FaFileAlt,
+  FaCheckCircle,
+} from "react-icons/fa";
 
 const API_BASE = "http://127.0.0.1:8000/api";
 
@@ -8,7 +13,9 @@ const Label = ({ children, optional }) => (
   <label className="block text-sm font-normal text-gray-800 mb-1">
     {children}
     {optional && (
-      <span className="text-gray-500 ml-1">(Optional)</span>
+      <span className="text-gray-500 ml-1">
+        (Optional)
+      </span>
     )}
   </label>
 );
@@ -29,15 +36,17 @@ const Textarea = ({ className = "", ...props }) => (
 
 export default function CreateBidMain() {
 
-  // ✅ REFRESH PAR SAME STEP OPEN RAHEGA
   const [step, setStep] = useState(() => {
-    return Number(localStorage.getItem("desktop_bid_step")) || 1;
+    return Number(
+      localStorage.getItem("desktop_bid_step")
+    ) || 1;
   });
 
-  // ✅ COMPLETE FORM DATA SAVE RAHEGA
   const [allData, setAllData] = useState(() => {
 
-    const savedData = localStorage.getItem("desktop_bid_data");
+    const savedData = localStorage.getItem(
+      "desktop_bid_data"
+    );
 
     return savedData
       ? JSON.parse(savedData)
@@ -46,7 +55,7 @@ export default function CreateBidMain() {
         };
   });
 
-  // ✅ STEP SAVE
+  // STEP SAVE
   useEffect(() => {
 
     localStorage.setItem(
@@ -56,7 +65,7 @@ export default function CreateBidMain() {
 
   }, [step]);
 
-  // ✅ ALL FORM DATA SAVE
+  // DATA SAVE
   useEffect(() => {
 
     localStorage.setItem(
@@ -66,7 +75,7 @@ export default function CreateBidMain() {
 
   }, [allData]);
 
-  // ✅ BROWSER BACK HANDLE
+  // BROWSER BACK
   useEffect(() => {
 
     window.history.pushState({ step }, "");
@@ -93,8 +102,13 @@ export default function CreateBidMain() {
 
       } else {
 
-        localStorage.removeItem("desktop_bid_step");
-        localStorage.removeItem("desktop_bid_data");
+        localStorage.removeItem(
+          "desktop_bid_step"
+        );
+
+        localStorage.removeItem(
+          "desktop_bid_data"
+        );
 
         window.history.back();
       }
@@ -115,10 +129,8 @@ export default function CreateBidMain() {
 
   }, [step]);
 
-  // ✅ STEP 1
+  // STEP 1
   const handleStep1Submit = (data) => {
-
-    console.log("STEP 1 DATA => ", data);
 
     const updatedData = {
       ...allData,
@@ -130,10 +142,8 @@ export default function CreateBidMain() {
     setStep(2);
   };
 
-  // ✅ STEP 2
+  // STEP 2
   const handleStep2Submit = (data) => {
-
-    console.log("STEP 2 DATA => ", data);
 
     const updatedData = {
       ...allData,
@@ -145,7 +155,7 @@ export default function CreateBidMain() {
     setStep(3);
   };
 
-  // ✅ STEP 3 FINISH
+  // FINISH
   const handleFinish = (finalData) => {
 
     console.log("FINAL BID DATA => ", {
@@ -153,9 +163,13 @@ export default function CreateBidMain() {
       ...finalData,
     });
 
-    // ✅ RESET EVERYTHING
-    localStorage.removeItem("desktop_bid_step");
-    localStorage.removeItem("desktop_bid_data");
+    localStorage.removeItem(
+      "desktop_bid_step"
+    );
+
+    localStorage.removeItem(
+      "desktop_bid_data"
+    );
 
     setAllData({
       bid_id: null,
@@ -203,7 +217,6 @@ export default function CreateBidMain() {
       {/* BODY */}
       <div className="flex-1 w-full max-w-[1750px] mx-auto p-8 flex justify-center items-start">
 
-        {/* STEP 1 */}
         {step === 1 && (
           <Step1Form
             onNext={handleStep1Submit}
@@ -211,7 +224,6 @@ export default function CreateBidMain() {
           />
         )}
 
-        {/* STEP 2 */}
         {step === 2 && (
           <DesktopConfig
             bidData={allData}
@@ -219,7 +231,6 @@ export default function CreateBidMain() {
           />
         )}
 
-        {/* STEP 3 */}
         {step === 3 && (
           <ModelNumber
             bidData={allData}
@@ -232,24 +243,37 @@ export default function CreateBidMain() {
   );
 }
 
-function Step1Form({ onNext, savedData }) {
+function Step1Form({
+  onNext,
+  savedData,
+}) {
 
   const [form, setForm] = useState({
     bid_no: savedData?.bid_no || "",
-    dept_name: savedData?.dept_name || "",
+    dept_name:
+      savedData?.dept_name || "",
     qty: savedData?.qty || "",
     atc: savedData?.atc || "",
-    address: savedData?.address || "",
-    pincode: savedData?.pincode || "",
+    address:
+      savedData?.address || "",
+    pincode:
+      savedData?.pincode || "",
   });
 
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] =
+    useState(false);
 
-  const [error, setError] = useState("");
+  const [error, setError] =
+    useState("");
 
-  const [fileName, setFileName] = useState("");
+  // FILE STATE
+  const [selectedFile, setSelectedFile] =
+    useState(null);
 
-  const handleChange = (key, value) => {
+  const handleChange = (
+    key,
+    value
+  ) => {
 
     setForm((prev) => ({
       ...prev,
@@ -257,17 +281,19 @@ function Step1Form({ onNext, savedData }) {
     }));
   };
 
-  // FILE
+  // FILE CHANGE
   const handleFileChange = (e) => {
 
     const file = e.target.files[0];
 
     if (file) {
-      setFileName(file.name);
+
+      setSelectedFile(file);
+
     }
   };
 
-  // SUBMIT STEP 1
+  // SUBMIT
   const handleSubmit = async (e) => {
 
     e.preventDefault();
@@ -278,7 +304,7 @@ function Step1Form({ onNext, savedData }) {
 
     try {
 
-      // ✅ AGAR BID PEHLE SE BAN CHUKI HAI
+      // ALREADY CREATED
       if (savedData?.bid_id) {
 
         onNext({
@@ -289,33 +315,72 @@ function Step1Form({ onNext, savedData }) {
         return;
       }
 
+      const formData = new FormData();
+
+      formData.append(
+        "bid_no",
+        form.bid_no
+      );
+
+      formData.append(
+        "dept_name",
+        form.dept_name
+      );
+
+      formData.append(
+        "qty",
+        form.qty
+      );
+
+      formData.append(
+        "atc",
+        form.atc
+      );
+
+      formData.append(
+        "address",
+        form.address
+      );
+
+      formData.append(
+        "pincode",
+        form.pincode
+      );
+
+      formData.append(
+        "user_id",
+        localStorage.getItem("user_id")
+      );
+
+      // FILE
+      if (selectedFile) {
+
+        formData.append(
+          "upload_document",
+          selectedFile
+        );
+      }
+
       const response = await fetch(
         `${API_BASE}/desktop-bids/create/`,
         {
           method: "POST",
-
-          headers: {
-            "Content-Type": "application/json",
-          },
-
-          body: JSON.stringify({
-            bid_no: form.bid_no,
-            dept_name: form.dept_name,
-            qty: Number(form.qty),
-            atc: form.atc,
-            address: form.address,
-            pincode: form.pincode,
-            user_id: localStorage.getItem("user_id"),
-          }),
+          body: formData,
         }
       );
 
       const data = await response.json();
 
-      console.log("CREATE BID RESPONSE => ", data);
+      console.log(
+        "CREATE BID RESPONSE => ",
+        data
+      );
 
       if (!response.ok) {
-        throw new Error(data.error || "Failed");
+
+        throw new Error(
+          data.error || "Failed"
+        );
       }
 
       onNext({
@@ -327,7 +392,9 @@ function Step1Form({ onNext, savedData }) {
 
       console.log(err);
 
-      setError("Bid create nahi ho pa raha.");
+      setError(
+        "Bid create nahi ho pa raha."
+      );
 
     } finally {
 
@@ -337,9 +404,9 @@ function Step1Form({ onNext, savedData }) {
   };
 
   return (
-    <div className="w-full max-w-[550px] bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+    <div className="w-full max-w-[600px] bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
 
-      <h5 className="text-base font-semibold text-gray-800 mb-4">
+      <h5 className="text-lg font-semibold text-gray-800 mb-5">
         Create Desktop Bid
       </h5>
 
@@ -351,123 +418,199 @@ function Step1Form({ onNext, savedData }) {
 
       <form
         onSubmit={handleSubmit}
-        className="space-y-3"
+        className="space-y-4"
       >
 
+        {/* BID NUMBER */}
         <div>
+
           <Label>Bid Number</Label>
 
           <Input
             type="text"
             value={form.bid_no}
             onChange={(e) =>
-              handleChange("bid_no", e.target.value)
+              handleChange(
+                "bid_no",
+                e.target.value
+              )
             }
             required
           />
+
         </div>
 
+        {/* DEPARTMENT */}
         <div>
-          <Label>Department Name</Label>
+
+          <Label>
+            Department Name
+          </Label>
 
           <Input
             type="text"
             value={form.dept_name}
             onChange={(e) =>
-              handleChange("dept_name", e.target.value)
+              handleChange(
+                "dept_name",
+                e.target.value
+              )
             }
             required
           />
+
         </div>
 
+        {/* QTY + PIN */}
         <div className="grid grid-cols-2 gap-4">
 
           <div>
+
             <Label>Quantity</Label>
 
             <Input
               type="number"
               value={form.qty}
               onChange={(e) =>
-                handleChange("qty", e.target.value)
+                handleChange(
+                  "qty",
+                  e.target.value
+                )
               }
               required
             />
+
           </div>
 
           <div>
+
             <Label>Pin Code</Label>
 
             <Input
               type="number"
               value={form.pincode}
               onChange={(e) =>
-                handleChange("pincode", e.target.value)
+                handleChange(
+                  "pincode",
+                  e.target.value
+                )
               }
               required
             />
+
           </div>
 
         </div>
 
+        {/* ATC */}
         <div>
 
-          <div className="flex justify-between items-end mb-1">
-
-            <Label>ATC</Label>
-
-            <label className="cursor-pointer bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-medium px-3 py-1 rounded border border-gray-300 transition-colors flex items-center gap-1 mb-1">
-
-              Upload Bid Document
-
-              <input
-                type="file"
-                className="hidden"
-                onChange={handleFileChange}
-              />
-
-            </label>
-
-          </div>
+          <Label>
+            ATC Details
+          </Label>
 
           <Textarea
             rows={4}
             value={form.atc}
             onChange={(e) =>
-              handleChange("atc", e.target.value)
+              handleChange(
+                "atc",
+                e.target.value
+              )
             }
             placeholder="Type ATC details here..."
           />
 
-          {fileName && (
-            <p className="text-[10px] text-blue-600 mt-1 font-medium italic">
-              Selected: {fileName}
-            </p>
+        </div>
+
+        {/* FILE UPLOAD */}
+        <div>
+
+          <Label optional>
+            Upload Bid Document
+          </Label>
+
+          <label className="w-full border-2 border-dashed border-blue-300 bg-blue-50 hover:bg-blue-100 transition-all rounded-xl p-6 flex flex-col items-center justify-center cursor-pointer">
+
+            <FaUpload className="text-3xl text-blue-600 mb-3" />
+
+            <span className="text-sm font-semibold text-gray-700">
+              Click to Upload File
+            </span>
+
+            <span className="text-xs text-gray-500 mt-1">
+              PDF, DOC, DOCX, XLS allowed
+            </span>
+
+            <input
+              type="file"
+              className="hidden"
+              onChange={handleFileChange}
+            />
+
+          </label>
+
+          {/* FILE PREVIEW */}
+          {selectedFile && (
+
+            <div className="mt-3 border border-green-300 bg-green-50 rounded-lg px-4 py-3 flex items-center gap-3">
+
+              <FaFileAlt className="text-green-700 text-lg" />
+
+              <div className="flex-1 overflow-hidden">
+
+                <p className="text-sm font-medium text-green-800 truncate">
+                  {selectedFile.name}
+                </p>
+
+                <p className="text-xs text-green-700">
+                  {(
+                    selectedFile.size /
+                    1024
+                  ).toFixed(2)}{" "}
+                  KB
+                </p>
+
+              </div>
+
+              <FaCheckCircle className="text-green-600 text-lg" />
+
+            </div>
+
           )}
 
         </div>
 
+        {/* ADDRESS */}
         <div>
+
           <Label>Address</Label>
 
           <Input
             type="text"
             value={form.address}
             onChange={(e) =>
-              handleChange("address", e.target.value)
+              handleChange(
+                "address",
+                e.target.value
+              )
             }
             required
           />
+
         </div>
 
+        {/* BUTTON */}
         <div className="pt-2">
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-sm font-semibold px-4 py-2 rounded transition shadow-sm"
+            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-sm font-semibold px-4 py-3 rounded-lg transition shadow-sm"
           >
-            {loading ? "Saving..." : "Submit & Next"}
+            {loading
+              ? "Saving..."
+              : "Submit & Next"}
           </button>
 
         </div>

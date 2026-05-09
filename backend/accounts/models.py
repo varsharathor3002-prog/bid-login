@@ -54,6 +54,11 @@ class DesktopBid(models.Model):
     pincode = models.CharField(max_length=10)
 
     atc = models.TextField(blank=True, null=True)
+    upload_document = models.FileField(
+    upload_to="desktop_bid_documents/",
+    blank=True,
+    null=True
+)
 
     status = models.CharField(
         max_length=50,

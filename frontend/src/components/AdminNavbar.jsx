@@ -2,11 +2,11 @@ import { useState } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import {
   FaSignOutAlt, FaChevronDown, FaCheckCircle,
-  FaUserPlus, FaBoxOpen,
+  FaUserPlus, FaBoxOpen,FaUserCircle,
 } from "react-icons/fa";
 
 const bidItems = [
-  { name: "Desktop Bid Approval",     path: "/desktop-bid-approval",     ready: true  },
+  { name: "Desktop Bid Approval",     path: "/admin-dashboard/desktop-bid-approval",     ready: true  },
   { name: "AIO Bid Approval",         path: "/aio-bid-approval",         ready: false },
   { name: "Workstation Bid Approval", path: "/workstation-bid-approval", ready: false },
   { name: "Printer Bid Approval",     path: "/printer-bid-approval",     ready: false },
@@ -121,15 +121,27 @@ const AdminNavbar = () => {
       <div className="flex-1 bg-white overflow-auto">
         <div className="flex justify-between items-center bg-white shadow px-6 py-4">
           <h1 className="text-lg font-semibold text-gray-700">Admin Dashboard</h1>
-          <div className="text-sm text-gray-600">
-            👤 {localStorage.getItem("username") || "Admin"}
-          </div>
-        </div>
-        <div className="p-6">
-          <Outlet />
-        </div>
-      </div>
+          <div className="flex items-center gap-2 text-gray-700 font-medium">
 
+      <FaUserCircle className="text-2xl text-blue-600" />
+
+      <span>
+
+        {localStorage.getItem("admin_username") || "Admin"}
+
+      </span>
+
+    </div>
+
+  </div>
+
+  <div className="p-6">
+
+    <Outlet />
+
+  </div>
+
+</div>
     </div>
   );
 };

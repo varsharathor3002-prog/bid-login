@@ -59,8 +59,10 @@ function App() {
         <Route path="/analyser-dashboard/desktop/bid/:id" element={<BidDetailView product="desktop" />} />
 
         {/* 🧑‍💻 ADMIN */}
-        <Route path="/admin-dashboard"      element={<AdminDashboard />} />
-        <Route path="/desktop-bid-approval" element={<DesktopBidApproval />} />
+        <Route path="/admin-dashboard" element={<AdminDashboard />}>
+          <Route path="desktop-bid-approval" element={<DesktopBidApproval />} />
+        </Route>
+        <Route path="/desktop-bid-approval" element={<Navigate to="/admin-dashboard/desktop-bid-approval" replace />} />
         <Route path="/aio-bid-approval"     element={<AIOBidApproval />} />
         <Route path="/price/:type"          element={<PriceList />} />
 

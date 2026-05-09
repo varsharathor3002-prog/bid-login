@@ -22,11 +22,11 @@ const UserNavbar = () => {
 
   const location = useLocation();
 
-  // ✅ Get username from localStorage
+  // ✅ Get username
   useEffect(() => {
 
     const storedUsername =
-      localStorage.getItem("username");
+      localStorage.getItem("user_username");
 
     if (
       storedUsername &&
@@ -43,17 +43,15 @@ const UserNavbar = () => {
   // ✅ Logout
   const handleLogout = () => {
 
-    localStorage.clear();
+    localStorage.removeItem("user_username");
 
     navigate("/");
 
   };
 
-  // ✅ Active menu
   const isActive = (path) =>
     location.pathname === path;
 
-  // ✅ Sidebar Menu
   const menuItems = [
 
     {
@@ -92,20 +90,17 @@ const UserNavbar = () => {
 
     <div className="h-screen w-full flex bg-gray-100 overflow-hidden">
 
-      {/* ================= SIDEBAR ================= */}
+      {/* SIDEBAR */}
       <div className="w-64 bg-gray-900 text-white flex flex-col shadow-lg">
 
-        {/* LOGO */}
         <div className="p-5 text-2xl font-bold border-b border-gray-700 tracking-wide">
 
           🚀 User Panel
 
         </div>
 
-        {/* MENU */}
         <div className="flex-1 p-3 overflow-y-auto">
 
-          {/* PRODUCT BUTTON */}
           <button
             onClick={() => setOpen(!open)}
             className="flex items-center justify-between w-full px-4 py-3 bg-gray-800 rounded-lg hover:bg-gray-700 transition"
@@ -131,7 +126,6 @@ const UserNavbar = () => {
 
           </button>
 
-          {/* DROPDOWN */}
           {open && (
 
             <div className="mt-3 space-y-2 ml-2">
@@ -140,11 +134,7 @@ const UserNavbar = () => {
 
                 <div
                   key={item.path}
-
-                  onClick={() =>
-                    navigate(item.path)
-                  }
-
+                  onClick={() => navigate(item.path)}
                   className={`flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer transition-all duration-200
 
                   ${
@@ -194,10 +184,9 @@ const UserNavbar = () => {
 
       </div>
 
-      {/* ================= RIGHT SIDE ================= */}
+      {/* RIGHT SIDE */}
       <div className="flex-1 flex flex-col overflow-hidden">
 
-        {/* TOP HEADER */}
         <div className="flex justify-between items-center bg-white shadow px-6 py-4 border-b">
 
           <h1 className="text-xl font-semibold text-gray-700">
@@ -206,7 +195,6 @@ const UserNavbar = () => {
 
           </h1>
 
-          {/* USERNAME */}
           <div className="flex items-center gap-2 text-gray-700 font-medium">
 
             <FaUserCircle className="text-2xl text-blue-600" />
@@ -221,7 +209,6 @@ const UserNavbar = () => {
 
         </div>
 
-        {/* PAGE CONTENT */}
         <div className="flex-1 overflow-auto p-6 bg-gray-50">
 
           <Outlet />

@@ -82,7 +82,7 @@ DATABASES = {
         'ENGINE': 'django.db.backends.mysql',
         'NAME': 'bid_db',
         'USER': 'root',
-        'PASSWORD': 'varsha@11',  # 👈 change this
+        'PASSWORD': 'Sunil@123',  # 👈 change this
         'HOST': 'localhost',
         'PORT': '3306',
     }
@@ -124,4 +124,9 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+# ✅ MEDIA FILES
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+
 CORS_ALLOW_ALL_ORIGINS = True
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

@@ -6,7 +6,9 @@ import loginImg from "../../assets/images.png";
 export default function Login() {
 
   const [username, setUsername] = useState("");
+
   const [password, setPassword] = useState("");
+
   const [role, setRole] = useState("user");
 
   const [showPassword, setShowPassword] = useState(false);
@@ -46,7 +48,7 @@ export default function Login() {
 
       if (res.ok) {
 
-        // ✅ ROLE CHECK
+        // ✅ Role mismatch check
         if (data.role !== role) {
 
           alert("Selected role is incorrect ❌");
@@ -56,12 +58,10 @@ export default function Login() {
           return;
         }
 
-        // ✅ SAVE USER DATA
-        localStorage.setItem(
-          "username",
-          data.username || ""
-        );
+        // ✅ REMOVE OLD STORAGE
+        localStorage.removeItem("username");
 
+        // ✅ SAVE COMMON DATA
         localStorage.setItem(
           "role",
           data.role || ""
@@ -78,16 +78,44 @@ export default function Login() {
             "email",
             data.email
           );
+
         }
 
-        // ✅ ROUTES
-        const routes = {
-          user: "/user",
-          admin: "/admin-dashboard",
-          analyser: "/analyser-dashboard",
-        };
+        // ✅ USER LOGIN
+        if (data.role === "user") {
 
-        navigate(routes[data.role]);
+          localStorage.setItem(
+            "user_username",
+            data.username || ""
+          );
+
+          navigate("/user");
+
+        }
+
+        // ✅ ANALYSER LOGIN
+        else if (data.role === "analyser") {
+
+          localStorage.setItem(
+            "analyser_username",
+            data.username || ""
+          );
+
+          navigate("/analyser-dashboard");
+
+        }
+
+        // ✅ ADMIN LOGIN
+        else if (data.role === "admin") {
+
+          localStorage.setItem(
+            "admin_username",
+            data.username || ""
+          );
+
+          navigate("/admin-dashboard");
+
+        }
 
       } else {
 
@@ -131,11 +159,15 @@ export default function Login() {
 
           {/* TITLE */}
           <h2 className="text-3xl font-bold text-center mb-2">
+
             Welcome Back
+
           </h2>
 
           <p className="text-sm text-gray-300 text-center mb-6">
+
             Login to your account
+
           </p>
 
           {/* ROLE BUTTONS */}
@@ -209,11 +241,13 @@ export default function Login() {
                 }
                 className="absolute right-4 top-1/2 -translate-y-1/2 cursor-pointer text-gray-600"
               >
+
                 {showPassword ? (
                   <FaEyeSlash />
                 ) : (
                   <FaEye />
                 )}
+
               </span>
 
             </div>
@@ -224,7 +258,9 @@ export default function Login() {
               disabled={loading}
               className="w-full bg-orange-500 hover:bg-orange-600 disabled:bg-orange-300 transition py-3 rounded-lg font-semibold text-white shadow-md"
             >
+
               {loading ? "Logging in..." : "Login"}
+
             </button>
 
           </form>
@@ -238,13 +274,17 @@ export default function Login() {
               }
               className="cursor-pointer hover:underline text-gray-200"
             >
+
               Forgot Password?
+
             </span>
 
           </p>
 
         </div>
+
       </div>
+
     </div>
   );
 }

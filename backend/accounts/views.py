@@ -1,4 +1,5 @@
 from django.http import JsonResponse
+from django.http.multipartparser import MultiPartParser
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.hashers import make_password, check_password
 import json
@@ -110,27 +111,54 @@ def forgot_password(request):
 @csrf_exempt
 @require_http_methods(["POST"])
 def create_desktop_bid(request):
+
     try:
-        data = json.loads(request.body)
+
+        # ✅ FILE + FORM DATA
+        data = request.POST
+
         user_id = data.get("user_id")
 
         if not user_id:
-            return JsonResponse({"error": "User ID required"}, status=400)
+            return JsonResponse(
+                {"error": "User ID required"},
+                status=400
+            )
 
         try:
             user = User.objects.get(id=user_id)
+
         except User.DoesNotExist:
-            return JsonResponse({"error": "User not found"}, status=404)
+
+            return JsonResponse(
+                {"error": "User not found"},
+                status=404
+            )
+
+        # ✅ FILE
+        upload_document = request.FILES.get("upload_document")
 
         bid = DesktopBid.objects.create(
+
             user=user,
+
             bid_no=data.get("bid_no", ""),
+
             dept_name=data.get("dept_name", ""),
+
             qty=int(data.get("qty", 0)),
+
             address=data.get("address", ""),
+
             pincode=data.get("pincode", ""),
+
             atc=data.get("atc", ""),
+
+            # ✅ DOCUMENT SAVE
+            upload_document=upload_document,
+
             status="draft",
+
             processor="",
             ram="",
             os="",
@@ -138,19 +166,35 @@ def create_desktop_bid(request):
             cabinet="",
             warranty="",
             motherboard="",
+
             software1="",
             gp="",
+
             date="2000-01-01",
         )
 
         return JsonResponse({
+
             "message": "Desktop Bid Created Successfully",
+
             "bid_id": bid.id,
+
             "user": user.username,
+
+            "document": (
+                bid.upload_document.url
+                if bid.upload_document
+                else ""
+            )
+
         }, status=201)
 
     except Exception as e:
-        return JsonResponse({"error": str(e)}, status=400)
+
+        return JsonResponse(
+            {"error": str(e)},
+            status=400
+        )
 
 
 # ─────────────────────────────────────────────
@@ -163,61 +207,69 @@ def update_desktop_bid(request, bid_id):
         bid = DesktopBid.objects.get(id=bid_id)
         data = json.loads(request.body)
 
+        def safe_float(value, default=0):
+            if value in (None, "", "price"):
+                value = default
+            try:
+                return float(value or 0)
+            except (TypeError, ValueError):
+                return float(default or 0)
+
         bid.processor = data.get("processor", bid.processor)
-        bid.processor_price = float(data.get("processor_price") or bid.processor_price)
+        bid.processor_price = safe_float(data.get("processor_price"), bid.processor_price)
         bid.pro_descp = data.get("pro_descp", bid.pro_descp)
 
         bid.ram = data.get("ram", bid.ram)
-        bid.ram_price = float(data.get("ram_price") or bid.ram_price)
+        bid.ram_price = safe_float(data.get("ram_price"), bid.ram_price)
 
         bid.hdd = data.get("hdd", bid.hdd)
-        bid.hdd_price = float(data.get("hdd_price") or bid.hdd_price)
+        bid.hdd_price = safe_float(data.get("hdd_price"), bid.hdd_price)
 
         bid.ssd1 = data.get("ssd", bid.ssd1)
-        bid.ssd1_price = float(data.get("ssd_price") or bid.ssd1_price)
+        bid.ssd1_price = safe_float(data.get("ssd_price"), bid.ssd1_price)
         bid.ssd2 = data.get("ssd2", bid.ssd2)
-        bid.ssd2_price = float(data.get("ssd2_price") or bid.ssd2_price)
+        bid.ssd2_price = safe_float(data.get("ssd2_price"), bid.ssd2_price)
 
         bid.software1 = data.get("software1", bid.software1)
         bid.gp = data.get("gp", bid.gp)
 
         bid.os = data.get("os", bid.os)
-        bid.os_price = float(data.get("os_price") or bid.os_price)
+        bid.os_price = safe_float(data.get("os_price"), bid.os_price)
 
         bid.dvd = data.get("dvd", bid.dvd)
-        bid.dvd_price = float(data.get("dvd_price") or bid.dvd_price)
+        bid.dvd_price = safe_float(data.get("dvd_price"), bid.dvd_price)
 
         bid.wifi = data.get("wifi", bid.wifi)
-        bid.wifi_price = float(data.get("wifi_price") or bid.wifi_price)
+        bid.wifi_price = safe_float(data.get("wifi_price"), bid.wifi_price)
 
         bid.monitor = data.get("monitor", bid.monitor)
-        bid.monitor_price = float(data.get("monitor_price") or bid.monitor_price)
+        bid.monitor_price = safe_float(data.get("monitor_price"), bid.monitor_price)
 
         bid.cabinet = data.get("cabinet", bid.cabinet)
-        bid.cabinet_price = float(data.get("cabinet_price") or bid.cabinet_price)
+        bid.cabinet_price = safe_float(data.get("cabinet_price"), bid.cabinet_price)
 
         bid.keyboard = data.get("keyboard", bid.keyboard)
-        bid.keyboard_price = float(data.get("keyboard_price") or bid.keyboard_price)
+        bid.keyboard_price = safe_float(data.get("keyboard_price"), bid.keyboard_price)
 
         bid.warranty = data.get("warranty", bid.warranty)
-        bid.warranty_price = float(data.get("warranty_price") or bid.warranty_price)
+        bid.warranty_price = safe_float(data.get("warranty_price"), bid.warranty_price)
 
         bid.motherboard = data.get("motherboard", bid.motherboard)
-        bid.motherboard_price = float(data.get("motherboard_price") or bid.motherboard_price)
+        bid.motherboard_price = safe_float(data.get("motherboard_price"), bid.motherboard_price)
         bid.motherboard_descp = data.get("motherboard_descp", bid.motherboard_descp)
 
         if data.get("date"):
             bid.date = data.get("date")
-        bid.epbg = float(data.get("epbg") or bid.epbg)
+        bid.epbg = safe_float(data.get("epbg"), bid.epbg)
 
         bid.freightInstallation = data.get("freightInstallation", bid.freightInstallation)
         freight_price = data.get("freightInstallation_price")
         if freight_price and freight_price != "price":
-            bid.freightInstallation_price = float(freight_price)
+            bid.freightInstallation_price = safe_float(freight_price, bid.freightInstallation_price)
 
         bid.hddreturnable = data.get("hddreturnable", bid.hddreturnable)
         if data.get("hddreturnable_price"):
-            bid.hddreturnable_price = float(data.get("hddreturnable_price") or 0)
+            bid.hddreturnable_price = safe_float(data.get("hddreturnable_price"), bid.hddreturnable_price)
 
         bid.status = "configured"
         bid.save()
@@ -420,6 +472,19 @@ def list_desktop_bids(request):
                 "bid_no": bid.bid_no,
                 "dept_name": bid.dept_name,
                 "qty": bid.qty,
+                "address": bid.address or "",
+                "pincode": bid.pincode or "",
+
+                # ✅ ATC + DOCUMENT
+                "atc": bid.atc or "",
+
+                "upload_document": (
+                    request.build_absolute_uri(
+                        bid.upload_document.url
+                    )
+                    if bid.upload_document
+                    else ""
+                ),
 
                 # STATUS
                 "status": status_filter,
@@ -449,9 +514,6 @@ def list_desktop_bids(request):
                 # ANALYSER
                 "analyser_name": bid.analyser_username or "",
                 "analyser_note": bid.analyser_note or "",
-
-                # ADDRESS
-                "address": bid.address or "",
 
                 # PROCESSOR
                 "processor": bid.processor or "",
@@ -525,288 +587,358 @@ def list_desktop_bids(request):
             {"error": str(e)},
             status=400
         )
+
+
 # ══════════════════════════════════════════════════════════
 #  GET SINGLE BID DETAIL
-#  GET /api/desktop-bids/<bid_id>/
 # ══════════════════════════════════════════════════════════
 @csrf_exempt
 @require_http_methods(["GET"])
 def get_desktop_bid(request, bid_id):
+
     try:
+
         bid = DesktopBid.objects.get(id=bid_id)
 
         data = {
-            "id":               bid.id,
-            "bid_no":           bid.bid_no,
-            "dept_name":        bid.dept_name,
-            "qty":              bid.qty,
-            "address":          bid.address,
-            "pincode":          bid.pincode,
-            "atc":              bid.atc,
-            "status":           bid.status,
-            "review_status":    bid.review_status,
-            "user_name":        bid.user.username if bid.user else "Unknown",
-            "submitted_by":     bid.user.username if bid.user else "Unknown",
-            "processor":        bid.processor,
-            "processor_price":  bid.processor_price,
-            "pro_descp":        bid.pro_descp or "",
-            "ram":              bid.ram,
-            "ram_price":        bid.ram_price,
-            "hdd":              bid.hdd or "",
-            "hdd_price":        bid.hdd_price,
-            "ssd":              bid.ssd1 or "",
-            "ssd_price":        bid.ssd1_price,
-            "ssd2":             bid.ssd2 or "",
-            "ssd2_price":       bid.ssd2_price,
-            "software1":        bid.software1 or "",
-            "gp":               bid.gp or "",
-            "os":               bid.os,
-            "os_price":         bid.os_price,
-            "dvd":              bid.dvd or "",
-            "dvd_price":        bid.dvd_price,
-            "wifi":             bid.wifi or "",
-            "wifi_price":       bid.wifi_price,
-            "monitor":          bid.monitor,
-            "monitor_price":    bid.monitor_price,
-            "cabinet":          bid.cabinet,
-            "cabinet_price":    bid.cabinet_price,
-            "keyboard":         bid.keyboard or "",
-            "keyboard_price":   bid.keyboard_price,
-            "warranty":         bid.warranty,
-            "warranty_price":   bid.warranty_price,
-            "motherboard":      bid.motherboard,
-            "motherboard_price":bid.motherboard_price,
-            "motherboard_descp":bid.motherboard_descp or "",
-            "date":             str(bid.date),
-            "epbg":             bid.epbg,
-            "freightInstallation":       bid.freightInstallation,
+
+            "id": bid.id,
+            "bid_no": bid.bid_no,
+            "dept_name": bid.dept_name,
+            "qty": bid.qty,
+            "address": bid.address,
+            "pincode": bid.pincode,
+
+            # ✅ ATC
+            "atc": bid.atc or "",
+
+            # ✅ DOCUMENT URL
+            "upload_document": (
+                request.build_absolute_uri(
+                    bid.upload_document.url
+                )
+                if bid.upload_document
+                else ""
+            ),
+
+            "status": bid.status,
+            "review_status": bid.review_status,
+
+            "user_name": (
+                bid.user.username
+                if bid.user
+                else "Unknown"
+            ),
+
+            "submitted_by": (
+                bid.user.username
+                if bid.user
+                else "Unknown"
+            ),
+
+            "processor": bid.processor,
+            "processor_price": bid.processor_price,
+            "pro_descp": bid.pro_descp or "",
+
+            "ram": bid.ram,
+            "ram_price": bid.ram_price,
+
+            "hdd": bid.hdd or "",
+            "hdd_price": bid.hdd_price,
+
+            "ssd": bid.ssd1 or "",
+            "ssd_price": bid.ssd1_price,
+
+            "ssd2": bid.ssd2 or "",
+            "ssd2_price": bid.ssd2_price,
+
+            "software1": bid.software1 or "",
+            "gp": bid.gp or "",
+
+            "os": bid.os,
+            "os_price": bid.os_price,
+
+            "dvd": bid.dvd or "",
+            "dvd_price": bid.dvd_price,
+
+            "wifi": bid.wifi or "",
+            "wifi_price": bid.wifi_price,
+
+            "monitor": bid.monitor,
+            "monitor_price": bid.monitor_price,
+
+            "cabinet": bid.cabinet,
+            "cabinet_price": bid.cabinet_price,
+
+            "keyboard": bid.keyboard or "",
+            "keyboard_price": bid.keyboard_price,
+
+            "warranty": bid.warranty,
+            "warranty_price": bid.warranty_price,
+
+            "motherboard": bid.motherboard,
+            "motherboard_price": bid.motherboard_price,
+            "motherboard_descp": bid.motherboard_descp or "",
+
+            "date": str(bid.date),
+
+            "epbg": bid.epbg,
+
+            "freightInstallation": bid.freightInstallation,
             "freightInstallation_price": bid.freightInstallation_price,
-            "hddreturnable":    bid.hddreturnable,
+
+            "hddreturnable": bid.hddreturnable,
             "hddreturnable_price": bid.hddreturnable_price,
-            "model":            bid.model_number or "",
-            "model_number":     bid.model_number or "",
-            # Analyser fields
-            "analyser_note":    bid.analyser_note or "",
-            "analyser_username":bid.analyser_username or "",
-            "remark":           bid.analyser_note or "",
-            "remarks":          bid.analyser_note or "",
-            # ✅ Admin note — analyser ko form mein dikhega
-            "admin_note":       bid.admin_note or "",
-            "admin_username":   bid.admin_username or "",
-            "created_at":       bid.created_at.strftime("%Y-%m-%d"),
+
+            "model": bid.model_number or "",
+            "model_number": bid.model_number or "",
+
+            # ANALYSER
+            "analyser_note": bid.analyser_note or "",
+            "analyser_username": bid.analyser_username or "",
+
+            "remark": bid.analyser_note or "",
+            "remarks": bid.analyser_note or "",
+
+            # ADMIN
+            "admin_note": bid.admin_note or "",
+            "admin_username": bid.admin_username or "",
+
+            "created_at": (
+                bid.created_at.strftime("%Y-%m-%d")
+                if bid.created_at
+                else ""
+            ),
         }
 
         return JsonResponse(data, status=200)
 
     except DesktopBid.DoesNotExist:
-        return JsonResponse({"error": "Bid not found"}, status=404)
+
+        return JsonResponse(
+            {"error": "Bid not found"},
+            status=404
+        )
+
     except Exception as e:
-        return JsonResponse({"error": str(e)}, status=400)
+
+        return JsonResponse(
+            {"error": str(e)},
+            status=400
+        )
 
 
 # ══════════════════════════════════════════════════════════
-#  ANALYSER — Review Bid
-#  PATCH /api/desktop-bids/<bid_id>/review/
+#  ANALYSER REVIEW BID
 # ══════════════════════════════════════════════════════════
 @csrf_exempt
 @require_http_methods(["PATCH"])
 def review_desktop_bid(request, bid_id):
+
     try:
+
         bid = DesktopBid.objects.get(id=bid_id)
+
         data = json.loads(request.body)
 
-        bid.bid_no    = data.get("bid_no", bid.bid_no)
+        bid.bid_no = data.get("bid_no", bid.bid_no)
         bid.dept_name = data.get("dept_name", bid.dept_name)
-        bid.address   = data.get("address", bid.address)
+        bid.address = data.get("address", bid.address)
+
+        # ✅ ATC
+        bid.atc = data.get("atc", bid.atc)
+
         if data.get("qty"):
             bid.qty = int(data.get("qty"))
 
-        bid.processor       = data.get("processor", bid.processor)
-        bid.processor_price = float(data.get("processor_price") or bid.processor_price)
-        bid.pro_descp       = data.get("pro_descp", bid.pro_descp)
-
-        bid.ram       = data.get("ram", bid.ram)
-        bid.ram_price = float(data.get("ram_price") or bid.ram_price)
-
-        bid.hdd       = data.get("hdd", bid.hdd)
-        bid.hdd_price = float(data.get("hdd_price") or bid.hdd_price)
-
-        bid.ssd1       = data.get("ssd", bid.ssd1)
-        bid.ssd1_price = float(data.get("ssd_price") or bid.ssd1_price)
-        bid.ssd2       = data.get("ssd2", bid.ssd2)
-        bid.ssd2_price = float(data.get("ssd2_price") or bid.ssd2_price)
-
-        bid.software1 = data.get("software1", bid.software1)
-        bid.gp        = data.get("gp", bid.gp)
-
-        bid.os       = data.get("os", bid.os)
-        bid.os_price = float(data.get("os_price") or bid.os_price)
-
-        bid.dvd       = data.get("dvd", bid.dvd)
-        bid.dvd_price = float(data.get("dvd_price") or bid.dvd_price)
-
-        bid.wifi       = data.get("wifi", bid.wifi)
-        bid.wifi_price = float(data.get("wifi_price") or bid.wifi_price)
-
-        bid.monitor       = data.get("monitor", bid.monitor)
-        bid.monitor_price = float(data.get("monitor_price") or bid.monitor_price)
-
-        bid.cabinet       = data.get("cabinet", bid.cabinet)
-        bid.cabinet_price = float(data.get("cabinet_price") or bid.cabinet_price)
-
-        bid.keyboard       = data.get("keyboard", bid.keyboard)
-        bid.keyboard_price = float(data.get("keyboard_price") or bid.keyboard_price)
-
-        bid.warranty       = data.get("warranty", bid.warranty)
-        bid.warranty_price = float(data.get("warranty_price") or bid.warranty_price)
-
-        bid.motherboard       = data.get("motherboard", bid.motherboard)
-        bid.motherboard_price = float(data.get("motherboard_price") or bid.motherboard_price)
-        bid.motherboard_descp = data.get("motherboard_descp", bid.motherboard_descp)
-
-        if data.get("date"):
-            bid.date = data.get("date")
-        bid.epbg = float(data.get("epbg") or bid.epbg)
-
-        if data.get("hddreturnable_price"):
-            bid.hddreturnable_price = float(data.get("hddreturnable_price") or 0)
-
-        bid.analyser_note     = data.get("analyser_note", "")
-        bid.analyser_username = data.get("analyser_username", bid.analyser_username)
-
-        new_status = data.get("status", "reviewed")
-        bid.review_status = new_status
-
-        # ✅ Jab analyser re-submit karta hai, admin_note clear karo
-        # (admin ne jo kaha tha wo fix ho gaya)
-        if new_status == "reviewed":
-            bid.admin_note    = ""
-            bid.admin_username = ""
-
-        bid.save()
-
-        return JsonResponse(
-            {"success": True, "bid_id": bid.id, "review_status": bid.review_status},
-            status=200,
+        bid.processor = data.get("processor", bid.processor)
+        bid.processor_price = float(
+            data.get("processor_price")
+            or bid.processor_price
         )
 
-    except DesktopBid.DoesNotExist:
-        return JsonResponse({"error": "Bid not found"}, status=404)
-    except Exception as e:
-        return JsonResponse({"error": str(e)}, status=400)
-
-
-# ══════════════════════════════════════════════════════════
-#  ADMIN — Review Bid (Approve / Re-Analyze)
-#  PATCH /api/desktop-bids/<bid_id>/admin-review/
-#
-#  Payload:
-#    status: "approved" | "re-analyze"
-#    admin_note: string  ← analyser ko dikhegi
-#    admin_username: string
-#    + edited form fields
-# ══════════════════════════════════════════════════════════
-@csrf_exempt
-@require_http_methods(["PATCH"])
-def admin_review_desktop_bid(request, bid_id):
-    try:
-        bid = DesktopBid.objects.get(id=bid_id)
-        data = json.loads(request.body)
-
-        action = data.get("status", "")
-        if action not in ("approved", "re-analyze"):
-            return JsonResponse(
-                {"error": "Invalid status. Use 'approved' or 're-analyze'."},
-                status=400,
-            )
-
-        # ── Update editable spec fields ──
-        bid.bid_no    = data.get("bid_no", bid.bid_no)
-        bid.dept_name = data.get("dept_name", bid.dept_name)
-        bid.address   = data.get("address", bid.address)
-        if data.get("qty"):
-            bid.qty = int(data.get("qty"))
-
-        bid.processor       = data.get("processor", bid.processor)
-        bid.processor_price = float(data.get("processor_price") or bid.processor_price)
-        bid.pro_descp       = data.get("pro_descp", bid.pro_descp)
-
-        bid.ram       = data.get("ram", bid.ram)
-        bid.ram_price = float(data.get("ram_price") or bid.ram_price)
-
-        bid.hdd       = data.get("hdd", bid.hdd)
-        bid.hdd_price = float(data.get("hdd_price") or bid.hdd_price)
-
-        bid.ssd1       = data.get("ssd", bid.ssd1)
-        bid.ssd1_price = float(data.get("ssd_price") or bid.ssd1_price)
-        bid.ssd2       = data.get("ssd2", bid.ssd2)
-        bid.ssd2_price = float(data.get("ssd2_price") or bid.ssd2_price)
-
-        bid.software1 = data.get("software1", bid.software1)
-        bid.gp        = data.get("gp", bid.gp)
-
-        bid.os       = data.get("os", bid.os)
-        bid.os_price = float(data.get("os_price") or bid.os_price)
-
-        bid.dvd       = data.get("dvd", bid.dvd)
-        bid.dvd_price = float(data.get("dvd_price") or bid.dvd_price)
-
-        bid.wifi       = data.get("wifi", bid.wifi)
-        bid.wifi_price = float(data.get("wifi_price") or bid.wifi_price)
-
-        bid.monitor       = data.get("monitor", bid.monitor)
-        bid.monitor_price = float(data.get("monitor_price") or bid.monitor_price)
-
-        bid.cabinet       = data.get("cabinet", bid.cabinet)
-        bid.cabinet_price = float(data.get("cabinet_price") or bid.cabinet_price)
-
-        bid.keyboard       = data.get("keyboard", bid.keyboard)
-        bid.keyboard_price = float(data.get("keyboard_price") or bid.keyboard_price)
-
-        bid.warranty       = data.get("warranty", bid.warranty)
-        bid.warranty_price = float(data.get("warranty_price") or bid.warranty_price)
-
-        bid.motherboard       = data.get("motherboard", bid.motherboard)
-        bid.motherboard_price = float(data.get("motherboard_price") or bid.motherboard_price)
-        bid.motherboard_descp = data.get("motherboard_descp", bid.motherboard_descp)
-
-        if data.get("date"):
-            bid.date = data.get("date")
-        if data.get("epbg"):
-            bid.epbg = float(data.get("epbg") or bid.epbg)
-        if data.get("hddreturnable_price"):
-            bid.hddreturnable_price = float(data.get("hddreturnable_price") or 0)
-
-        # ✅ Admin note — separate field mein save karo
-        # Analyser ise padh sakta hai apne form mein
-        admin_note     = data.get("admin_note", "").strip()
-        admin_username = data.get("admin_username", "").strip()
-
-        bid.admin_note     = admin_note
-        bid.admin_username = admin_username
-
-        # ── Set review_status ──
-        bid.review_status = action
-        bid.save()
-
-        message = (
-            "✅ Bid approved successfully!"
-            if action == "approved"
-            else "⚠️ Bid sent back to analyser for re-analysis."
+        bid.pro_descp = data.get(
+            "pro_descp",
+            bid.pro_descp
         )
+
+        bid.ram = data.get("ram", bid.ram)
+        bid.ram_price = float(
+            data.get("ram_price")
+            or bid.ram_price
+        )
+
+        bid.hdd = data.get("hdd", bid.hdd)
+        bid.hdd_price = float(
+            data.get("hdd_price")
+            or bid.hdd_price
+        )
+
+        bid.ssd1 = data.get("ssd", bid.ssd1)
+        bid.ssd1_price = float(
+            data.get("ssd_price")
+            or bid.ssd1_price
+        )
+
+        bid.ssd2 = data.get("ssd2", bid.ssd2)
+        bid.ssd2_price = float(
+            data.get("ssd2_price")
+            or bid.ssd2_price
+        )
+
+        bid.software1 = data.get(
+            "software1",
+            bid.software1
+        )
+
+        bid.gp = data.get("gp", bid.gp)
+
+        bid.os = data.get("os", bid.os)
+        bid.os_price = float(
+            data.get("os_price")
+            or bid.os_price
+        )
+
+        bid.review_status = data.get(
+            "status",
+            "reviewed"
+        )
+
+        bid.analyser_note = data.get(
+            "analyser_note",
+            ""
+        )
+
+        bid.analyser_username = data.get(
+            "analyser_username",
+            bid.analyser_username
+        )
+
+        bid.save()
 
         return JsonResponse({
             "success": True,
             "bid_id": bid.id,
             "review_status": bid.review_status,
-            "message": message,
-        }, status=200)
+        })
 
     except DesktopBid.DoesNotExist:
-        return JsonResponse({"error": "Bid not found"}, status=404)
-    except Exception as e:
-        return JsonResponse({"error": str(e)}, status=400)
 
+        return JsonResponse(
+            {"error": "Bid not found"},
+            status=404
+        )
+
+    except Exception as e:
+
+        return JsonResponse(
+            {"error": str(e)},
+            status=400
+        )
+
+
+# ══════════════════════════════════════════════════════════
+#  ADMIN REVIEW BID
+# ══════════════════════════════════════════════════════════
+@csrf_exempt
+@require_http_methods(["PATCH"])
+def admin_review_desktop_bid(request, bid_id):
+
+    try:
+
+        bid = DesktopBid.objects.get(id=bid_id)
+
+        if request.content_type and request.content_type.startswith("multipart/form-data"):
+            data, files = MultiPartParser(
+                request.META,
+                request,
+                request.upload_handlers,
+                request.encoding
+            ).parse()
+        else:
+            data = json.loads(request.body)
+
+        action = data.get("status", "")
+
+        if action not in (
+            "approved",
+            "re-analyze"
+        ):
+
+            return JsonResponse(
+                {
+                    "error": (
+                        "Invalid status."
+                    )
+                },
+                status=400
+            )
+
+        bid.bid_no = data.get(
+            "bid_no",
+            bid.bid_no
+        )
+
+        bid.dept_name = data.get(
+            "dept_name",
+            bid.dept_name
+        )
+
+        bid.address = data.get(
+            "address",
+            bid.address
+        )
+
+        # ✅ ATC
+        bid.atc = data.get(
+            "atc",
+            bid.atc
+        )
+
+        if data.get("qty"):
+            bid.qty = int(data.get("qty"))
+
+        bid.review_status = action
+
+        # ✅ ADMIN NOTE
+        bid.admin_note = data.get(
+            "admin_note",
+            ""
+        ).strip()
+
+        bid.admin_username = data.get(
+            "admin_username",
+            ""
+        ).strip()
+
+        bid.save()
+
+        return JsonResponse({
+
+            "success": True,
+            "bid_id": bid.id,
+            "review_status": bid.review_status,
+
+            "message": (
+                "✅ Bid approved successfully!"
+                if action == "approved"
+                else "⚠️ Bid sent back to analyser."
+            ),
+        })
+
+    except DesktopBid.DoesNotExist:
+
+        return JsonResponse(
+            {"error": "Bid not found"},
+            status=404
+        )
+
+    except Exception as e:
+
+        return JsonResponse(
+            {"error": str(e)},
+            status=400
+        )
 
 # ─────────────────────────────────────────────
 # ADMIN — Products
