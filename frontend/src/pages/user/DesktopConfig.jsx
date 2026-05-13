@@ -64,15 +64,12 @@ const MOTHERBOARDS = [
   "H610 with DDR5",
 ];
 
-// Form fields jo price check karte hain
-// NOTE: 'ssd' model field ssd1 hai, form mein 'ssd' naam se aata hai
-// view mein handle ho raha hai ssd -> ssd1 mapping
 const PRICE_ENDPOINTS = {
   processor: "check_processor",
   ram: "check_ram",
   hdd: "check_hdd",
-  ssd: "check_ssd",      // ssd1 ka form field naam
-  ssd2: "check_ssd",     // ssd2 same endpoint, alag value
+  ssd: "check_ssd",
+  ssd2: "check_ssd",
   os: "check_os",
   dvd: "check_dvd",
   wifi: "check_wifi",
@@ -87,8 +84,8 @@ const INITIAL_FORM = {
   processor: "", processor_price: "",
   ram: "", ram_price: "",
   hdd: "", hdd_price: "",
-  ssd: "", ssd_price: "",        // ssd1
-  ssd2: "", ssd2_price: "",      // ssd2
+  ssd: "", ssd_price: "",
+  ssd2: "", ssd2_price: "",
   gp: "",
   os: "", os_price: "",
   dvd: "", dvd_price: "",
@@ -111,7 +108,6 @@ const fetchPrice = async (field, value) => {
   try {
     const endpoint = PRICE_ENDPOINTS[field];
     if (!endpoint) return "";
-    // ssd2 ke liye payload key 'ssd' bhejo (same endpoint)
     const payloadKey = field === "ssd2" ? "ssd" : field;
     const res = await fetch(`${API_BASE}/${endpoint}/`, {
       method: "POST",
@@ -126,28 +122,17 @@ const fetchPrice = async (field, value) => {
   }
 };
 
-// ─────────────────────────────────────────────
-// MAIN COMPONENT
-// Props: bidData (allData from CreateBidMain), onNext
-// bidData.bid_id se API call hogi — useParams nahi
-// ─────────────────────────────────────────────
 export default function DesktopConfig({ bidData, onNext }) {
-  const bid_id = bidData?.bid_id;  // Step 1 se aaya bid_id
+  const bid_id = bidData?.bid_id;
 
   const [form, setForm] = useState(INITIAL_FORM);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
 
-  const [processorType, setProcessorType] = useState("Intel");
-  const [motherboardType, setMotherboardType] = useState("Intel");
-
-  const filteredProcessors = PROCESSORS.filter(p => 
-    processorType === "Intel" ? (p.includes("Intel") || p.includes("Gen")) : p.includes("AMD")
-  );
-
-  const filteredMotherboards = MOTHERBOARDS.filter(m => 
-    motherboardType === "Intel" ? (m.startsWith("H") || m.startsWith("B") || m.startsWith("Q")) && !m.includes("AMD") : m.includes("AMD")
-  );
+  const intelProcessors = PROCESSORS.filter(p => p.includes("Intel") || p.includes("Gen"));
+  const amdProcessors = PROCESSORS.filter(p => p.includes("AMD"));
+  const intelMotherboards = MOTHERBOARDS.filter(m => (m.startsWith("H") || m.startsWith("B") || m.startsWith("Q")) && !m.includes("AMD"));
+  const amdMotherboards = MOTHERBOARDS.filter(m => m.includes("AMD"));
 
   const handleChange = async (e) => {
     const { name, value } = e.target;
@@ -165,7 +150,6 @@ export default function DesktopConfig({ bidData, onNext }) {
     setSaving(true);
     setMsg("");
     try {
-      // bid_id props se le raha hai, useParams se nahi
       const res = await fetch(`${API_BASE}/desktop-bids/${bid_id}/update/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -173,7 +157,6 @@ export default function DesktopConfig({ bidData, onNext }) {
       });
       if (res.ok) {
         setMsg("Data Save");
-        // Step 3 ko navigate nahi — onNext call karo
         onNext({ ...form });
       } else {
         setMsg("Data Not Save");
@@ -199,7 +182,7 @@ export default function DesktopConfig({ bidData, onNext }) {
           value={form[name]}
           onChange={handleChange}
           required={required}
-          className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+          className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-700"
         >
           <option value="">Select</option>
           {options.map((opt) => (
@@ -232,25 +215,38 @@ export default function DesktopConfig({ bidData, onNext }) {
       <form onSubmit={handleSubmit}>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4">
 
-          <div className="col-span-1">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Processor</label>
-            <div className="flex gap-2 mb-2">
-                <button type="button" onClick={() => setProcessorType("Intel")} className={`flex-1 text-xs py-1 rounded border ${processorType === 'Intel' ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-100 text-gray-600 border-gray-300'}`}>Intel</button>
-                <button type="button" onClick={() => setProcessorType("AMD")} className={`flex-1 text-xs py-1 rounded border ${processorType === 'AMD' ? 'bg-orange-600 text-white border-orange-600' : 'bg-gray-100 text-gray-600 border-gray-300'}`}>AMD/Ryzen</button>
-            </div>
-            <div className="flex gap-2">
-              <select name="processor" value={form.processor} onChange={handleChange} className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
-                <option value="">Select</option>
-                {filteredProcessors.map((p) => <option key={p} value={p}>{p}</option>)}
-              </select>
-              <input type="text" value={form.processor_price} readOnly disabled placeholder="Price" className="w-24 border border-gray-200 rounded-md px-2 py-2 text-sm text-gray-500 bg-gray-50 cursor-not-allowed" />
+          {/* TWO SEPARATE PROCESSOR INPUTS WITH PRICE FIELDS */}
+          <div className="col-span-1 md:col-span-2 lg:col-span-3">
+            <label className="block text-sm font-medium text-gray-700 mb-2 underline">Processor Selection</label>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Intel Section */}
+              <div className="flex flex-col">
+                <span className="text-[11px] text-gray-500 font-medium mb-1 uppercase">Intel Processor</span>
+                <div className="flex gap-2">
+                  <select name="processor" value={intelProcessors.includes(form.processor) ? form.processor : ""} onChange={handleChange} className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="">Select Intel</option>
+                    {intelProcessors.map((p) => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                  <input type="text" value={intelProcessors.includes(form.processor) ? form.processor_price : ""} readOnly disabled placeholder="Price" className="w-24 border border-gray-200 rounded-md px-2 py-2 text-sm text-gray-500 bg-gray-50" />
+                </div>
+              </div>
+              {/* AMD Section */}
+              <div className="flex flex-col">
+                <span className="text-[11px] text-gray-500 font-medium mb-1 uppercase">AMD Processor</span>
+                <div className="flex gap-2">
+                  <select name="processor" value={amdProcessors.includes(form.processor) ? form.processor : ""} onChange={handleChange} className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="">Select AMD</option>
+                    {amdProcessors.map((p) => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                  <input type="text" value={amdProcessors.includes(form.processor) ? form.processor_price : ""} readOnly disabled placeholder="Price" className="w-24 border border-gray-200 rounded-md px-2 py-2 text-sm text-gray-500 bg-gray-50" />
+                </div>
+              </div>
             </div>
           </div>
 
           <SelectField label="Ram" name="ram" options={RAMS} required />
           <SelectField label="Hard Disk Drive" name="hdd" options={HDDS} required />
 
-          {/* Optional Descriptions */}
           <div className="col-span-1">
             <div className="flex items-center gap-2 mb-1">
               <label className="block text-sm font-medium text-gray-700">Processor Description</label>
@@ -275,9 +271,7 @@ export default function DesktopConfig({ bidData, onNext }) {
             <textarea name="gp" value={form.gp} onChange={handleChange} rows={2} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
           </div>
 
-          {/* SSD 1 — form field 'ssd', view mein ssd1 mein save hoga */}
           <SelectField label="SSD 1" name="ssd" options={SSDS} required />
-          {/* SSD 2 */}
           <SelectField label="SSD 2" name="ssd2" options={SSDS} required />
           <SelectField label="OS" name="os" options={OS_OPTIONS} required />
 
@@ -295,38 +289,17 @@ export default function DesktopConfig({ bidData, onNext }) {
           </div>
 
           <div className="col-span-1">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              EPBG (%)
-            </label>
-            <input 
-              type="text" 
-              name="epbg" 
-              value={form.epbg}   
-              onChange={handleChange}
-
-              placeholder="Price" 
-              className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm text-gray-500 bg-gray-50  outline-none" 
-            />
+            <label className="block text-sm font-medium text-gray-700 mb-1">EPBG (%)</label>
+            <input type="text" name="epbg" value={form.epbg} onChange={handleChange} placeholder="Price" className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm text-gray-500 bg-gray-50 outline-none" />
           </div>
 
-
-<div className="col-span-1">
-
+          <div className="col-span-1">
             <label className="block text-sm font-medium text-gray-700 mb-1">Freight & Installation</label>
-
             <div className="flex gap-2">
-
               <input type="text" value="Yes" readOnly disabled className="flex-1 border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50 cursor-not-allowed" />
-
               <input type="text" value="1000" readOnly disabled className="w-24 border border-gray-200 rounded-md px-2 py-2 text-sm bg-gray-50 cursor-not-allowed" />
-
             </div>
-
           </div>
-
-
-
-          
 
           <div className="col-span-1">
             <label className="block text-sm font-medium text-gray-700 mb-1">HDD Return Option</label>
@@ -339,26 +312,31 @@ export default function DesktopConfig({ bidData, onNext }) {
             </div>
           </div>
 
-          <div className="col-span-1 md:col-span-2">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Motherboard Selection</label>
-            <div className="flex flex-col md:flex-row gap-3">
-              <div className="flex gap-1 w-full md:w-48">
-                  <button type="button" onClick={() => setMotherboardType("Intel")} className={`flex-1 text-[10px] py-2 rounded border ${motherboardType === 'Intel' ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-100 text-gray-600 border-gray-300'}`}>Intel</button>
-                  <button type="button" onClick={() => setMotherboardType("AMD")} className={`flex-1 text-[10px] py-2 rounded border ${motherboardType === 'AMD' ? 'bg-orange-600 text-white border-orange-600' : 'bg-gray-100 text-gray-600 border-gray-300'}`}>AMD</button>
+          {/* TWO SEPARATE MOTHERBOARD INPUTS WITH PRICE FIELDS */}
+          <div className="col-span-1 md:col-span-2 lg:col-span-3">
+            <label className="block text-sm font-medium text-gray-700 mb-2 underline">Motherboard Selection</label>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Intel Section */}
+              <div className="flex flex-col">
+                <span className="text-[11px] text-gray-500 font-medium mb-1 uppercase">Intel Motherboard</span>
+                <div className="flex gap-2">
+                  <select name="motherboard" value={intelMotherboards.includes(form.motherboard) ? form.motherboard : ""} onChange={handleChange} className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="">Select Intel</option>
+                    {intelMotherboards.map((m) => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                  <input type="text" value={intelMotherboards.includes(form.motherboard) ? form.motherboard_price : ""} readOnly disabled placeholder="Price" className="w-24 border border-gray-200 rounded-md px-2 py-2 text-sm text-gray-500 bg-gray-50" />
+                </div>
               </div>
-              <div className="flex flex-1 gap-2">
-                <select name="motherboard" value={form.motherboard} onChange={handleChange} className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
-                  <option value="">Select</option>
-                  {filteredMotherboards.map((m) => <option key={m} value={m}>{m}</option>)}
-                </select>
-                <input 
-                  type="text" 
-                  value={form.motherboard_price} 
-                  readOnly 
-                  disabled 
-                  placeholder="Price" 
-                  className="w-20 border border-gray-200 rounded-md px-1 py-2 text-xs text-center text-gray-500 bg-gray-50 cursor-not-allowed" 
-                />
+              {/* AMD Section */}
+              <div className="flex flex-col">
+                <span className="text-[11px] text-gray-500 font-medium mb-1 uppercase">AMD Motherboard</span>
+                <div className="flex gap-2">
+                  <select name="motherboard" value={amdMotherboards.includes(form.motherboard) ? form.motherboard : ""} onChange={handleChange} className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="">Select AMD</option>
+                    {amdMotherboards.map((m) => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                  <input type="text" value={amdMotherboards.includes(form.motherboard) ? form.motherboard_price : ""} readOnly disabled placeholder="Price" className="w-24 border border-gray-200 rounded-md px-2 py-2 text-sm text-gray-500 bg-gray-50" />
+                </div>
               </div>
             </div>
           </div>

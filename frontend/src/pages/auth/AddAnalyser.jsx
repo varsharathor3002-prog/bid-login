@@ -9,9 +9,9 @@ import {
 
 const API_BASE = "http://127.0.0.1:8000/api";
 
-export default function AddUser() {
+export default function AddAnalyser() {
 
-  const [users, setUsers] = useState([]);
+  const [analysers, setAnalysers] = useState([]);
 
   const [showForm, setShowForm] = useState(false);
 
@@ -28,42 +28,42 @@ export default function AddUser() {
     confirmPassword: "",
   });
 
-  // ================= FETCH USERS =================
+  // ================= FETCH =================
 
-  const fetchUsers = async () => {
+  const fetchAnalysers = async () => {
 
     try {
 
       const res = await fetch(
-        `${API_BASE}/user-list/`
+        `${API_BASE}/analyser-list/`
       );
 
       const data = await res.json();
 
       if (res.ok) {
 
-        setUsers(data);
+        setAnalysers(data);
 
       } else {
 
-        alert(data.error || "Failed to fetch users");
+        alert(data.error);
       }
 
     } catch (error) {
 
       console.log(error);
 
-      alert("Backend not connected ❌");
+      alert("Failed to load analysers");
     }
   };
 
   useEffect(() => {
 
-    fetchUsers();
+    fetchAnalysers();
 
   }, []);
 
-  // ================= HANDLE CHANGE =================
+  // ================= CHANGE =================
 
   const handleChange = (e) => {
 
@@ -73,7 +73,7 @@ export default function AddUser() {
     });
   };
 
-  // ================= ADD USER =================
+  // ================= ADD =================
 
   const handleSubmit = async (e) => {
 
@@ -99,7 +99,7 @@ export default function AddUser() {
       setLoading(true);
 
       const res = await fetch(
-        `${API_BASE}/register/`,
+        `${API_BASE}/register-analyser/`,
         {
           method: "POST",
 
@@ -130,18 +130,18 @@ export default function AddUser() {
           confirmPassword: "",
         });
 
-        fetchUsers();
+        fetchAnalysers();
 
       } else {
 
-        alert(data.error || "Registration failed");
+        alert(data.error);
       }
 
     } catch (error) {
 
       console.log(error);
 
-      alert("Backend not connected ❌");
+      alert("Add failed ❌");
 
     } finally {
 
@@ -149,12 +149,12 @@ export default function AddUser() {
     }
   };
 
-  // ================= DELETE USER =================
+  // ================= DELETE =================
 
-  const deleteUser = async (id) => {
+  const deleteAnalyser = async (id) => {
 
     const confirmDelete = window.confirm(
-      "Delete this user?"
+      "Delete this analyser?"
     );
 
     if (!confirmDelete) return;
@@ -162,7 +162,7 @@ export default function AddUser() {
     try {
 
       const res = await fetch(
-        `${API_BASE}/delete-user/${id}/`,
+        `${API_BASE}/delete-analyser/${id}/`,
         {
           method: "DELETE",
         }
@@ -174,18 +174,18 @@ export default function AddUser() {
 
         alert(data.message);
 
-        fetchUsers();
+        fetchAnalysers();
 
       } else {
 
-        alert(data.error || "Delete failed");
+        alert(data.error);
       }
 
     } catch (error) {
 
       console.log(error);
 
-      alert("Backend not connected ❌");
+      alert("Delete failed ❌");
     }
   };
 
@@ -198,15 +198,15 @@ export default function AddUser() {
       <div className="flex items-center justify-between mb-6">
 
         <h1 className="text-3xl font-bold text-gray-700">
-          All Users
+          All Analysers
         </h1>
 
         <button
           onClick={() => setShowForm(true)}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 rounded-lg flex items-center gap-2 font-semibold shadow-lg"
+          className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-3 rounded-lg flex items-center gap-2 font-semibold shadow-lg"
         >
           <FaPlus />
-          Add User
+          Add Analyser
         </button>
 
       </div>
@@ -217,7 +217,7 @@ export default function AddUser() {
 
         <table className="w-full">
 
-          <thead className="bg-blue-600 text-white">
+          <thead className="bg-indigo-600 text-white">
 
             <tr>
 
@@ -244,9 +244,9 @@ export default function AddUser() {
           <tbody>
 
             {
-              users.length > 0
+              analysers.length > 0
               ?
-              users.map((item, index) => (
+              analysers.map((item, index) => (
 
                 <tr
                   key={item.id}
@@ -269,7 +269,7 @@ export default function AddUser() {
 
                     <button
                       onClick={() =>
-                        deleteUser(item.id)
+                        deleteAnalyser(item.id)
                       }
                       className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 mx-auto"
                     >
@@ -289,7 +289,7 @@ export default function AddUser() {
                   colSpan="4"
                   className="py-10 text-center text-gray-500"
                 >
-                  No users found
+                  No analysers found
                 </td>
 
               </tr>
@@ -320,12 +320,10 @@ export default function AddUser() {
               </button>
 
               <h2 className="text-2xl font-bold text-center text-gray-700 mb-6">
-                Add New User
+                Add New Analyser
               </h2>
 
               <form onSubmit={handleSubmit}>
-
-                {/* USERNAME */}
 
                 <input
                   type="text"
@@ -333,11 +331,8 @@ export default function AddUser() {
                   placeholder="Username"
                   value={form.username}
                   onChange={handleChange}
-                  autoComplete="off"
-                  className="w-full mb-4 border border-gray-300 rounded-lg px-4 py-3 outline-none focus:ring-2 focus:ring-blue-400"
+                  className="w-full mb-4 border border-gray-300 rounded-lg px-4 py-3 outline-none focus:ring-2 focus:ring-indigo-400"
                 />
-
-                {/* EMAIL */}
 
                 <input
                   type="email"
@@ -345,11 +340,8 @@ export default function AddUser() {
                   placeholder="Email"
                   value={form.email}
                   onChange={handleChange}
-                  autoComplete="off"
-                  className="w-full mb-4 border border-gray-300 rounded-lg px-4 py-3 outline-none focus:ring-2 focus:ring-blue-400"
+                  className="w-full mb-4 border border-gray-300 rounded-lg px-4 py-3 outline-none focus:ring-2 focus:ring-indigo-400"
                 />
-
-                {/* PASSWORD */}
 
                 <div className="relative mb-4">
 
@@ -363,15 +355,14 @@ export default function AddUser() {
                     placeholder="Password"
                     value={form.password}
                     onChange={handleChange}
-                    autoComplete="new-password"
-                    className="w-full border border-gray-300 rounded-lg px-4 py-3 pr-12 outline-none focus:ring-2 focus:ring-blue-400"
+                    className="w-full border border-gray-300 rounded-lg px-4 py-3 pr-12 outline-none focus:ring-2 focus:ring-indigo-400"
                   />
 
                   <span
                     onClick={() =>
                       setShowPassword(!showPassword)
                     }
-                    className="absolute right-4 top-1/2 -translate-y-1/2 cursor-pointer text-gray-500"
+                    className="absolute right-4 top-1/2 -translate-y-1/2 cursor-pointer"
                   >
                     {
                       showPassword
@@ -381,8 +372,6 @@ export default function AddUser() {
                   </span>
 
                 </div>
-
-                {/* CONFIRM PASSWORD */}
 
                 <div className="relative mb-6">
 
@@ -396,15 +385,14 @@ export default function AddUser() {
                     placeholder="Confirm Password"
                     value={form.confirmPassword}
                     onChange={handleChange}
-                    autoComplete="new-password"
-                    className="w-full border border-gray-300 rounded-lg px-4 py-3 pr-12 outline-none focus:ring-2 focus:ring-blue-400"
+                    className="w-full border border-gray-300 rounded-lg px-4 py-3 pr-12 outline-none focus:ring-2 focus:ring-indigo-400"
                   />
 
                   <span
                     onClick={() =>
                       setShowConfirm(!showConfirm)
                     }
-                    className="absolute right-4 top-1/2 -translate-y-1/2 cursor-pointer text-gray-500"
+                    className="absolute right-4 top-1/2 -translate-y-1/2 cursor-pointer"
                   >
                     {
                       showConfirm
@@ -415,17 +403,15 @@ export default function AddUser() {
 
                 </div>
 
-                {/* BUTTON */}
-
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-semibold"
+                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-lg font-semibold"
                 >
                   {
                     loading
                     ? "Adding..."
-                    : "Add User"
+                    : "Add Analyser"
                   }
                 </button>
 

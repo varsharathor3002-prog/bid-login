@@ -11,12 +11,28 @@ export default function AnalyserDashboard({ product = "desktop" }) {
     const [bids, setBids] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
+    const [reAnalyzeCount, setReAnalyzeCount] = useState(0);
 
     const navigate = useNavigate();
 
     useEffect(() => {
         fetchBids();
     }, [product, activeTab]);
+
+    useEffect(() => {
+        fetchReAnalyzeCount();
+    }, [product]);
+
+    const fetchReAnalyzeCount = async () => {
+        try {
+            const res = await fetch(`${API_MAP[product]}?status=re-analyze`);
+            if (!res.ok) return;
+            const data = await res.json();
+            setReAnalyzeCount(data.length);
+        } catch {
+            // ignore
+        }
+    };
 
     const fetchBids = async () => {
 
@@ -41,6 +57,11 @@ export default function AnalyserDashboard({ product = "desktop" }) {
 
             setBids(data);
 
+            // Agar re-analyze tab active hai toh count refresh karo
+            if (activeTab === "re-analyze") {
+                setReAnalyzeCount(data.length);
+            }
+
         } catch {
 
             setError("Backend se connect nahi ho pa raha.");
@@ -58,8 +79,9 @@ export default function AnalyserDashboard({ product = "desktop" }) {
 
         <div className="w-full bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
 
+
             {/* ===== TABS ===== */}
-            <div className="flex gap-4 px-6 bg-gray-50 border-b border-gray-200">
+            <div className="flex gap-4 px-6 bg-gray-50 border-b border-gray-200 mt-4">
 
                 <button
                     onClick={() => setActiveTab("pending")}
@@ -98,6 +120,11 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                 >
                     <span>⚠️</span>
                     Re-Analyze
+                    {reAnalyzeCount > 0 && (
+                        <span className="bg-rose-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center leading-none">
+                            {reAnalyzeCount}
+                        </span>
+                    )}
                 </button>
 
             </div>

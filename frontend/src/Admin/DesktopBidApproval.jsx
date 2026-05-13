@@ -26,30 +26,96 @@ const TABS = [
   },
 ];
 
+const PriceField = ({
+  label,
+  name,
+  priceName,
+  form,
+  handleChange,
+  isTextArea = false,
+  optional = false,
+}) => {
+  return (
+    <div className="col-span-1">
+      <div className="flex items-center gap-2 mb-1">
+        <label className="block text-sm font-medium text-gray-700">
+          {label}
+        </label>
+
+        {optional && (
+          <span className="text-red-500 text-[11px]">
+            *Optional
+          </span>
+        )}
+      </div>
+
+      <div className="flex gap-2">
+        {isTextArea ? (
+          <textarea
+            name={name}
+            value={form?.[name] || ""}
+            onChange={handleChange}
+            rows={2}
+            autoComplete="off"
+            className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm resize-none outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        ) : (
+          <input
+            type="text"
+            name={name}
+            value={form?.[name] || ""}
+            onChange={handleChange}
+            autoComplete="off"
+            className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        )}
+
+        {priceName && (
+          <input
+            type="text"
+            name={priceName}
+            value={form?.[priceName] || ""}
+            onChange={handleChange}
+            autoComplete="off"
+            placeholder="Price"
+            className="w-28 border border-blue-300 rounded-md px-2 py-2 text-sm text-center bg-white outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        )}
+      </div>
+    </div>
+  );
+};
+
 export default function DesktopBidApproval() {
   const [activeTab, setActiveTab] = useState("pending");
-
   const [bids, setBids] = useState([]);
-
+  const [reAnalyzeCount, setReAnalyzeCount] = useState(0);
   const [loading, setLoading] = useState(true);
-
   const [selected, setSelected] = useState(null);
-
   const [form, setForm] = useState({});
-
   const [adminNote, setAdminNote] = useState("");
-
   const [submitting, setSubmitting] = useState(false);
-
   const [msg, setMsg] = useState("");
 
   useEffect(() => {
     fetchBids();
+    fetchReAnalyzeCount();
   }, [activeTab]);
 
-  // =========================
-  // FETCH BIDS
-  // =========================
+  const getAnalyserName = (bid) => {
+    return (
+      bid.analyser_name ||
+      bid.analyzer_name ||
+      bid.analyser ||
+      bid.analyzer ||
+      bid.analysed_by ||
+      bid.analyzed_by ||
+      bid.created_by ||
+      bid.user_name ||
+      "-"
+    );
+  };
+
   const fetchBids = async () => {
     setLoading(true);
 
@@ -58,34 +124,34 @@ export default function DesktopBidApproval() {
         `${API_BASE}/desktop-bids/list/?status=${activeTab}&role=admin`
       );
 
-      if (!res.ok) {
-        throw new Error("Failed");
-      }
+      if (!res.ok) throw new Error("Failed");
 
       const data = await res.json();
 
       const normalized = data.map((bid) => ({
         ...bid,
-
-        model_number:
-          bid.model_number || bid.model || "",
-
+        analyser_display_name:
+          bid.analyser_name ||
+          bid.analyzer_name ||
+          bid.analyser ||
+          bid.analyzer ||
+          bid.analysed_by ||
+          bid.analyzed_by ||
+          bid.created_by ||
+          bid.user_name ||
+          "-",
+        model_number: bid.model_number || bid.model || "",
         ssd1: bid.ssd1 || bid.ssd || "",
-
-        ssd1_price:
-          bid.ssd1_price || bid.ssd_price || "",
-
+        ssd1_price: bid.ssd1_price || bid.ssd_price || "",
         upload_document:
           bid.upload_document ||
           bid.document ||
           bid.bid_document ||
           "",
-
         compliance_file:
           bid.compliance_file ||
           bid.compliance_document ||
           "",
-
         atc: bid.atc || "",
       }));
 
@@ -98,15 +164,29 @@ export default function DesktopBidApproval() {
     }
   };
 
-  // =========================
-  // OPEN MODAL
-  // =========================
+  const fetchReAnalyzeCount = async () => {
+    try {
+      const res = await fetch(
+        `${API_BASE}/desktop-bids/list/?status=re-analyze&role=admin`
+      );
+
+      if (!res.ok) throw new Error("Failed");
+
+      const data = await res.json();
+
+      setReAnalyzeCount(Array.isArray(data) ? data.length : 0);
+    } catch (error) {
+      console.log(error);
+      setReAnalyzeCount(0);
+    }
+  };
+
   const openModal = (bid) => {
     const formattedBid = {
       ...bid,
+      analyser_display_name: getAnalyserName(bid),
     };
 
-    // FILE URL FIX
     if (
       formattedBid.upload_document &&
       !formattedBid.upload_document.startsWith("http")
@@ -125,27 +205,22 @@ export default function DesktopBidApproval() {
 
     setSelected(formattedBid);
 
-    setForm(formattedBid);
+    setForm({
+      ...formattedBid,
+    });
 
-    setAdminNote("");
+    setAdminNote(formattedBid.admin_note || "");
 
     setMsg("");
   };
 
-  // =========================
-  // CLOSE MODAL
-  // =========================
   const closeModal = () => {
     setSelected(null);
-
     setForm({});
-
+    setAdminNote("");
     setMsg("");
   };
 
-  // =========================
-  // HANDLE CHANGE
-  // =========================
   const handleChange = (e) => {
     const { name, value } = e.target;
 
@@ -155,86 +230,42 @@ export default function DesktopBidApproval() {
     }));
   };
 
-  // =========================
-  // FILE CHANGE
-  // =========================
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-
-    setForm((prev) => ({
-      ...prev,
-      upload_document_file: file,
-    }));
-  };
-
-  // =========================
-  // DOWNLOAD FILE
-  // =========================
   const handleDownload = async (fileUrl) => {
     try {
       const response = await fetch(fileUrl);
-
       const blob = await response.blob();
-
       const blobUrl = window.URL.createObjectURL(blob);
-
       const link = document.createElement("a");
 
       link.href = blobUrl;
-
-      const fileName =
+      link.download =
         fileUrl.split("/").pop() || "document";
 
-      link.download = fileName;
-
       document.body.appendChild(link);
-
       link.click();
-
       link.remove();
 
       window.URL.revokeObjectURL(blobUrl);
     } catch (error) {
-      console.log("Download failed", error);
-
       alert("File download failed");
     }
   };
 
-  // =========================
-  // SUBMIT ACTION
-  // =========================
   const handleAction = async (action) => {
     setSubmitting(true);
-
     setMsg("");
 
     try {
       const formData = new FormData();
 
       Object.keys(form).forEach((key) => {
-        if (
-          form[key] !== null &&
-          form[key] !== undefined
-        ) {
-          formData.append(key, form[key]);
-        }
+        formData.append(key, form[key] || "");
       });
 
-      // SSD FIX
       formData.append("ssd", form.ssd1 || "");
-      formData.append(
-        "ssd_price",
-        form.ssd1_price || ""
-      );
-
+      formData.append("ssd_price", form.ssd1_price || "");
       formData.append("status", action);
-
-      formData.append(
-        "admin_note",
-        adminNote
-      );
-
+      formData.append("admin_note", adminNote);
       formData.append(
         "admin_username",
         localStorage.getItem("username") || ""
@@ -259,26 +290,20 @@ export default function DesktopBidApproval() {
 
         setTimeout(() => {
           closeModal();
-
           fetchBids();
+          fetchReAnalyzeCount();
         }, 1200);
       } else {
-        setMsg(
-          data.error || "Something went wrong"
-        );
+        setMsg(data.error || "Something went wrong");
       }
     } catch (error) {
       console.log(error);
-
       setMsg("Server error");
     } finally {
       setSubmitting(false);
     }
   };
 
-  // =========================
-  // STATUS BADGE
-  // =========================
   const StatusBadge = ({ status }) => {
     if (status === "approved") {
       return (
@@ -303,87 +328,32 @@ export default function DesktopBidApproval() {
     );
   };
 
-  // =========================
-  // FIELD COMPONENT
-  // =========================
-  const PriceField = ({
-    label,
-    name,
-    priceName,
-    isTextArea = false,
-    optional = false,
-  }) => (
-    <div className="col-span-1">
-      <div className="flex items-center gap-2 mb-1">
-        <label className="block text-sm font-medium text-gray-700">
-          {label}
-        </label>
-
-        {optional && (
-          <span className="text-red-500 text-[11px]">
-            *Optional
-          </span>
-        )}
-      </div>
-
-      <div className="flex gap-2">
-        {isTextArea ? (
-          <textarea
-            name={name}
-            value={form?.[name] || ""}
-            onChange={handleChange}
-            rows={2}
-            className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm resize-none focus:ring-2 focus:ring-blue-500"
-          />
-        ) : (
-          <input
-            type="text"
-            name={name}
-            value={form?.[name] || ""}
-            onChange={handleChange}
-            className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
-          />
-        )}
-
-        {priceName && (
-          <input
-            type="text"
-            value={form?.[priceName] || ""}
-            readOnly
-            disabled
-            className="w-20 border border-gray-200 rounded-md px-1 py-2 text-xs text-center text-gray-500 bg-gray-50"
-          />
-        )}
-      </div>
-    </div>
-  );
-
-  // =========================
-  // UI
-  // =========================
   return (
     <div className="w-full bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-
-      {/* TABS */}
-      <div className="flex gap-4 px-6 bg-gray-50 border-b border-gray-200">
+      <div className="flex gap-3 px-6 pt-3 bg-gray-50 border-b border-gray-200 overflow-visible">
         {TABS.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`py-4 px-2 text-sm font-semibold transition-all flex items-center gap-2
-            ${
+            className={`min-h-[52px] px-4 py-3 text-sm font-semibold transition-all flex items-center gap-2 rounded-t-lg border-b-2 ${
               activeTab === tab.id
-                ? `${tab.color} border-b-2 ${tab.border}`
-                : "text-gray-500"
+                ? `${tab.color} ${tab.border} bg-white shadow-sm`
+                : "text-gray-500 border-transparent hover:text-gray-700 hover:bg-white"
             }`}
           >
             <span>{tab.icon}</span>
-            {tab.label}
+
+            <span>{tab.label}</span>
+
+            {tab.id === "re-analyze" && reAnalyzeCount > 0 && (
+              <span className="ml-1 min-w-[22px] h-[22px] px-1.5 rounded-full bg-red-600 text-white text-[11px] font-bold flex items-center justify-center leading-none shadow-sm">
+                {reAnalyzeCount > 99 ? "99+" : reAnalyzeCount}
+              </span>
+            )}
           </button>
         ))}
       </div>
 
-      {/* TABLE */}
       {loading ? (
         <div className="p-20 text-center text-gray-400">
           Loading...
@@ -399,7 +369,7 @@ export default function DesktopBidApproval() {
               <tr className="bg-slate-800">
                 {[
                   "S.No",
-                  "User",
+                  "Analyser",
                   "Department",
                   "Bid No",
                   "Model",
@@ -418,16 +388,13 @@ export default function DesktopBidApproval() {
 
             <tbody>
               {bids.map((bid, i) => (
-                <tr
-                  key={bid.id}
-                  className="border-b"
-                >
+                <tr key={bid.id} className="border-b">
                   <td className="px-5 py-4">
                     {i + 1}
                   </td>
 
                   <td className="px-5 py-4">
-                    {bid.user_name}
+                    {bid.analyser_display_name}
                   </td>
 
                   <td className="px-5 py-4">
@@ -443,16 +410,13 @@ export default function DesktopBidApproval() {
                   </td>
 
                   <td className="px-5 py-4">
-                    <StatusBadge
-                      status={bid.status}
-                    />
+                    <StatusBadge status={bid.status} />
                   </td>
 
                   <td className="px-5 py-4">
                     <button
-                      onClick={() =>
-                        openModal(bid)
-                      }
+                      type="button"
+                      onClick={() => openModal(bid)}
                       className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-xs font-semibold"
                     >
                       View
@@ -465,13 +429,10 @@ export default function DesktopBidApproval() {
         </div>
       )}
 
-      {/* MODAL */}
       {selected && (
         <div className="fixed inset-0 bg-black/60 z-50 overflow-y-auto py-8 px-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-6xl mx-auto">
-
-            {/* HEADER */}
-            <div className="flex justify-between items-center px-6 py-4 border-b bg-gray-50 sticky top-0 z-10 rounded-t-xl">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-7xl mx-auto">
+            <div className="flex justify-between items-center px-6 py-4 border-b bg-gray-50 rounded-t-xl">
               <div>
                 <h2 className="text-lg font-bold text-gray-800">
                   Review & Update Desktop
@@ -486,6 +447,7 @@ export default function DesktopBidApproval() {
               </div>
 
               <button
+                type="button"
                 onClick={closeModal}
                 className="text-2xl text-gray-400 hover:text-gray-700"
               >
@@ -493,12 +455,10 @@ export default function DesktopBidApproval() {
               </button>
             </div>
 
-            {/* MESSAGE */}
             {msg && (
               <div className="mx-6 mt-4">
                 <div
-                  className={`px-4 py-3 rounded-md text-sm font-medium
-                  ${
+                  className={`px-4 py-3 rounded-md text-sm font-medium ${
                     msg.includes("✅")
                       ? "bg-green-100 text-green-700"
                       : "bg-red-100 text-red-700"
@@ -510,11 +470,7 @@ export default function DesktopBidApproval() {
             )}
 
             <div className="p-6">
-
-              {/* FORM */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4">
-
-                {/* BID NO */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Bid Number
@@ -525,11 +481,24 @@ export default function DesktopBidApproval() {
                     name="bid_no"
                     value={form?.bid_no || ""}
                     onChange={handleChange}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
-                {/* MODEL */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Analyser
+                  </label>
+
+                  <input
+                    type="text"
+                    name="analyser_display_name"
+                    value={form?.analyser_display_name || ""}
+                    readOnly
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-gray-50 outline-none"
+                  />
+                </div>
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Model Number
@@ -538,15 +507,12 @@ export default function DesktopBidApproval() {
                   <input
                     type="text"
                     name="model_number"
-                    value={
-                      form?.model_number || ""
-                    }
+                    value={form?.model_number || ""}
                     onChange={handleChange}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
-                {/* DEPT */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Department
@@ -557,26 +523,24 @@ export default function DesktopBidApproval() {
                     name="dept_name"
                     value={form?.dept_name || ""}
                     onChange={handleChange}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
-                {/* QTY */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Quantity
                   </label>
 
                   <input
-                    type="number"
+                    type="text"
                     name="qty"
                     value={form?.qty || ""}
                     onChange={handleChange}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
-                {/* PINCODE */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Pincode
@@ -587,26 +551,38 @@ export default function DesktopBidApproval() {
                     name="pincode"
                     value={form?.pincode || ""}
                     onChange={handleChange}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
-                {/* ADDRESS */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Bid Date
+                  </label>
+
+                  <input
+                    type="date"
+                    name="date"
+                    value={form?.date || ""}
+                    onChange={handleChange}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
                 <div className="md:col-span-2 lg:col-span-3">
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Address
                   </label>
 
-                  <input
-                    type="text"
+                  <textarea
                     name="address"
                     value={form?.address || ""}
                     onChange={handleChange}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                    rows={2}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm resize-none outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
-                {/* ATC */}
                 <div className="md:col-span-2 lg:col-span-3">
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     ATC
@@ -617,25 +593,17 @@ export default function DesktopBidApproval() {
                     value={form?.atc || ""}
                     onChange={handleChange}
                     rows={4}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm resize-none"
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm resize-none outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
-                {/* FILE */}
                 <div className="md:col-span-2 lg:col-span-3">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Upload File
+                    Uploaded Document
                   </label>
 
-                  <input
-                    type="file"
-                    onChange={handleFileChange}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
-                  />
-
-                  {form?.upload_document && (
-                    <div className="flex flex-wrap gap-3 mt-3">
-
+                  {form?.upload_document ? (
+                    <div className="flex flex-wrap gap-3">
                       <a
                         href={form.upload_document}
                         target="_blank"
@@ -648,189 +616,124 @@ export default function DesktopBidApproval() {
                       <button
                         type="button"
                         onClick={() =>
-                          handleDownload(
-                            form.upload_document
-                          )
+                          handleDownload(form.upload_document)
                         }
                         className="inline-flex items-center gap-2 bg-green-50 border border-green-200 hover:bg-green-100 text-green-700 px-4 py-3 rounded-md text-sm font-medium transition"
                       >
                         ⬇ Download File
                       </button>
-
-                    </div>
-                  )}
-                </div>
-
-                {/* COMPLIANCE */}
-                <div className="md:col-span-2 lg:col-span-3">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Compliance File
-                  </label>
-
-                  {form?.compliance_file ? (
-                    <div className="flex flex-wrap gap-3">
-
-                      <a
-                        href={form.compliance_file}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-2 bg-blue-50 border border-blue-200 hover:bg-blue-100 text-blue-700 px-4 py-3 rounded-md text-sm font-medium transition"
-                      >
-                        📄 Open File
-                      </a>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleDownload(
-                            form.compliance_file
-                          )
-                        }
-                        className="inline-flex items-center gap-2 bg-green-50 border border-green-200 hover:bg-green-100 text-green-700 px-4 py-3 rounded-md text-sm font-medium transition"
-                      >
-                        ⬇ Download File
-                      </button>
-
                     </div>
                   ) : (
                     <div className="border border-dashed border-gray-300 rounded-md px-4 py-4 text-sm text-gray-400 bg-gray-50">
-                      No compliance file uploaded
+                      No document uploaded
                     </div>
                   )}
                 </div>
 
-                {/* TECHNICAL */}
-                <PriceField
-                  label="Processor"
-                  name="processor"
-                  priceName="processor_price"
-                />
+                <PriceField label="Processor" name="processor" priceName="processor_price" form={form} handleChange={handleChange} />
+                <PriceField label="RAM" name="ram" priceName="ram_price" form={form} handleChange={handleChange} />
+                <PriceField label="Hard Disk Drive" name="hdd" priceName="hdd_price" form={form} handleChange={handleChange} />
+                <PriceField label="Solid State Drive 1" name="ssd1" priceName="ssd1_price" form={form} handleChange={handleChange} />
+                <PriceField label="Solid State Drive 2" name="ssd2" priceName="ssd2_price" form={form} handleChange={handleChange} />
+                <PriceField label="OS" name="os" priceName="os_price" form={form} handleChange={handleChange} />
+                <PriceField label="DVD" name="dvd" priceName="dvd_price" form={form} handleChange={handleChange} />
+                <PriceField label="WiFi Bluetooth" name="wifi" priceName="wifi_price" form={form} handleChange={handleChange} />
+                <PriceField label="Monitor" name="monitor" priceName="monitor_price" form={form} handleChange={handleChange} />
+                <PriceField label="Cabinet" name="cabinet" priceName="cabinet_price" form={form} handleChange={handleChange} />
+                <PriceField label="Keyboard & Mouse" name="keyboard" priceName="keyboard_price" form={form} handleChange={handleChange} />
+                <PriceField label="Warranty" name="warranty" priceName="warranty_price" form={form} handleChange={handleChange} />
+                <PriceField label="Motherboard" name="motherboard" priceName="motherboard_price" form={form} handleChange={handleChange} />
+                <PriceField label="Processor Description" name="pro_descp" isTextArea optional form={form} handleChange={handleChange} />
+                <PriceField label="Software Description" name="software1" isTextArea optional form={form} handleChange={handleChange} />
+                <PriceField label="Graphics Description" name="gp" isTextArea optional form={form} handleChange={handleChange} />
+                <PriceField label="Motherboard Description" name="motherboard_descp" isTextArea optional form={form} handleChange={handleChange} />
 
-                <PriceField
-                  label="RAM"
-                  name="ram"
-                  priceName="ram_price"
-                />
-
-                <PriceField
-                  label="HDD"
-                  name="hdd"
-                  priceName="hdd_price"
-                />
-
-                <PriceField
-                  label="SSD 1"
-                  name="ssd1"
-                  priceName="ssd1_price"
-                />
-
-                <PriceField
-                  label="SSD 2"
-                  name="ssd2"
-                  priceName="ssd2_price"
-                />
-
-                <PriceField
-                  label="OS"
-                  name="os"
-                  priceName="os_price"
-                />
-
-                <PriceField
-                  label="DVD"
-                  name="dvd"
-                  priceName="dvd_price"
-                />
-
-                <PriceField
-                  label="WiFi"
-                  name="wifi"
-                  priceName="wifi_price"
-                />
-
-                <PriceField
-                  label="Monitor"
-                  name="monitor"
-                  priceName="monitor_price"
-                />
-
-                <PriceField
-                  label="Cabinet"
-                  name="cabinet"
-                  priceName="cabinet_price"
-                />
-
-                <PriceField
-                  label="Keyboard"
-                  name="keyboard"
-                  priceName="keyboard_price"
-                />
-
-                <PriceField
-                  label="Warranty"
-                  name="warranty"
-                  priceName="warranty_price"
-                />
-
-                <PriceField
-                  label="Processor Description"
-                  name="pro_descp"
-                  isTextArea
-                  optional
-                />
-
-                <PriceField
-                  label="Software Description"
-                  name="software1"
-                  isTextArea
-                  optional
-                />
-
-                <PriceField
-                  label="Graphics Description"
-                  name="gp"
-                  isTextArea
-                  optional
-                />
-
-                <PriceField
-                  label="Motherboard"
-                  name="motherboard"
-                  priceName="motherboard_price"
-                />
-
-                <PriceField
-                  label="Motherboard Description"
-                  name="motherboard_descp"
-                  isTextArea
-                  optional
-                />
-
-                {/* ADMIN NOTE */}
-                <div className="md:col-span-2 lg:col-span-3 bg-amber-50 border border-amber-200 rounded-lg p-4">
-                  <label className="block text-sm font-bold text-amber-800 mb-2">
-                    Admin Review Note
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    EPBG (%)
                   </label>
 
-                  <textarea
-                    value={adminNote}
-                    onChange={(e) =>
-                      setAdminNote(
-                        e.target.value
-                      )
-                    }
-                    rows={3}
-                    placeholder="Write review note..."
-                    className="w-full border border-amber-200 rounded-md px-3 py-2 text-sm resize-none"
+                  <input
+                    type="text"
+                    name="epbg"
+                    value={form?.epbg || ""}
+                    onChange={handleChange}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
-              </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Freight & Installation
+                  </label>
 
-              {/* BUTTONS */}
-              <div className="mt-8 flex gap-3 flex-wrap">
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value="Yes"
+                      readOnly
+                      className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm bg-gray-50"
+                    />
+
+                    <input
+                      type="text"
+                      name="freight_price"
+                      value={form?.freight_price || ""}
+                      onChange={handleChange}
+                      placeholder="Price"
+                      className="w-28 border border-blue-300 rounded-md px-2 py-2 text-sm text-center outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    HDD Return Option
+                  </label>
+
+                  <div className="flex gap-2">
+                    <select
+                      name="hddreturnable"
+                      value={form?.hddreturnable || ""}
+                      onChange={handleChange}
+                      className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="Yes">Yes</option>
+                      <option value="None">None</option>
+                    </select>
+
+                    <input
+                      type="text"
+                      name="hddreturnable_price"
+                      value={form?.hddreturnable_price || ""}
+                      onChange={handleChange}
+                      placeholder="Price"
+                      className="w-28 border border-blue-300 rounded-md px-2 py-2 text-sm text-center outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
 
                 {selected.status !== "approved" && (
+                  <div className="md:col-span-2 lg:col-span-3 bg-amber-50 border border-amber-200 rounded-lg p-4">
+                    <label className="block text-sm font-bold text-amber-800 mb-2">
+                      Admin Review Note
+                    </label>
+
+                    <textarea
+                      value={adminNote}
+                      onChange={(e) =>
+                        setAdminNote(e.target.value)
+                      }
+                      rows={3}
+                      placeholder="Write review note..."
+                      className="w-full border border-amber-200 rounded-md px-3 py-2 text-sm resize-none outline-none"
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-8 flex gap-3 flex-wrap">
+                {selected.status === "pending" && (
                   <>
                     <button
                       type="button"
@@ -849,9 +752,7 @@ export default function DesktopBidApproval() {
                       type="button"
                       disabled={submitting}
                       onClick={() =>
-                        handleAction(
-                          "re-analyze"
-                        )
+                        handleAction("re-analyze")
                       }
                       className="bg-rose-600 hover:bg-rose-700 disabled:bg-rose-400 text-white font-semibold px-8 py-2.5 rounded-md text-sm transition"
                     >
@@ -869,11 +770,8 @@ export default function DesktopBidApproval() {
                 >
                   Cancel
                 </button>
-
               </div>
-
             </div>
-
           </div>
         </div>
       )}

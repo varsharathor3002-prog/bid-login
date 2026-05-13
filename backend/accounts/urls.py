@@ -4,6 +4,11 @@ from . import views
 urlpatterns = [
     # ── AUTH ────────────────────────────────────────────────────────
     path('register/', views.register),
+    path("user-list/", views.user_list),
+    path("delete-user/<int:id>/", views.delete_user),
+    path("analyser-list/", views.analyser_list),
+    path("register-analyser/", views.register_analyser),
+    path("delete-analyser/<int:id>/", views.delete_analyser),
     path('login/', views.login),
     path("forgot-password/", views.forgot_password),
 
