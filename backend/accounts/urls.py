@@ -2,6 +2,7 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
+
     # ── AUTH ────────────────────────────────────────────────────────
     path('register/', views.register),
     path("user-list/", views.user_list),
@@ -12,7 +13,19 @@ urlpatterns = [
     path('login/', views.login),
     path("forgot-password/", views.forgot_password),
 
-    # ── PRODUCTS ────────────────────────────────────────────────────
+    # ── CATALOGUE PRODUCTS (Analyser portal) ────────────────────────
+    # GET    /api/catalogue/                  → list all (filterable by ?search= & ?category=)
+    # POST   /api/catalogue/create/           → add new product (multipart: image, model_no, ...)
+    # GET    /api/catalogue/<id>/             → single product detail
+    # POST   /api/catalogue/<id>/update/      → update product fields (multipart)
+    # DELETE /api/catalogue/<id>/delete/      → remove product permanently
+    path("catalogue/", views.list_catalogue_products, name="list_catalogue_products"),
+    path("catalogue/create/", views.create_catalogue_product, name="create_catalogue_product"),
+    path("catalogue/<int:product_id>/", views.get_catalogue_product, name="get_catalogue_product"),
+    path("catalogue/<int:product_id>/update/", views.update_catalogue_product, name="update_catalogue_product"),
+    path("catalogue/<int:product_id>/delete/", views.delete_catalogue_product, name="delete_catalogue_product"),
+
+    # ── ADMIN PRODUCTS ───────────────────────────────────────────────
     path('products/', views.get_products),
     path('products/add/', views.add_product),
 
@@ -31,31 +44,15 @@ urlpatterns = [
     path("check_warranty/", views.check_warranty, name="check_warranty"),
 
     # ── 3-STEP BID CREATION ──────────────────────────────────────────
-    # STEP 1: Bid create karo (basic info)
     path("desktop-bids/create/", views.create_desktop_bid, name="create_desktop_bid"),
 
-    # ── BID LIST (Admin + Analyser dono use karte hain) ─────────────
-    # GET /api/desktop-bids/list/?status=pending&role=admin
-    # GET /api/desktop-bids/list/?status=pending&role=analyser
+    # ── BID LIST ─────────────────────────────────────────────────────
     path("desktop-bids/list/", views.list_desktop_bids, name="list_desktop_bids"),
 
     # ── SINGLE BID — STEP 2, 3, DETAIL ──────────────────────────────
-    # NOTE: Ye path <int:bid_id>/ use karta hai — 'list/' se PEHLE aana chahiye
-    # STEP 2: Specs/config update karo
     path("desktop-bids/<int:bid_id>/update/", views.update_desktop_bid, name="update_desktop_bid"),
-
-    # STEP 3: Model number save karo
     path("desktop-bids/<int:bid_id>/model/", views.save_model_number, name="save_model_number"),
-
-    # Single bid detail — pre-fill ke liye
-    # GET /api/desktop-bids/<id>/
     path("desktop-bids/<int:bid_id>/", views.get_desktop_bid, name="get_desktop_bid"),
-
-    # Analyser review submit — PATCH
-    # PATCH /api/desktop-bids/<id>/review/
     path("desktop-bids/<int:bid_id>/review/", views.review_desktop_bid, name="review_desktop_bid"),
-
-    # ✅ ADMIN review — Approve ya Re-Analyze
-    # PATCH /api/desktop-bids/<id>/admin-review/
     path("desktop-bids/<int:bid_id>/admin-review/", views.admin_review_desktop_bid, name="admin_review_desktop_bid"),
 ]

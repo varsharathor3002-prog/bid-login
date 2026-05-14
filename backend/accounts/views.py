@@ -5,7 +5,7 @@ from django.contrib.auth.hashers import make_password, check_password
 import json
 from django.views.decorators.http import require_http_methods
 from django.utils import timezone
-from .models import User, Product, DesktopBid
+from .models import User, Product, DesktopBid, CatalogueProduct
 
 
 # =========================
@@ -41,42 +41,19 @@ def register(request):
     return JsonResponse({"error": "Use POST method"}, status=405)
 
 
-
-
 # =========================
 # USER LIST
 # =========================
 @csrf_exempt
 def user_list(request):
-
     if request.method == "GET":
-
         try:
-
             users = User.objects.filter(role="user")
-
-            data = []
-
-            for user in users:
-
-                data.append({
-                    "id": user.id,
-                    "username": user.username,
-                    "email": user.email,
-                })
-
+            data = [{"id": u.id, "username": u.username, "email": u.email} for u in users]
             return JsonResponse(data, safe=False)
-
         except Exception as e:
-
-            return JsonResponse({
-                "error": str(e)
-            }, status=500)
-
-    return JsonResponse({
-        "error": "Use GET method"
-    }, status=405)
-
+            return JsonResponse({"error": str(e)}, status=500)
+    return JsonResponse({"error": "Use GET method"}, status=405)
 
 
 # =========================
@@ -84,109 +61,51 @@ def user_list(request):
 # =========================
 @csrf_exempt
 def delete_user(request, id):
-
     if request.method == "DELETE":
-
         try:
-
-            user = User.objects.filter(
-                id=id,
-                role="user"
-            ).first()
-
+            user = User.objects.filter(id=id, role="user").first()
             if not user:
-
-                return JsonResponse({
-                    "error": "User not found"
-                }, status=404)
-
+                return JsonResponse({"error": "User not found"}, status=404)
             user.delete()
-
-            return JsonResponse({
-                "message": "User deleted successfully ✅"
-            })
-
+            return JsonResponse({"message": "User deleted successfully ✅"})
         except Exception as e:
-
-            return JsonResponse({
-                "error": str(e)
-            }, status=500)
-
-    return JsonResponse({
-        "error": "Use DELETE method"
-    }, status=405)
-
-
+            return JsonResponse({"error": str(e)}, status=500)
+    return JsonResponse({"error": "Use DELETE method"}, status=405)
 
 
 # =========================
 # Analyser LIST
 # =========================
-
 @csrf_exempt
 def analyser_list(request):
-
     if request.method == "GET":
-
         try:
-
             analysers = User.objects.filter(role="analyser")
-
-            data = []
-
-            for analyser in analysers:
-
-                data.append({
-                    "id": analyser.id,
-                    "username": analyser.username,
-                    "email": analyser.email,
-                })
-
+            data = [{"id": a.id, "username": a.username, "email": a.email} for a in analysers]
             return JsonResponse(data, safe=False)
-
         except Exception as e:
+            return JsonResponse({"error": str(e)}, status=500)
+    return JsonResponse({"error": "Use GET method"}, status=405)
 
-            return JsonResponse({
-                "error": str(e)
-            }, status=500)
-
-    return JsonResponse({
-        "error": "Use GET method"
-    }, status=405)
 
 # =========================
 # REGISTER Analyser
 # =========================
 @csrf_exempt
 def register_analyser(request):
-
     if request.method == "POST":
-
         try:
-
             data = json.loads(request.body)
-
             username = data.get("username")
             email = data.get("email")
             password = data.get("password")
 
             if not username or not email or not password:
-
-                return JsonResponse({
-                    "error": "All fields required"
-                }, status=400)
-
+                return JsonResponse({"error": "All fields required"}, status=400)
             if User.objects.filter(username=username).exists():
-
-                return JsonResponse({
-                    "error": "Username already exists"
-                }, status=400)
-
+                return JsonResponse({"error": "Username already exists"}, status=400)
             if User.objects.filter(email=email).exists():
-
-                return JsonResponse({
-                    "error": "Email already exists"
-                }, status=400)
+                return JsonResponse({"error": "Email already exists"}, status=400)
 
             User.objects.create(
                 username=username,
@@ -194,62 +113,28 @@ def register_analyser(request):
                 password=make_password(password),
                 role="analyser"
             )
-
-            return JsonResponse({
-                "message": "Analyser registered successfully ✅"
-            })
-
+            return JsonResponse({"message": "Analyser registered successfully ✅"})
         except Exception as e:
-
-            return JsonResponse({
-                "error": str(e)
-            }, status=500)
-
-    return JsonResponse({
-        "error": "Use POST method"
-    }, status=405)
-
+            return JsonResponse({"error": str(e)}, status=500)
+    return JsonResponse({"error": "Use POST method"}, status=405)
 
 
 # =========================
 # DELETE Analyser
 # =========================
-
 @csrf_exempt
 def delete_analyser(request, id):
-
     if request.method == "DELETE":
-
         try:
-
-            analyser = User.objects.filter(
-                id=id,
-                role="analyser"
-            ).first()
-
+            analyser = User.objects.filter(id=id, role="analyser").first()
             if not analyser:
-
-                return JsonResponse({
-                    "error": "Analyser not found"
-                }, status=404)
-
+                return JsonResponse({"error": "Analyser not found"}, status=404)
             analyser.delete()
-
-            return JsonResponse({
-                "message": "Analyser deleted successfully ✅"
-            })
-
+            return JsonResponse({"message": "Analyser deleted successfully ✅"})
         except Exception as e:
+            return JsonResponse({"error": str(e)}, status=500)
+    return JsonResponse({"error": "Use DELETE method"}, status=405)
 
-            return JsonResponse({
-                "error": str(e)
-            }, status=500)
-
-    return JsonResponse({
-        "error": "Use DELETE method"
-    }, status=405)
-
-    
 
 # =========================
 # LOGIN Admin, Analyser, User
@@ -290,7 +175,6 @@ def login(request):
     return JsonResponse({"error": "Use POST method"}, status=405)
 
 
-
 @csrf_exempt
 def forgot_password(request):
     if request.method == "POST":
@@ -327,6 +211,185 @@ def safe_float(value, default=0):
         return float(value)
     except (TypeError, ValueError):
         return float(default or 0)
+
+
+# ══════════════════════════════════════════════════════════
+#  CATALOGUE PRODUCT APIs
+# ══════════════════════════════════════════════════════════
+
+def _catalogue_product_data(product, request):
+    return {
+        "id": product.id,
+        "model_no": product.model_no,
+        "processor": product.processor,
+        "ram": product.ram or "",
+        "storage": product.storage or "",
+        "os": product.os or "",
+        "category": product.category or "",
+        "description": product.description or "",
+        "image": (
+            request.build_absolute_uri(product.image.url)
+            if product.image else ""
+        ),
+        "created_at": product.created_at.strftime("%Y-%m-%d") if product.created_at else "",
+    }
+
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def list_catalogue_products(request):
+    """
+    GET /api/catalogue/
+    Optional query params:
+      - search=<str>   → filter by model_no or processor
+      - category=<str> → filter by category (Desktop, AIO, Workstation)
+    Returns list of all catalogue products (filtered from Excel — Intel 12th gen+, AMD 56xx/57xx/58xxG).
+    """
+    try:
+        qs = CatalogueProduct.objects.all()
+
+        search = request.GET.get("search", "").strip()
+        if search:
+            qs = qs.filter(model_no__icontains=search) | qs.filter(processor__icontains=search)
+
+        category = request.GET.get("category", "").strip()
+        if category:
+            qs = qs.filter(category__iexact=category)
+
+        data = [_catalogue_product_data(p, request) for p in qs]
+        return JsonResponse(data, safe=False, status=200)
+
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def get_catalogue_product(request, product_id):
+    """
+    GET /api/catalogue/<id>/
+    Returns single catalogue product detail.
+    """
+    try:
+        product = CatalogueProduct.objects.get(id=product_id)
+        return JsonResponse(_catalogue_product_data(product, request), status=200)
+    except CatalogueProduct.DoesNotExist:
+        return JsonResponse({"error": "Product not found"}, status=404)
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def create_catalogue_product(request):
+    """
+    POST /api/catalogue/create/
+    Multipart form-data:
+      - model_no      (required, unique)
+      - processor     (required)
+      - ram
+      - storage
+      - os
+      - category
+      - description
+      - image         (file, optional)
+    """
+    try:
+        data = request.POST
+        image = request.FILES.get("image")
+
+        model_no = data.get("model_no", "").strip()
+        processor = data.get("processor", "").strip()
+
+        if not model_no:
+            return JsonResponse({"error": "model_no is required"}, status=400)
+        if not processor:
+            return JsonResponse({"error": "processor is required"}, status=400)
+        if CatalogueProduct.objects.filter(model_no=model_no).exists():
+            return JsonResponse({"error": "A product with this model_no already exists"}, status=400)
+
+        product = CatalogueProduct.objects.create(
+            model_no=model_no,
+            processor=processor,
+            ram=data.get("ram", ""),
+            storage=data.get("storage", ""),
+            os=data.get("os", ""),
+            category=data.get("category", ""),
+            description=data.get("description", ""),
+            image=image,
+        )
+
+        return JsonResponse({
+            "message": "Catalogue product created successfully ✅",
+            **_catalogue_product_data(product, request),
+        }, status=201)
+
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def update_catalogue_product(request, product_id):
+    """
+    POST /api/catalogue/<id>/update/
+    Multipart form-data (all fields optional — only provided fields are updated):
+      - model_no, processor, ram, storage, os, category, description, image
+    """
+    try:
+        product = CatalogueProduct.objects.get(id=product_id)
+        data = request.POST
+        image = request.FILES.get("image")
+
+        model_no = data.get("model_no", "").strip()
+        if model_no and model_no != product.model_no:
+            if CatalogueProduct.objects.filter(model_no=model_no).exists():
+                return JsonResponse({"error": "Another product with this model_no already exists"}, status=400)
+            product.model_no = model_no
+
+        if data.get("processor"):
+            product.processor = data.get("processor").strip()
+        if "ram" in data:
+            product.ram = data.get("ram")
+        if "storage" in data:
+            product.storage = data.get("storage")
+        if "os" in data:
+            product.os = data.get("os")
+        if "category" in data:
+            product.category = data.get("category")
+        if "description" in data:
+            product.description = data.get("description")
+        if image:
+            product.image = image
+
+        product.save()
+
+        return JsonResponse({
+            "message": "Catalogue product updated successfully ✅",
+            **_catalogue_product_data(product, request),
+        }, status=200)
+
+    except CatalogueProduct.DoesNotExist:
+        return JsonResponse({"error": "Product not found"}, status=404)
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["DELETE"])
+def delete_catalogue_product(request, product_id):
+    """
+    DELETE /api/catalogue/<id>/delete/
+    Permanently removes the catalogue product.
+    """
+    try:
+        product = CatalogueProduct.objects.get(id=product_id)
+        product.delete()
+        return JsonResponse({"message": "Catalogue product deleted successfully ✅"}, status=200)
+    except CatalogueProduct.DoesNotExist:
+        return JsonResponse({"error": "Product not found"}, status=404)
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
 
 
 # ─────────────────────────────────────────────
@@ -492,6 +555,9 @@ def save_model_number(request, bid_id):
 # ─────────────────────────────────────────────
 # PRICE CHECK VIEWS
 # ─────────────────────────────────────────────
+def get_price_for(component, value):
+    return 0
+
 @csrf_exempt
 def check_processor(request):
     if request.method == "POST":
@@ -575,9 +641,6 @@ def check_warranty(request):
         data = json.loads(request.body)
         price = get_price_for("warranty", data.get("warranty", ""))
         return JsonResponse({"price": price})
-
-def get_price_for(component, value):
-    return 0
 
 
 # ══════════════════════════════════════════════════════════
@@ -763,7 +826,7 @@ def get_desktop_bid(request, bid_id):
 
 
 # ══════════════════════════════════════════════════════════
-#  ANALYSER REVIEW — saari fields save hoti hain
+#  ANALYSER REVIEW
 # ══════════════════════════════════════════════════════════
 @csrf_exempt
 @require_http_methods(["PATCH"])
@@ -772,7 +835,6 @@ def review_desktop_bid(request, bid_id):
         bid = DesktopBid.objects.get(id=bid_id)
         data = json.loads(request.body)
 
-        # BASIC
         bid.bid_no = data.get("bid_no", bid.bid_no)
         bid.dept_name = data.get("dept_name", bid.dept_name)
         bid.address = data.get("address", bid.address)
@@ -783,20 +845,16 @@ def review_desktop_bid(request, bid_id):
         if data.get("model_number"):
             bid.model_number = data.get("model_number")
 
-        # PROCESSOR
         bid.processor = data.get("processor", bid.processor)
         bid.processor_price = safe_float(data.get("processor_price"), bid.processor_price)
         bid.pro_descp = data.get("pro_descp", bid.pro_descp)
 
-        # RAM
         bid.ram = data.get("ram", bid.ram)
         bid.ram_price = safe_float(data.get("ram_price"), bid.ram_price)
 
-        # HDD
         bid.hdd = data.get("hdd", bid.hdd)
         bid.hdd_price = safe_float(data.get("hdd_price"), bid.hdd_price)
 
-        # SSD — accept ssd1 or ssd key
         bid.ssd1 = data.get("ssd1") or data.get("ssd") or bid.ssd1
         bid.ssd1_price = safe_float(
             data.get("ssd1_price") or data.get("ssd_price"), bid.ssd1_price
@@ -804,44 +862,34 @@ def review_desktop_bid(request, bid_id):
         bid.ssd2 = data.get("ssd2", bid.ssd2)
         bid.ssd2_price = safe_float(data.get("ssd2_price"), bid.ssd2_price)
 
-        # SOFTWARE / GRAPHICS
         bid.software1 = data.get("software1", bid.software1)
         bid.gp = data.get("gp", bid.gp)
 
-        # OS
         bid.os = data.get("os", bid.os)
         bid.os_price = safe_float(data.get("os_price"), bid.os_price)
 
-        # DVD
         bid.dvd = data.get("dvd", bid.dvd)
         bid.dvd_price = safe_float(data.get("dvd_price"), bid.dvd_price)
 
-        # WIFI
         bid.wifi = data.get("wifi", bid.wifi)
         bid.wifi_price = safe_float(data.get("wifi_price"), bid.wifi_price)
 
-        # MONITOR
         bid.monitor = data.get("monitor", bid.monitor)
         bid.monitor_price = safe_float(data.get("monitor_price"), bid.monitor_price)
 
-        # CABINET
         bid.cabinet = data.get("cabinet", bid.cabinet)
         bid.cabinet_price = safe_float(data.get("cabinet_price"), bid.cabinet_price)
 
-        # KEYBOARD
         bid.keyboard = data.get("keyboard", bid.keyboard)
         bid.keyboard_price = safe_float(data.get("keyboard_price"), bid.keyboard_price)
 
-        # WARRANTY
         bid.warranty = data.get("warranty", bid.warranty)
         bid.warranty_price = safe_float(data.get("warranty_price"), bid.warranty_price)
 
-        # MOTHERBOARD
         bid.motherboard = data.get("motherboard", bid.motherboard)
         bid.motherboard_price = safe_float(data.get("motherboard_price"), bid.motherboard_price)
         bid.motherboard_descp = data.get("motherboard_descp", bid.motherboard_descp)
 
-        # OTHER CHARGES
         if data.get("date"):
             bid.date = data.get("date")
         bid.epbg = safe_float(data.get("epbg"), bid.epbg)
@@ -854,7 +902,6 @@ def review_desktop_bid(request, bid_id):
             data.get("hddreturnable_price"), bid.hddreturnable_price
         )
 
-        # STATUS + ANALYSER
         bid.review_status = data.get("status", "reviewed")
         bid.analyser_note = data.get("analyser_note", bid.analyser_note or "")
         bid.analyser_username = data.get("analyser_username", bid.analyser_username or "")
@@ -893,7 +940,6 @@ def admin_review_desktop_bid(request, bid_id):
         if action not in ("approved", "re-analyze"):
             return JsonResponse({"error": "Invalid status."}, status=400)
 
-        # BASIC
         bid.bid_no = data.get("bid_no", bid.bid_no)
         bid.dept_name = data.get("dept_name", bid.dept_name)
         bid.address = data.get("address", bid.address)
@@ -904,20 +950,16 @@ def admin_review_desktop_bid(request, bid_id):
         if data.get("model_number"):
             bid.model_number = data.get("model_number")
 
-        # PROCESSOR
         bid.processor = data.get("processor", bid.processor)
         bid.processor_price = safe_float(data.get("processor_price"), bid.processor_price)
         bid.pro_descp = data.get("pro_descp", bid.pro_descp)
 
-        # RAM
         bid.ram = data.get("ram", bid.ram)
         bid.ram_price = safe_float(data.get("ram_price"), bid.ram_price)
 
-        # HDD
         bid.hdd = data.get("hdd", bid.hdd)
         bid.hdd_price = safe_float(data.get("hdd_price"), bid.hdd_price)
 
-        # SSD
         bid.ssd1 = data.get("ssd1") or data.get("ssd") or bid.ssd1
         bid.ssd1_price = safe_float(
             data.get("ssd1_price") or data.get("ssd_price"), bid.ssd1_price
@@ -925,44 +967,34 @@ def admin_review_desktop_bid(request, bid_id):
         bid.ssd2 = data.get("ssd2", bid.ssd2)
         bid.ssd2_price = safe_float(data.get("ssd2_price"), bid.ssd2_price)
 
-        # SOFTWARE / GRAPHICS
         bid.software1 = data.get("software1", bid.software1)
         bid.gp = data.get("gp", bid.gp)
 
-        # OS
         bid.os = data.get("os", bid.os)
         bid.os_price = safe_float(data.get("os_price"), bid.os_price)
 
-        # DVD
         bid.dvd = data.get("dvd", bid.dvd)
         bid.dvd_price = safe_float(data.get("dvd_price"), bid.dvd_price)
 
-        # WIFI
         bid.wifi = data.get("wifi", bid.wifi)
         bid.wifi_price = safe_float(data.get("wifi_price"), bid.wifi_price)
 
-        # MONITOR
         bid.monitor = data.get("monitor", bid.monitor)
         bid.monitor_price = safe_float(data.get("monitor_price"), bid.monitor_price)
 
-        # CABINET
         bid.cabinet = data.get("cabinet", bid.cabinet)
         bid.cabinet_price = safe_float(data.get("cabinet_price"), bid.cabinet_price)
 
-        # KEYBOARD
         bid.keyboard = data.get("keyboard", bid.keyboard)
         bid.keyboard_price = safe_float(data.get("keyboard_price"), bid.keyboard_price)
 
-        # WARRANTY
         bid.warranty = data.get("warranty", bid.warranty)
         bid.warranty_price = safe_float(data.get("warranty_price"), bid.warranty_price)
 
-        # MOTHERBOARD
         bid.motherboard = data.get("motherboard", bid.motherboard)
         bid.motherboard_price = safe_float(data.get("motherboard_price"), bid.motherboard_price)
         bid.motherboard_descp = data.get("motherboard_descp", bid.motherboard_descp)
 
-        # OTHER CHARGES
         if data.get("date"):
             bid.date = data.get("date")
         bid.epbg = safe_float(data.get("epbg"), bid.epbg)
@@ -975,7 +1007,6 @@ def admin_review_desktop_bid(request, bid_id):
             data.get("hddreturnable_price"), bid.hddreturnable_price
         )
 
-        # STATUS + ADMIN
         bid.review_status = action
         bid.admin_note = data.get("admin_note", "").strip()
         bid.admin_username = data.get("admin_username", "").strip()

@@ -14,7 +14,7 @@ import CreateDesktopBid from "./pages/user/CreateDesktopBid";
 import AnalyserNavbar from "./components/analyser/AnalyserNavbar";
 import AnalyserDashboard from "./pages/analyser/AnalyserDashboard";
 import BidDetailView from "./pages/analyser/BidDetailView";
-
+import AnalyserProductsPage from "./pages/Analyser/AnalyserProductsPage";
 import AdminNavbar from "./components/AdminNavbar";
 
 const ComingSoon = ({ product }) => (
@@ -32,78 +32,41 @@ const ComingSoon = ({ product }) => (
 );
 
 function App() {
-
   return (
-
     <div className="app-content">
-
       <Routes>
-
         {/* ================= AUTH ================= */}
 
-        <Route
-          path="/"
-          element={<Login />}
-        />
+        <Route path="/" element={<Login />} />
 
-        <Route
-          path="/register"
-          element={<Registration />}
-        />
+        <Route path="/register" element={<Registration />} />
 
-        <Route
-          path="/forgot-password"
-          element={<ForgotPassword />}
-        />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
 
         {/* ================= USER ================= */}
 
-        <Route
-          path="/user"
-          element={<UserNavbar />}
-        >
+        <Route path="/user" element={<UserNavbar />}>
+          <Route index element={<div>Select a product</div>} />
 
-          <Route
-            index
-            element={<div>Select a product</div>}
-          />
-
-          <Route
-            path="aio"
-            element={<div>AIO Page Content</div>}
-          />
+          <Route path="aio" element={<div>AIO Page Content</div>} />
 
           <Route
             path="workstation"
             element={<div>Workstation Content</div>}
           />
 
-          <Route
-            path="printer"
-            element={<div>Printer Content</div>}
-          />
+          <Route path="printer" element={<div>Printer Content</div>} />
 
-          <Route
-            path="toner"
-            element={<div>Toner Content</div>}
-          />
-
+          <Route path="toner" element={<div>Toner Content</div>} />
         </Route>
 
         {/* USER DESKTOP PAGE */}
 
-        <Route
-          path="/user/desktop"
-          element={<CreateDesktopBid />}
-        />
+        <Route path="/user/desktop" element={<CreateDesktopBid />} />
 
         {/* ================= ANALYSER ================= */}
 
-        <Route
-          path="/analyser-dashboard"
-          element={<AnalyserNavbar />}
-        >
-
+        <Route path="/analyser-dashboard" element={<AnalyserNavbar />}>
           <Route
             index
             element={
@@ -138,8 +101,14 @@ function App() {
             path="toner"
             element={<ComingSoon product="Toner" />}
           />
-
         </Route>
+
+        {/* PRODUCT PAGE WITHOUT NAVBAR */}
+
+        <Route
+          path="/analyser-dashboard/product"
+          element={<AnalyserProductsPage />}
+        />
 
         {/* BID DETAIL */}
 
@@ -154,7 +123,6 @@ function App() {
           path="/admin-dashboard"
           element={<AdminNavbar />}
         >
-
           {/* DEFAULT PAGE */}
 
           <Route
@@ -198,7 +166,6 @@ function App() {
               </div>
             }
           />
-
         </Route>
 
         {/* ================= REDIRECTS ================= */}
@@ -233,9 +200,7 @@ function App() {
             </div>
           }
         />
-
       </Routes>
-
     </div>
   );
 }
