@@ -1,8 +1,7 @@
 from django.urls import path
-from . import views
+from . import views  # Yeh automatic accounts/views.py ko point karega
 
 urlpatterns = [
-
     # ── AUTH ────────────────────────────────────────────────────────
     path('register/', views.register),
     path("user-list/", views.user_list),
@@ -12,23 +11,22 @@ urlpatterns = [
     path("delete-analyser/<int:id>/", views.delete_analyser),
     path('login/', views.login),
     path("forgot-password/", views.forgot_password),
+  
+    # Fixed Path: Yahan se extra 'api/' hata diya hai taaki URL hierarchy breakdown na ho
+    # path("save-gem-specs/", views.save_gem_specs, name="save_gem_specs"),
+    
+   
 
-    # ── CATALOGUE PRODUCTS (Analyser portal) ────────────────────────
-    # GET    /api/catalogue/                  → list all (filterable by ?search= & ?category=)
-    # POST   /api/catalogue/create/           → add new product (multipart: image, model_no, ...)
-    # GET    /api/catalogue/<id>/             → single product detail
-    # POST   /api/catalogue/<id>/update/      → update product fields (multipart)
-    # DELETE /api/catalogue/<id>/delete/      → remove product permanently
-    path("catalogue/", views.list_catalogue_products, name="list_catalogue_products"),
-    path("catalogue/create/", views.create_catalogue_product, name="create_catalogue_product"),
-    path("catalogue/<int:product_id>/", views.get_catalogue_product, name="get_catalogue_product"),
-    path("catalogue/<int:product_id>/update/", views.update_catalogue_product, name="update_catalogue_product"),
-    path("catalogue/<int:product_id>/delete/", views.delete_catalogue_product, name="delete_catalogue_product"),
+# ── CATALOGUE PRODUCTS (Analyser portal) ────────────────────────
+path("catalogue/", views.list_catalogue_products, name="list_catalogue_products"),
+path("catalogue/create/", views.create_catalogue_product, name="create_catalogue_product"),
+path("catalogue/delete-all/", views.delete_all_catalogue_products, name="delete_all_catalogue_products"),  # ← YAHAN
+path("catalogue/extract-pdf/", views.extract_specs_from_pdf, name="extract_pdf"),
+path("catalogue/<int:product_id>/", views.get_catalogue_product, name="get_catalogue_product"),
+path("catalogue/<int:product_id>/update/", views.update_catalogue_product, name="update_catalogue_product"),
+path("catalogue/<int:product_id>/delete/", views.delete_catalogue_product, name="delete_catalogue_product"),
 
-    # ── ADMIN PRODUCTS ───────────────────────────────────────────────
-    path('products/', views.get_products),
-    path('products/add/', views.add_product),
-
+   
     # ── PRICE CHECK ENDPOINTS ────────────────────────────────────────
     path("check_processor/", views.check_processor, name="check_processor"),
     path("check_ram/", views.check_ram, name="check_ram"),
@@ -51,8 +49,13 @@ urlpatterns = [
 
     # ── SINGLE BID — STEP 2, 3, DETAIL ──────────────────────────────
     path("desktop-bids/<int:bid_id>/update/", views.update_desktop_bid, name="update_desktop_bid"),
-    path("desktop-bids/<int:bid_id>/model/", views.save_model_number, name="save_model_number"),
+    # path("desktop-bids/<int:bid_id>/model/", views.save_model_number, name="save_model_number"),
     path("desktop-bids/<int:bid_id>/", views.get_desktop_bid, name="get_desktop_bid"),
     path("desktop-bids/<int:bid_id>/review/", views.review_desktop_bid, name="review_desktop_bid"),
     path("desktop-bids/<int:bid_id>/admin-review/", views.admin_review_desktop_bid, name="admin_review_desktop_bid"),
+
+
+
+
+    
 ]

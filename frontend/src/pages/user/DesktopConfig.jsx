@@ -106,15 +106,21 @@ const INITIAL_FORM = {
 
 const fetchPrice = async (field, value) => {
   try {
+    if (!value || value === "None") return "";
+
     const endpoint = PRICE_ENDPOINTS[field];
     if (!endpoint) return "";
+
     const payloadKey = field === "ssd2" ? "ssd" : field;
+
     const res = await fetch(`${API_BASE}/${endpoint}/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ [payloadKey]: value }),
     });
+
     if (!res.ok) return "";
+
     const data = await res.json();
     return data.price ?? data ?? "";
   } catch {
@@ -129,17 +135,34 @@ export default function DesktopConfig({ bidData, onNext }) {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
 
-  const intelProcessors = PROCESSORS.filter(p => p.includes("Intel") || p.includes("Gen"));
-  const amdProcessors = PROCESSORS.filter(p => p.includes("AMD"));
-  const intelMotherboards = MOTHERBOARDS.filter(m => (m.startsWith("H") || m.startsWith("B") || m.startsWith("Q")) && !m.includes("AMD"));
-  const amdMotherboards = MOTHERBOARDS.filter(m => m.includes("AMD"));
+  const intelProcessors = PROCESSORS.filter(
+    (p) => p.includes("Intel") || p.includes("Gen")
+  );
+  const amdProcessors = PROCESSORS.filter((p) => p.includes("AMD"));
+
+  const intelMotherboards = MOTHERBOARDS.filter(
+    (m) =>
+      (m.startsWith("H") || m.startsWith("B") || m.startsWith("Q")) &&
+      !m.includes("AMD")
+  );
+  const amdMotherboards = MOTHERBOARDS.filter((m) => m.includes("AMD"));
 
   const handleChange = async (e) => {
     const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
-
     const priceField = `${name}_price`;
+
+    setForm((prev) => ({
+      ...prev,
+      [name]: value,
+      ...(PRICE_ENDPOINTS[name] ? { [priceField]: "" } : {}),
+    }));
+
     if (PRICE_ENDPOINTS[name]) {
+      if (!value || value === "None") {
+        setForm((prev) => ({ ...prev, [priceField]: "" }));
+        return;
+      }
+
       const price = await fetchPrice(name, value);
       setForm((prev) => ({ ...prev, [priceField]: price }));
     }
@@ -149,12 +172,14 @@ export default function DesktopConfig({ bidData, onNext }) {
     e.preventDefault();
     setSaving(true);
     setMsg("");
+
     try {
       const res = await fetch(`${API_BASE}/desktop-bids/${bid_id}/update/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
+
       if (res.ok) {
         setMsg("Data Save");
         onNext({ ...form });
@@ -174,8 +199,13 @@ export default function DesktopConfig({ bidData, onNext }) {
         <label className="block text-sm font-medium text-gray-700">
           {label}
         </label>
-        {optional && <span className="text-red-500 text-[11px] font-normal">*Optional</span>}
+        {optional && (
+          <span className="text-red-500 text-[11px] font-normal">
+            *Optional
+          </span>
+        )}
       </div>
+
       <div className="flex gap-2">
         <select
           name={name}
@@ -186,10 +216,13 @@ export default function DesktopConfig({ bidData, onNext }) {
         >
           <option value="">Select</option>
           {options.map((opt) => (
-            <option key={opt} value={opt}>{opt}</option>
+            <option key={opt} value={opt}>
+              {opt}
+            </option>
           ))}
-          <option value="">None</option>
+          <option value="None">None</option>
         </select>
+
         <input
           type="text"
           value={form[`${name}_price`] || ""}
@@ -202,12 +235,25 @@ export default function DesktopConfig({ bidData, onNext }) {
     </div>
   );
 
+  const getGroupValue = (currentValue, list) => {
+    if (currentValue === "None") return "None";
+    return list.includes(currentValue) ? currentValue : "";
+  };
+
   return (
     <div className="container mx-auto px-4 mt-4 max-w-6xl">
-      <h5 className="text-lg font-semibold text-gray-800 mb-4 pt-2 border-b pb-2">Create Desktop</h5>
+      <h5 className="text-lg font-semibold text-gray-800 mb-4 pt-2 border-b pb-2">
+        Create Desktop
+      </h5>
 
       {msg && (
-        <div className={`mb-4 px-4 py-2 rounded text-sm font-medium ${msg.includes("Save") && !msg.includes("Not") ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+        <div
+          className={`mb-4 px-4 py-2 rounded text-sm font-medium ${
+            msg.includes("Save") && !msg.includes("Not")
+              ? "bg-green-100 text-green-700"
+              : "bg-red-100 text-red-700"
+          }`}
+        >
           {msg}
         </div>
       )}
@@ -215,30 +261,81 @@ export default function DesktopConfig({ bidData, onNext }) {
       <form onSubmit={handleSubmit}>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4">
 
-          {/* TWO SEPARATE PROCESSOR INPUTS WITH PRICE FIELDS */}
           <div className="col-span-1 md:col-span-2 lg:col-span-3">
-            <label className="block text-sm font-medium text-gray-700 mb-2 underline">Processor Selection</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2 underline">
+              Processor Selection
+            </label>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Intel Section */}
               <div className="flex flex-col">
-                <span className="text-[11px] text-gray-500 font-medium mb-1 uppercase">Intel Processor</span>
+                <span className="text-[11px] text-gray-500 font-medium mb-1 uppercase">
+                  Intel Processor
+                </span>
+
                 <div className="flex gap-2">
-                  <select name="processor" value={intelProcessors.includes(form.processor) ? form.processor : ""} onChange={handleChange} className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <select
+                    name="processor"
+                    value={getGroupValue(form.processor, intelProcessors)}
+                    onChange={handleChange}
+                    className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
                     <option value="">Select Intel</option>
-                    {intelProcessors.map((p) => <option key={p} value={p}>{p}</option>)}
+                    {intelProcessors.map((p) => (
+                      <option key={p} value={p}>
+                        {p}
+                      </option>
+                    ))}
+                    <option value="None">None</option>
                   </select>
-                  <input type="text" value={intelProcessors.includes(form.processor) ? form.processor_price : ""} readOnly disabled placeholder="Price" className="w-24 border border-gray-200 rounded-md px-2 py-2 text-sm text-gray-500 bg-gray-50" />
+
+                  <input
+                    type="text"
+                    value={
+                      intelProcessors.includes(form.processor)
+                        ? form.processor_price
+                        : ""
+                    }
+                    readOnly
+                    disabled
+                    placeholder="Price"
+                    className="w-24 border border-gray-200 rounded-md px-2 py-2 text-sm text-gray-500 bg-gray-50"
+                  />
                 </div>
               </div>
-              {/* AMD Section */}
+
               <div className="flex flex-col">
-                <span className="text-[11px] text-gray-500 font-medium mb-1 uppercase">AMD Processor</span>
+                <span className="text-[11px] text-gray-500 font-medium mb-1 uppercase">
+                  AMD Processor
+                </span>
+
                 <div className="flex gap-2">
-                  <select name="processor" value={amdProcessors.includes(form.processor) ? form.processor : ""} onChange={handleChange} className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <select
+                    name="processor"
+                    value={getGroupValue(form.processor, amdProcessors)}
+                    onChange={handleChange}
+                    className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
                     <option value="">Select AMD</option>
-                    {amdProcessors.map((p) => <option key={p} value={p}>{p}</option>)}
+                    {amdProcessors.map((p) => (
+                      <option key={p} value={p}>
+                        {p}
+                      </option>
+                    ))}
+                    <option value="None">None</option>
                   </select>
-                  <input type="text" value={amdProcessors.includes(form.processor) ? form.processor_price : ""} readOnly disabled placeholder="Price" className="w-24 border border-gray-200 rounded-md px-2 py-2 text-sm text-gray-500 bg-gray-50" />
+
+                  <input
+                    type="text"
+                    value={
+                      amdProcessors.includes(form.processor)
+                        ? form.processor_price
+                        : ""
+                    }
+                    readOnly
+                    disabled
+                    placeholder="Price"
+                    className="w-24 border border-gray-200 rounded-md px-2 py-2 text-sm text-gray-500 bg-gray-50"
+                  />
                 </div>
               </div>
             </div>
@@ -249,26 +346,56 @@ export default function DesktopConfig({ bidData, onNext }) {
 
           <div className="col-span-1">
             <div className="flex items-center gap-2 mb-1">
-              <label className="block text-sm font-medium text-gray-700">Processor Description</label>
-              <span className="text-red-500 text-[11px] font-normal">*Optional</span>
+              <label className="block text-sm font-medium text-gray-700">
+                Processor Description
+              </label>
+              <span className="text-red-500 text-[11px] font-normal">
+                *Optional
+              </span>
             </div>
-            <textarea name="pro_descp" value={form.pro_descp} onChange={handleChange} rows={2} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+            <textarea
+              name="pro_descp"
+              value={form.pro_descp}
+              onChange={handleChange}
+              rows={2}
+              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+            />
           </div>
 
           <div className="col-span-1">
             <div className="flex items-center gap-2 mb-1">
-              <label className="block text-sm font-medium text-gray-700">Software Description</label>
-              <span className="text-red-500 text-[11px] font-normal">*Optional</span>
+              <label className="block text-sm font-medium text-gray-700">
+                Software Description
+              </label>
+              <span className="text-red-500 text-[11px] font-normal">
+                *Optional
+              </span>
             </div>
-            <textarea name="software1" value={form.software1} onChange={handleChange} rows={2} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+            <textarea
+              name="software1"
+              value={form.software1}
+              onChange={handleChange}
+              rows={2}
+              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+            />
           </div>
 
           <div className="col-span-1">
             <div className="flex items-center gap-2 mb-1">
-              <label className="block text-sm font-medium text-gray-700">Graphics Description</label>
-              <span className="text-red-500 text-[11px] font-normal">*Optional</span>
+              <label className="block text-sm font-medium text-gray-700">
+                Graphics Description
+              </label>
+              <span className="text-red-500 text-[11px] font-normal">
+                *Optional
+              </span>
             </div>
-            <textarea name="gp" value={form.gp} onChange={handleChange} rows={2} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+            <textarea
+              name="gp"
+              value={form.gp}
+              onChange={handleChange}
+              rows={2}
+              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+            />
           </div>
 
           <SelectField label="SSD 1" name="ssd" options={SSDS} required />
@@ -284,58 +411,156 @@ export default function DesktopConfig({ bidData, onNext }) {
           <SelectField label="Warranty" name="warranty" options={WARRANTIES} required />
 
           <div className="col-span-1">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Bid Date</label>
-            <input type="date" name="date" value={form.date} onChange={handleChange} required className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Bid End Date
+            </label>
+            <input
+              type="date"
+              name="date"
+              value={form.date}
+              onChange={handleChange}
+              required
+              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
           </div>
 
           <div className="col-span-1">
-            <label className="block text-sm font-medium text-gray-700 mb-1">EPBG (%)</label>
-            <input type="text" name="epbg" value={form.epbg} onChange={handleChange} placeholder="Price" className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm text-gray-500 bg-gray-50 outline-none" />
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              EPBG (%)
+            </label>
+            <input
+              type="text"
+              name="epbg"
+              value={form.epbg}
+              onChange={handleChange}
+              placeholder="Price"
+              className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm text-gray-500 bg-gray-50 outline-none"
+            />
           </div>
 
           <div className="col-span-1">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Freight & Installation</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Freight & Installation
+            </label>
             <div className="flex gap-2">
-              <input type="text" value="Yes" readOnly disabled className="flex-1 border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50 cursor-not-allowed" />
-              <input type="text" value="1000" readOnly disabled className="w-24 border border-gray-200 rounded-md px-2 py-2 text-sm bg-gray-50 cursor-not-allowed" />
+              <input
+                type="text"
+                value="Yes"
+                readOnly
+                disabled
+                className="flex-1 border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50 cursor-not-allowed"
+              />
+              <input
+                type="text"
+                value="1000"
+                readOnly
+                disabled
+                className="w-24 border border-gray-200 rounded-md px-2 py-2 text-sm bg-gray-50 cursor-not-allowed"
+              />
             </div>
           </div>
 
           <div className="col-span-1">
-            <label className="block text-sm font-medium text-gray-700 mb-1">HDD Return Option</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              HDD Return Option
+            </label>
             <div className="flex gap-2">
-              <select name="hddreturnable" value={form.hddreturnable} onChange={handleChange} className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+              <select
+                name="hddreturnable"
+                value={form.hddreturnable}
+                onChange={handleChange}
+                className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              >
                 <option value="Yes">Yes</option>
                 <option value="None">None</option>
               </select>
-              <input type="text" name="hddreturnable_price" value={form.hddreturnable_price} onChange={handleChange} placeholder="Price" className="w-24 border border-gray-300 rounded-md px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+
+              <input
+                type="text"
+                name="hddreturnable_price"
+                value={form.hddreturnable_price}
+                onChange={handleChange}
+                placeholder="Price"
+                className="w-24 border border-gray-300 rounded-md px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
             </div>
           </div>
 
-          {/* TWO SEPARATE MOTHERBOARD INPUTS WITH PRICE FIELDS */}
           <div className="col-span-1 md:col-span-2 lg:col-span-3">
-            <label className="block text-sm font-medium text-gray-700 mb-2 underline">Motherboard Selection</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2 underline">
+              Motherboard Selection
+            </label>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Intel Section */}
               <div className="flex flex-col">
-                <span className="text-[11px] text-gray-500 font-medium mb-1 uppercase">Intel Motherboard</span>
+                <span className="text-[11px] text-gray-500 font-medium mb-1 uppercase">
+                  Intel Motherboard
+                </span>
+
                 <div className="flex gap-2">
-                  <select name="motherboard" value={intelMotherboards.includes(form.motherboard) ? form.motherboard : ""} onChange={handleChange} className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <select
+                    name="motherboard"
+                    value={getGroupValue(form.motherboard, intelMotherboards)}
+                    onChange={handleChange}
+                    className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
                     <option value="">Select Intel</option>
-                    {intelMotherboards.map((m) => <option key={m} value={m}>{m}</option>)}
+                    {intelMotherboards.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                    <option value="None">None</option>
                   </select>
-                  <input type="text" value={intelMotherboards.includes(form.motherboard) ? form.motherboard_price : ""} readOnly disabled placeholder="Price" className="w-24 border border-gray-200 rounded-md px-2 py-2 text-sm text-gray-500 bg-gray-50" />
+
+                  <input
+                    type="text"
+                    value={
+                      intelMotherboards.includes(form.motherboard)
+                        ? form.motherboard_price
+                        : ""
+                    }
+                    readOnly
+                    disabled
+                    placeholder="Price"
+                    className="w-24 border border-gray-200 rounded-md px-2 py-2 text-sm text-gray-500 bg-gray-50"
+                  />
                 </div>
               </div>
-              {/* AMD Section */}
+
               <div className="flex flex-col">
-                <span className="text-[11px] text-gray-500 font-medium mb-1 uppercase">AMD Motherboard</span>
+                <span className="text-[11px] text-gray-500 font-medium mb-1 uppercase">
+                  AMD Motherboard
+                </span>
+
                 <div className="flex gap-2">
-                  <select name="motherboard" value={amdMotherboards.includes(form.motherboard) ? form.motherboard : ""} onChange={handleChange} className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <select
+                    name="motherboard"
+                    value={getGroupValue(form.motherboard, amdMotherboards)}
+                    onChange={handleChange}
+                    className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
                     <option value="">Select AMD</option>
-                    {amdMotherboards.map((m) => <option key={m} value={m}>{m}</option>)}
+                    {amdMotherboards.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                    <option value="None">None</option>
                   </select>
-                  <input type="text" value={amdMotherboards.includes(form.motherboard) ? form.motherboard_price : ""} readOnly disabled placeholder="Price" className="w-24 border border-gray-200 rounded-md px-2 py-2 text-sm text-gray-500 bg-gray-50" />
+
+                  <input
+                    type="text"
+                    value={
+                      amdMotherboards.includes(form.motherboard)
+                        ? form.motherboard_price
+                        : ""
+                    }
+                    readOnly
+                    disabled
+                    placeholder="Price"
+                    className="w-24 border border-gray-200 rounded-md px-2 py-2 text-sm text-gray-500 bg-gray-50"
+                  />
                 </div>
               </div>
             </div>
@@ -343,25 +568,33 @@ export default function DesktopConfig({ bidData, onNext }) {
 
           <div className="col-span-1 md:col-span-3">
             <div className="flex items-center gap-2 mb-1">
-              <label className="block text-sm font-medium text-gray-700">Motherboard Description</label>
-              <span className="text-red-500 text-[11px] font-normal">*Optional</span>
+              <label className="block text-sm font-medium text-gray-700">
+                Motherboard Description
+              </label>
+              <span className="text-red-500 text-[11px] font-normal">
+                *Optional
+              </span>
             </div>
-            <textarea 
-              name="motherboard_descp" 
-              value={form.motherboard_descp} 
-              onChange={handleChange} 
-              rows={2} 
-              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" 
-              placeholder="Technical details..." 
+
+            <textarea
+              name="motherboard_descp"
+              value={form.motherboard_descp}
+              onChange={handleChange}
+              rows={2}
+              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              placeholder="Technical details..."
             />
           </div>
-
         </div>
 
         <div className="flex justify-start items-center">
-            <button type="submit" disabled={saving} className="mt-8 mb-10 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold px-12 py-2.5 rounded-md text-sm transition shadow-lg active:scale-95">
+          <button
+            type="submit"
+            disabled={saving}
+            className="mt-8 mb-10 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold px-12 py-2.5 rounded-md text-sm transition shadow-lg active:scale-95"
+          >
             {saving ? "Saving..." : "Next"}
-            </button>
+          </button>
         </div>
       </form>
     </div>
