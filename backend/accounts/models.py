@@ -101,10 +101,7 @@ class DesktopBid(models.Model):
     ssd2       = models.CharField(max_length=100, blank=True, null=True)
     ssd2_price = models.FloatField(default=0)
 
-    # ───────── SOFTWARE ─────────
-    software1 = models.TextField(blank=True, null=True)
-    gp        = models.TextField(blank=True, null=True)
-
+   
     # ───────── OS ─────────
     os       = models.CharField(max_length=100)
     os_price = models.FloatField(default=0)

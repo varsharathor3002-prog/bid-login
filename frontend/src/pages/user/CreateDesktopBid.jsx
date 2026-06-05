@@ -203,6 +203,18 @@ export default function CreateDesktopBid() {
     return () => window.removeEventListener("popstate", handleBack);
   }, [step]);
 
+  const handleHeaderBack = () => {
+    if (step > 1) {
+      const newStep = step - 1;
+      setStep(newStep);
+      localStorage.setItem("desktop_bid_step", newStep);
+    } else {
+      localStorage.removeItem("desktop_bid_step");
+      localStorage.removeItem("desktop_bid_data");
+      window.history.back();
+    }
+  };
+
   const handleStep1Submit = (data) => {
     setAllData({ ...allData, ...data });
     setStep(2);
@@ -224,6 +236,29 @@ export default function CreateDesktopBid() {
       <div className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-gray-200 px-8 py-4 shadow-sm">
         <div className="max-w-[1750px] mx-auto flex items-center justify-between">
           <div className="flex items-center gap-6">
+
+            {/* BACK BUTTON */}
+            <button
+              type="button"
+              onClick={handleHeaderBack}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-gray-300 bg-white text-gray-700 text-sm font-semibold hover:bg-slate-800 hover:text-white hover:border-slate-800 transition-all duration-200 shadow-sm"
+            >
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M15 19l-7-7 7-7"
+                />
+              </svg>
+              Back
+            </button>
+
             <span className="text-lg font-black text-gray-900 tracking-tight">
               Create New Bid
             </span>
@@ -309,7 +344,6 @@ function Step1Form({ onNext, savedData }) {
       if (selectedFile) formData.append("upload_document", selectedFile);
       if (atcSpecialFile) formData.append("atc_special_document", atcSpecialFile);
       
-      // Loop through general docs and append if present
       Object.entries(generalDocs).forEach(([key, file]) => {
         if (file) formData.append(`general_${key}`, file);
       });
@@ -348,9 +382,12 @@ function Step1Form({ onNext, savedData }) {
   return (
     <div className="w-full max-w-[600px] bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
 
-      <h5 className="text-lg font-semibold text-gray-800 mb-5">
-        Create Desktop Bid
-      </h5>
+      {/* ── Header ── */}
+      <div className="flex items-center gap-3 mb-5">
+        <h5 className="text-lg font-semibold text-gray-800">
+          Create Desktop Bid
+        </h5>
+      </div>
 
       {error && (
         <div className="mb-3 bg-red-50 border border-red-300 text-red-700 text-sm px-3 py-2 rounded">
@@ -384,17 +421,6 @@ function Step1Form({ onNext, savedData }) {
           />
         </div>
 
-        {/* ADDRESS */}
-        {/* <div>
-          <Label>Address</Label>
-          <Input
-            type="text"
-            value={form.address}
-            onChange={(e) => handleChange("address", e.target.value)}
-            required
-          />
-        </div> */}
-
         <div>
           <Label>Organization Name</Label>
           <Input
@@ -405,8 +431,6 @@ function Step1Form({ onNext, savedData }) {
             required
           />
         </div>
-
-
 
         <div>
           <Label>Address</Label>

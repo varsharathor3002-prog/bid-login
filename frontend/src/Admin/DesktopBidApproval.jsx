@@ -50,14 +50,10 @@ const PriceField = ({
         <label className="block text-sm font-medium text-gray-700">
           {label}
         </label>
-
         {optional && (
-          <span className="text-red-500 text-[11px]">
-            *Optional
-          </span>
+          <span className="text-red-500 text-[11px]">*Optional</span>
         )}
       </div>
-
       <div className="flex gap-2">
         {isTextArea ? (
           <textarea
@@ -78,7 +74,6 @@ const PriceField = ({
             className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
           />
         )}
-
         {priceName && (
           <input
             type="text"
@@ -94,7 +89,6 @@ const PriceField = ({
     </div>
   );
 };
-
 
 function GeneralDocsViewPopup({ form }) {
   const [open, setOpen] = useState(false);
@@ -142,12 +136,11 @@ function GeneralDocsViewPopup({ form }) {
             <div className="text-xs text-gray-500">Experience, Turnover, OEM Certs, etc.</div>
           </div>
         </div>
-
         <div className="flex items-center gap-3">
           {uploadedCount > 0 ? (
-             <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-               {uploadedCount} Files
-             </span>
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+              {uploadedCount} Files
+            </span>
           ) : (
             <span className="text-xs text-gray-400">None</span>
           )}
@@ -173,14 +166,12 @@ function GeneralDocsViewPopup({ form }) {
                 {uploadedCount} / {GENERAL_DOCS.length} Uploaded
               </span>
             </div>
-
             <div className="divide-y divide-gray-100 max-h-[320px] overflow-y-auto">
               {GENERAL_DOCS.map((doc) => {
                 const url = form?.[doc.key];
                 const isUploaded = !!url;
                 const fullUrl = url && !url.startsWith("http") ? `http://127.0.0.1:8000${url}` : url;
                 const filename = url ? url.split("/").pop() : "";
-
                 return (
                   <div
                     key={doc.id}
@@ -197,11 +188,9 @@ function GeneralDocsViewPopup({ form }) {
                         </svg>
                       )}
                     </div>
-
                     <span className={`flex-1 text-sm ${isUploaded ? "text-gray-800 font-medium" : "text-gray-400"}`}>
                       {doc.label}
                     </span>
-
                     {isUploaded ? (
                       <div className="flex items-center gap-3">
                         <a href={fullUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1">
@@ -220,7 +209,6 @@ function GeneralDocsViewPopup({ form }) {
                 );
               })}
             </div>
-
             <div className="px-4 py-2 border-t border-gray-100 bg-gray-50 flex justify-end">
               <button type="button" onClick={() => setOpen(false)} className="text-xs text-gray-500 hover:text-gray-700 font-medium px-3 py-1 rounded hover:bg-gray-200 transition">
                 Close Panel
@@ -259,27 +247,26 @@ function SpecialDocView({ form }) {
 
   return (
     <div className="w-full p-4 rounded-lg border border-purple-200 bg-purple-50 hover:bg-purple-100 hover:border-purple-300 transition-all duration-200 flex items-center justify-between group">
-       <div className="flex items-center gap-3">
-          <div className="p-2 rounded-full bg-purple-200 text-purple-700 group-hover:bg-purple-200">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </div>
-          <div className="text-left">
-            <div className="text-sm font-bold text-purple-900">Special Document</div>
-            <div className="text-xs text-purple-700">ATC Specific Requirement</div>
-          </div>
-       </div>
-
-       <div className="flex items-center gap-2">
-          <a href={fullUrl} target="_blank" rel="noreferrer" className="px-3 py-1.5 text-xs font-medium text-purple-700 bg-white border border-purple-200 rounded hover:bg-purple-50 transition">
-            View File
-          </a>
-          <button type="button" onClick={handleDownload} className="px-3 py-1.5 text-xs font-medium text-white bg-purple-600 rounded hover:bg-purple-700 shadow-sm transition flex items-center gap-1">
-            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-            Download
-          </button>
-       </div>
+      <div className="flex items-center gap-3">
+        <div className="p-2 rounded-full bg-purple-200 text-purple-700 group-hover:bg-purple-200">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <div className="text-left">
+          <div className="text-sm font-bold text-purple-900">Special Document</div>
+          <div className="text-xs text-purple-700">ATC Specific Requirement</div>
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <a href={fullUrl} target="_blank" rel="noreferrer" className="px-3 py-1.5 text-xs font-medium text-purple-700 bg-white border border-purple-200 rounded hover:bg-purple-50 transition">
+          View File
+        </a>
+        <button type="button" onClick={handleDownload} className="px-3 py-1.5 text-xs font-medium text-white bg-purple-600 rounded hover:bg-purple-700 shadow-sm transition flex items-center gap-1">
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+          Download
+        </button>
+      </div>
     </div>
   );
 }
@@ -322,11 +309,17 @@ export default function DesktopBidApproval() {
     setLoading(true);
     try {
       const res = await fetch(`${API_BASE}/desktop-bids/list/?status=${activeTab}&role=admin`);
-      if (!res.ok) throw new Error("Failed");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        console.error("API error:", res.status, errData);
+        throw new Error(`Failed with status ${res.status}`);
+      }
       const data = await res.json();
       const normalized = data.map((bid) => ({
         ...bid,
-        analyser_display_name: bid.analyser_name || bid.analyzer_name || bid.analyser || bid.analyzer || bid.analysed_by || bid.analyzed_by || bid.created_by || bid.user_name || "-",
+        analyser_display_name:
+          bid.analyser_name || bid.analyzer_name || bid.analyser || bid.analyzer ||
+          bid.analysed_by || bid.analyzed_by || bid.created_by || bid.user_name || "-",
         model_number: bid.model_number || bid.model || "",
         ssd1: bid.ssd1 || bid.ssd || "",
         ssd1_price: bid.ssd1_price || bid.ssd_price || "",
@@ -336,7 +329,7 @@ export default function DesktopBidApproval() {
       }));
       setBids(normalized);
     } catch (error) {
-      console.log(error);
+      console.error("fetchBids error:", error);
       setBids([]);
     } finally {
       setLoading(false);
@@ -350,7 +343,7 @@ export default function DesktopBidApproval() {
       const data = await res.json();
       setReAnalyzeCount(Array.isArray(data) ? data.length : 0);
     } catch (error) {
-      console.log(error);
+      console.error("fetchReAnalyzeCount error:", error);
       setReAnalyzeCount(0);
     }
   };
@@ -409,7 +402,10 @@ export default function DesktopBidApproval() {
       formData.append("status", action);
       formData.append("admin_note", adminNote);
       formData.append("admin_username", localStorage.getItem("username") || "");
-      const res = await fetch(`${API_BASE}/desktop-bids/${form.id}/admin-review/`, { method: "PATCH", body: formData });
+      const res = await fetch(`${API_BASE}/desktop-bids/${form.id}/admin-review/`, {
+        method: "PATCH",
+        body: formData,
+      });
       const data = await res.json();
       if (res.ok) {
         setMsg(action === "approved" ? "✅ Bid Approved Successfully!" : "⚠️ Sent back to Analyser");
@@ -418,7 +414,7 @@ export default function DesktopBidApproval() {
         setMsg(data.error || "Something went wrong");
       }
     } catch (error) {
-      console.log(error);
+      console.error("handleAction error:", error);
       setMsg("Server error");
     } finally {
       setSubmitting(false);
@@ -426,24 +422,62 @@ export default function DesktopBidApproval() {
   };
 
   const StatusBadge = ({ status }) => {
-    if (status === "approved") return <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">✅ Approved</span>;
-    if (status === "pending") return <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-700">⏳ Pending</span>;
+    if (status === "approved")
+      return <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">✅ Approved</span>;
+    if (status === "pending")
+      return <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-700">⏳ Pending</span>;
     return <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-700">⚠️ Re-Analyze</span>;
   };
 
   const TABLE_HEADS = [
-    { label: "S.No",       width: "w-16"   },
-    { label: "Analyser",   width: "w-36"   },
-    { label: "Department", width: "w-40"   },
-    { label: "Bid No",     width: "w-36"   },
-    { label: "Model",      width: "w-40"   },
-    { label: "Status",     width: "w-32"   },
-    { label: "Action",     width: "w-24"   },
+    { label: "S.No",       width: "w-16" },
+    { label: "Analyser",   width: "w-36" },
+    { label: "Department", width: "w-40" },
+    { label: "Bid No",     width: "w-36" },
+    { label: "Model",      width: "w-40" },
+    { label: "Status",     width: "w-32" },
+    { label: "Action",     width: "w-24" },
   ];
 
+  const totalPages = Math.ceil(bids.length / ROWS_PER_PAGE);
+  const startIdx = (currentPage - 1) * ROWS_PER_PAGE;
+  const pageBids = bids.slice(startIdx, startIdx + ROWS_PER_PAGE);
+
+  const half = Math.floor(MAX_PAGE_BTNS / 2);
+  let pageStart = Math.max(1, currentPage - half);
+  let pageEnd = Math.min(totalPages, pageStart + MAX_PAGE_BTNS - 1);
+  if (pageEnd - pageStart < MAX_PAGE_BTNS - 1) {
+    pageStart = Math.max(1, pageEnd - MAX_PAGE_BTNS + 1);
+  }
+  const pageNums = [];
+  for (let p = pageStart; p <= pageEnd; p++) pageNums.push(p);
+
   return (
+    
     <div className="w-full bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-  
+      <button
+      type="button"
+      onClick={() => window.history.back()}
+      className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 bg-white text-gray-700 text-sm font-medium hover:bg-slate-800 hover:text-white hover:border-slate-800 transition-all duration-200 shadow-sm"
+    >
+      <svg
+        className="w-4 h-4"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="2"
+          d="M15 19l-7-7 7-7"
+        />
+      </svg>
+      Back
+    </button>
+
+
+      {/* Tabs */}
       <div className="flex gap-3 px-6 pt-3 bg-gray-50 border-b border-gray-200 overflow-visible">
         {TABS.map((tab) => (
           <button
@@ -465,201 +499,164 @@ export default function DesktopBidApproval() {
           </button>
         ))}
       </div>
+      
 
+      {/* Table */}
       {loading ? (
         <div className="p-20 text-center text-gray-400">Loading...</div>
       ) : bids.length === 0 ? (
         <div className="p-20 text-center text-gray-400">No records found</div>
-      ) : (() => {
-        const totalPages = Math.ceil(bids.length / ROWS_PER_PAGE);
-        const startIdx = (currentPage - 1) * ROWS_PER_PAGE;
-        const pageBids = bids.slice(startIdx, startIdx + ROWS_PER_PAGE);
-
-        
-        const half = Math.floor(MAX_PAGE_BTNS / 2);
-        let pageStart = Math.max(1, currentPage - half);
-        let pageEnd = Math.min(totalPages, pageStart + MAX_PAGE_BTNS - 1);
-        if (pageEnd - pageStart < MAX_PAGE_BTNS - 1) {
-          pageStart = Math.max(1, pageEnd - MAX_PAGE_BTNS + 1);
-        }
-        const pageNums = [];
-        for (let p = pageStart; p <= pageEnd; p++) pageNums.push(p);
-
-        return (
-          <>
-            <div className="overflow-x-auto">
-              <table className="w-full table-fixed">
-                <thead>
-                  <tr className="bg-slate-800">
-                    {TABLE_HEADS.map((head) => (
-                      <th
-                        key={head.label}
-                        className={`${head.width} px-4 py-4 text-[11px] font-bold text-white uppercase tracking-wide text-center`}
-                      >
-                        {head.label}
-                      </th>
-                    ))}
+      ) : (
+        <>
+          <div className="overflow-x-auto">
+            <table className="w-full table-fixed">
+              <thead>
+                <tr className="bg-slate-800">
+                  {TABLE_HEADS.map((head) => (
+                    <th
+                      key={head.label}
+                      className={`${head.width} px-4 py-4 text-[11px] font-bold text-white uppercase tracking-wide text-center`}
+                    >
+                      {head.label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {pageBids.map((bid, i) => (
+                  <tr key={bid.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-4 text-sm text-gray-700 text-center">{startIdx + i + 1}</td>
+                    <td className="px-4 py-4 text-sm text-gray-700 text-center truncate">{bid.analyser_display_name}</td>
+                    <td className="px-4 py-4 text-sm text-gray-700 text-center truncate">{bid.dept_name}</td>
+                    <td className="px-4 py-4 text-sm text-blue-600 font-semibold text-center truncate">{bid.bid_no}</td>
+                    <td className="px-4 py-4 text-sm text-gray-700 text-center truncate">{bid.model_number}</td>
+                    <td className="px-4 py-4 text-center">
+                      <div className="flex justify-center">
+                        <StatusBadge status={bid.status} />
+                      </div>
+                    </td>
+                    <td className="px-4 py-4 text-center">
+                      <div className="flex justify-center">
+                        <button
+                          type="button"
+                          onClick={() => openModal(bid)}
+                          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-xs font-semibold transition-colors"
+                        >
+                          View
+                        </button>
+                      </div>
+                    </td>
                   </tr>
-                </thead>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
-                <tbody>
-                  {pageBids.map((bid, i) => (
-                    <tr
-                      key={bid.id}
-                      className="border-b border-gray-100 hover:bg-gray-50 transition-colors"
-                    >
-                      <td className="px-4 py-4 text-sm text-gray-700 text-center">
-                        {startIdx + i + 1}
-                      </td>
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center px-6 py-4 border-t border-gray-100 bg-gray-50 gap-4">
+              <p className="text-xs text-gray-500">
+                Showing{" "}
+                <span className="font-semibold text-gray-700">{startIdx + 1}–{Math.min(startIdx + ROWS_PER_PAGE, bids.length)}</span>
+                {" "}of{" "}
+                <span className="font-semibold text-gray-700">{bids.length}</span>
+              </p>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage((p) => p - 1)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-white border-gray-300 text-gray-600 hover:bg-slate-800 hover:text-white hover:border-slate-800"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+                  </svg>
+                  Prev
+                </button>
 
-                      <td className="px-4 py-4 text-sm text-gray-700 text-center truncate">
-                        {bid.analyser_display_name}
-                      </td>
+                {pageStart > 1 && (
+                  <>
+                    <button type="button" onClick={() => setCurrentPage(1)} className="w-8 h-8 rounded-md text-xs font-semibold border bg-white border-gray-300 text-gray-600 hover:bg-slate-800 hover:text-white hover:border-slate-800 transition-all">1</button>
+                    {pageStart > 2 && <span className="w-8 h-8 flex items-center justify-center text-gray-400 text-xs">…</span>}
+                  </>
+                )}
 
-                      <td className="px-4 py-4 text-sm text-gray-700 text-center truncate">
-                        {bid.dept_name}
-                      </td>
-
-                      <td className="px-4 py-4 text-sm text-blue-600 font-semibold text-center truncate">
-                        {bid.bid_no}
-                      </td>
-
-                      <td className="px-4 py-4 text-sm text-gray-700 text-center truncate">
-                        {bid.model_number}
-                      </td>
-
-                      <td className="px-4 py-4 text-center">
-                        <div className="flex justify-center">
-                          <StatusBadge status={bid.status} />
-                        </div>
-                      </td>
-
-                      <td className="px-4 py-4 text-center">
-                        <div className="flex justify-center">
-                          <button
-                            type="button"
-                            onClick={() => openModal(bid)}
-                            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-xs font-semibold transition-colors"
-                          >
-                            View
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-     
-            {totalPages > 1 && (
-              <div className="flex items-center justify-center px-6 py-4 border-t border-gray-100 bg-gray-50 gap-4">
-             
-                <p className="text-xs text-gray-500">
-                  Showing{" "}
-                  <span className="font-semibold text-gray-700">
-                    {startIdx + 1}–{Math.min(startIdx + ROWS_PER_PAGE, bids.length)}
-                  </span>{" "}
-                  of{" "}
-                  <span className="font-semibold text-gray-700">{bids.length}</span>
-                </p>
-
-        
-                <div className="flex items-center gap-1">
-   
+                {pageNums.map((p) => (
                   <button
+                    key={p}
                     type="button"
-                    disabled={currentPage === 1}
-                    onClick={() => setCurrentPage((p) => p - 1)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border transition-all
-                      disabled:opacity-40 disabled:cursor-not-allowed
-                      bg-white border-gray-300 text-gray-600 hover:bg-slate-800 hover:text-white hover:border-slate-800"
+                    onClick={() => setCurrentPage(p)}
+                    className={`w-8 h-8 rounded-md text-xs font-semibold border transition-all ${
+                      p === currentPage
+                        ? "bg-slate-800 text-white border-slate-800 shadow-sm"
+                        : "bg-white border-gray-300 text-gray-600 hover:bg-slate-800 hover:text-white hover:border-slate-800"
+                    }`}
                   >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
-                    </svg>
-                    Prev
+                    {p}
                   </button>
+                ))}
 
-                
-                  {pageStart > 1 && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => setCurrentPage(1)}
-                        className="w-8 h-8 rounded-md text-xs font-semibold border bg-white border-gray-300 text-gray-600 hover:bg-slate-800 hover:text-white hover:border-slate-800 transition-all"
-                      >
-                        1
-                      </button>
-                      {pageStart > 2 && (
-                        <span className="w-8 h-8 flex items-center justify-center text-gray-400 text-xs">…</span>
-                      )}
-                    </>
-                  )}
+                {pageEnd < totalPages && (
+                  <>
+                    {pageEnd < totalPages - 1 && <span className="w-8 h-8 flex items-center justify-center text-gray-400 text-xs">…</span>}
+                    <button type="button" onClick={() => setCurrentPage(totalPages)} className="w-8 h-8 rounded-md text-xs font-semibold border bg-white border-gray-300 text-gray-600 hover:bg-slate-800 hover:text-white hover:border-slate-800 transition-all">{totalPages}</button>
+                  </>
+                )}
 
-                  {pageNums.map((p) => (
-                    <button
-                      key={p}
-                      type="button"
-                      onClick={() => setCurrentPage(p)}
-                      className={`w-8 h-8 rounded-md text-xs font-semibold border transition-all ${
-                        p === currentPage
-                          ? "bg-slate-800 text-white border-slate-800 shadow-sm"
-                          : "bg-white border-gray-300 text-gray-600 hover:bg-slate-800 hover:text-white hover:border-slate-800"
-                      }`}
-                    >
-                      {p}
-                    </button>
-                  ))}
-
-                  {pageEnd < totalPages && (
-                    <>
-                      {pageEnd < totalPages - 1 && (
-                        <span className="w-8 h-8 flex items-center justify-center text-gray-400 text-xs">…</span>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => setCurrentPage(totalPages)}
-                        className="w-8 h-8 rounded-md text-xs font-semibold border bg-white border-gray-300 text-gray-600 hover:bg-slate-800 hover:text-white hover:border-slate-800 transition-all"
-                      >
-                        {totalPages}
-                      </button>
-                    </>
-                  )}
-
-              
-                  <button
-                    type="button"
-                    disabled={currentPage === totalPages}
-                    onClick={() => setCurrentPage((p) => p + 1)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border transition-all
-                      disabled:opacity-40 disabled:cursor-not-allowed
-                      bg-white border-gray-300 text-gray-600 hover:bg-slate-800 hover:text-white hover:border-slate-800"
-                  >
-                    Next
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                    </svg>
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  disabled={currentPage === totalPages}
+                  onClick={() => setCurrentPage((p) => p + 1)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-white border-gray-300 text-gray-600 hover:bg-slate-800 hover:text-white hover:border-slate-800"
+                >
+                  Next
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
               </div>
-            )}
-          </>
-        );
-      })()}
+            </div>
+          )}
+        </>
+      )}
 
-  
+      {/* Modal */}
       {selected && (
         <div className="fixed inset-0 bg-black/60 z-50 overflow-y-auto py-8 px-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-7xl mx-auto">
+
+            {/* ── Modal Header with Back Button ── */}
             <div className="flex justify-between items-center px-6 py-4 border-b bg-gray-50 rounded-t-xl">
-              <div>
-                <h2 className="text-lg font-bold text-gray-800">Review & Update Desktop</h2>
-                <p className="text-sm text-gray-500 mt-1">
-                  Bid No: <span className="text-blue-600 font-semibold ml-1">{selected.bid_no}</span>
-                </p>
+              <div className="flex items-center gap-4">
+                {/* Back Button */}
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 bg-white text-gray-600 text-sm font-medium hover:bg-slate-800 hover:text-white hover:border-slate-800 transition-all duration-200 shadow-sm"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+                  </svg>
+                  Back
+                </button>
+
+                {/* Title */}
+                <div>
+                  <h2 className="text-lg font-bold text-gray-800">Review & Update Desktop</h2>
+                  <p className="text-sm text-gray-500 mt-0.5">
+                    Bid No: <span className="text-blue-600 font-semibold ml-1">{selected.bid_no}</span>
+                  </p>
+                </div>
               </div>
-              <button type="button" onClick={closeModal} className="text-2xl text-gray-400 hover:text-gray-700">×</button>
+
+              {/* Close ×  */}
+              <button
+                type="button"
+                onClick={closeModal}
+                className="text-2xl text-gray-400 hover:text-gray-700 leading-none"
+              >
+                ×
+              </button>
             </div>
 
             {msg && (
@@ -672,6 +669,7 @@ export default function DesktopBidApproval() {
 
             <div className="p-6">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4">
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Bid Number</label>
                   <input type="text" name="bid_no" value={form?.bid_no || ""} onChange={handleChange} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
@@ -688,6 +686,11 @@ export default function DesktopBidApproval() {
                 </div>
 
                 <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Organization</label>
+                  <input type="text" name="organization" value={form?.organization || ""} onChange={handleChange} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+
+                <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
                   <input type="text" name="qty" value={form?.qty || ""} onChange={handleChange} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
@@ -698,7 +701,7 @@ export default function DesktopBidApproval() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Bid Date</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Bid End Date</label>
                   <input type="date" name="date" value={form?.date || ""} onChange={handleChange} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
 
@@ -740,8 +743,6 @@ export default function DesktopBidApproval() {
                 <PriceField label="Warranty" name="warranty" priceName="warranty_price" form={form} handleChange={handleChange} />
                 <PriceField label="Motherboard" name="motherboard" priceName="motherboard_price" form={form} handleChange={handleChange} />
                 <PriceField label="Processor Description" name="pro_descp" isTextArea optional form={form} handleChange={handleChange} />
-                <PriceField label="Software Description" name="software1" isTextArea optional form={form} handleChange={handleChange} />
-                <PriceField label="Graphics Description" name="gp" isTextArea optional form={form} handleChange={handleChange} />
                 <PriceField label="Motherboard Description" name="motherboard_descp" isTextArea optional form={form} handleChange={handleChange} />
 
                 <div>

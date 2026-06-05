@@ -214,7 +214,6 @@ def safe_float(value, default=0):
 
 
 def _file_url(request, field):
-    """FileField se safe absolute URL nikalo."""
     try:
         if field and field.name:
             return request.build_absolute_uri(field.url)
@@ -420,7 +419,6 @@ def delete_all_catalogue_products(request):
 # ══════════════════════════════════════════════════════════
 
 def _bid_data(bid, request, status_label=None):
-    """DesktopBid object ko dict mein convert karo — sabhi fields ke saath."""
     return {
         "id": bid.id,
         "user_name": bid.user.username if bid.user else "Unknown",
@@ -526,10 +524,7 @@ def _bid_data(bid, request, status_label=None):
         "freightInstallation_price": bid.freightInstallation_price or 0,
         "hddreturnable": bid.hddreturnable or "",
         "hddreturnable_price": bid.hddreturnable_price or 0,
-
-        # ── Software / GP ──
-        "software1": bid.software1 or "",
-        "gp": bid.gp or "",
+        "freight_price": bid.freightInstallation_price or 0,
     }
 
 
@@ -576,8 +571,6 @@ def create_desktop_bid(request):
             cabinet="",
             warranty="",
             motherboard="",
-            software1="",
-            gp="",
             date="2000-01-01",
         )
 
@@ -602,48 +595,45 @@ def update_desktop_bid(request, bid_id):
         bid = DesktopBid.objects.get(id=bid_id)
         data = json.loads(request.body)
 
-        bid.processor = data.get("processor", bid.processor)
+        bid.processor       = data.get("processor", bid.processor)
         bid.processor_price = safe_float(data.get("processor_price"), bid.processor_price)
-        bid.pro_descp = data.get("pro_descp", bid.pro_descp)
+        bid.pro_descp       = data.get("pro_descp", bid.pro_descp)
 
-        bid.ram = data.get("ram", bid.ram)
+        bid.ram       = data.get("ram", bid.ram)
         bid.ram_price = safe_float(data.get("ram_price"), bid.ram_price)
 
-        bid.hdd = data.get("hdd", bid.hdd)
+        bid.hdd       = data.get("hdd", bid.hdd)
         bid.hdd_price = safe_float(data.get("hdd_price"), bid.hdd_price)
 
-        bid.ssd1 = data.get("ssd", bid.ssd1)
+        bid.ssd1       = data.get("ssd", bid.ssd1)
         bid.ssd1_price = safe_float(data.get("ssd_price"), bid.ssd1_price)
-        bid.ssd2 = data.get("ssd2", bid.ssd2)
+        bid.ssd2       = data.get("ssd2", bid.ssd2)
         bid.ssd2_price = safe_float(data.get("ssd2_price"), bid.ssd2_price)
 
-        bid.software1 = data.get("software1", bid.software1)
-        bid.gp = data.get("gp", bid.gp)
-
-        bid.os = data.get("os", bid.os)
+        bid.os       = data.get("os", bid.os)
         bid.os_price = safe_float(data.get("os_price"), bid.os_price)
 
-        bid.dvd = data.get("dvd", bid.dvd)
+        bid.dvd       = data.get("dvd", bid.dvd)
         bid.dvd_price = safe_float(data.get("dvd_price"), bid.dvd_price)
 
-        bid.wifi = data.get("wifi", bid.wifi)
+        bid.wifi       = data.get("wifi", bid.wifi)
         bid.wifi_price = safe_float(data.get("wifi_price"), bid.wifi_price)
 
-        bid.monitor = data.get("monitor", bid.monitor)
+        bid.monitor       = data.get("monitor", bid.monitor)
         bid.monitor_price = safe_float(data.get("monitor_price"), bid.monitor_price)
 
-        bid.cabinet = data.get("cabinet", bid.cabinet)
+        bid.cabinet       = data.get("cabinet", bid.cabinet)
         bid.cabinet_price = safe_float(data.get("cabinet_price"), bid.cabinet_price)
 
-        bid.keyboard = data.get("keyboard", bid.keyboard)
+        bid.keyboard       = data.get("keyboard", bid.keyboard)
         bid.keyboard_price = safe_float(data.get("keyboard_price"), bid.keyboard_price)
 
-        bid.warranty = data.get("warranty", bid.warranty)
+        bid.warranty       = data.get("warranty", bid.warranty)
         bid.warranty_price = safe_float(data.get("warranty_price"), bid.warranty_price)
 
-        bid.motherboard = data.get("motherboard", bid.motherboard)
-        bid.motherboard_price = safe_float(data.get("motherboard_price"), bid.motherboard_price)
-        bid.motherboard_descp = data.get("motherboard_descp", bid.motherboard_descp)
+        bid.motherboard        = data.get("motherboard", bid.motherboard)
+        bid.motherboard_price  = safe_float(data.get("motherboard_price"), bid.motherboard_price)
+        bid.motherboard_descp  = data.get("motherboard_descp", bid.motherboard_descp)
 
         if data.get("date"):
             bid.date = data.get("date")
@@ -837,12 +827,12 @@ def review_desktop_bid(request, bid_id):
         bid = DesktopBid.objects.get(id=bid_id)
         data = json.loads(request.body)
 
-        bid.bid_no    = data.get("bid_no", bid.bid_no)
-        bid.dept_name = data.get("dept_name", bid.dept_name)
+        bid.bid_no       = data.get("bid_no", bid.bid_no)
+        bid.dept_name    = data.get("dept_name", bid.dept_name)
         bid.organization = data.get("organization", bid.organization)
-        bid.address   = data.get("address", bid.address)
-        bid.pincode   = data.get("pincode", bid.pincode)
-        bid.atc       = data.get("atc", bid.atc)
+        bid.address      = data.get("address", bid.address)
+        bid.pincode      = data.get("pincode", bid.pincode)
+        bid.atc          = data.get("atc", bid.atc)
         if data.get("qty"):
             bid.qty = int(data.get("qty"))
         if data.get("model_number"):
@@ -859,8 +849,6 @@ def review_desktop_bid(request, bid_id):
         bid.ssd1_price      = safe_float(data.get("ssd1_price") or data.get("ssd_price"), bid.ssd1_price)
         bid.ssd2            = data.get("ssd2", bid.ssd2)
         bid.ssd2_price      = safe_float(data.get("ssd2_price"), bid.ssd2_price)
-        bid.software1       = data.get("software1", bid.software1)
-        bid.gp              = data.get("gp", bid.gp)
         bid.os              = data.get("os", bid.os)
         bid.os_price        = safe_float(data.get("os_price"), bid.os_price)
         bid.dvd             = data.get("dvd", bid.dvd)
@@ -880,7 +868,7 @@ def review_desktop_bid(request, bid_id):
         bid.motherboard_descp  = data.get("motherboard_descp", bid.motherboard_descp)
         if data.get("date"):
             bid.date = data.get("date")
-        bid.epbg                     = safe_float(data.get("epbg"), bid.epbg)
+        bid.epbg                      = safe_float(data.get("epbg"), bid.epbg)
         bid.freightInstallation       = data.get("freightInstallation", bid.freightInstallation)
         bid.freightInstallation_price = safe_float(data.get("freightInstallation_price"), bid.freightInstallation_price)
         bid.hddreturnable             = data.get("hddreturnable", bid.hddreturnable)
@@ -940,8 +928,6 @@ def admin_review_desktop_bid(request, bid_id):
         bid.ssd1_price      = safe_float(data.get("ssd1_price") or data.get("ssd_price"), bid.ssd1_price)
         bid.ssd2            = data.get("ssd2", bid.ssd2)
         bid.ssd2_price      = safe_float(data.get("ssd2_price"), bid.ssd2_price)
-        bid.software1       = data.get("software1", bid.software1)
-        bid.gp              = data.get("gp", bid.gp)
         bid.os              = data.get("os", bid.os)
         bid.os_price        = safe_float(data.get("os_price"), bid.os_price)
         bid.dvd             = data.get("dvd", bid.dvd)
@@ -961,7 +947,7 @@ def admin_review_desktop_bid(request, bid_id):
         bid.motherboard_descp  = data.get("motherboard_descp", bid.motherboard_descp)
         if data.get("date"):
             bid.date = data.get("date")
-        bid.epbg                     = safe_float(data.get("epbg"), bid.epbg)
+        bid.epbg                      = safe_float(data.get("epbg"), bid.epbg)
         bid.freightInstallation       = data.get("freightInstallation", bid.freightInstallation)
         bid.freightInstallation_price = safe_float(data.get("freightInstallation_price"), bid.freightInstallation_price)
         bid.hddreturnable             = data.get("hddreturnable", bid.hddreturnable)
@@ -1123,9 +1109,9 @@ def extract_specs_from_pdf(request):
         )
         ram = f"{ram_size} GB {ram_type}".strip() if ram_size and ram_type else (f"{ram_size} GB".strip() if ram_size else "")
 
-        storage_type    = _label_value(flat, "Type of Storage Installed with the System") or _label_value(flat, "Type of Storage Installed")
-        ssd_capacity    = _label_value(flat, "SSD - Storage Capacity (in GB)") or _label_value(flat, "SSD Storage Capacity (in GB)")
-        hdd_capacity    = _label_value(flat, "HDD - Storage Capacity (in GB)") or _label_value(flat, "HDD Storage Capacity (in GB)")
+        storage_type     = _label_value(flat, "Type of Storage Installed with the System") or _label_value(flat, "Type of Storage Installed")
+        ssd_capacity     = _label_value(flat, "SSD - Storage Capacity (in GB)") or _label_value(flat, "SSD Storage Capacity (in GB)")
+        hdd_capacity     = _label_value(flat, "HDD - Storage Capacity (in GB)") or _label_value(flat, "HDD Storage Capacity (in GB)")
         storage_capacity = (
             _label_value(flat, "Primary Storage (Boot Drive) Capacity (in GB)") or
             _label_value(flat, "Storage Capacity (in GB)") or
