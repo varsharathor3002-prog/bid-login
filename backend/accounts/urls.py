@@ -1,5 +1,6 @@
 from django.urls import path
-from . import views  # Yeh automatic accounts/views.py ko point karega
+from . import views
+
 
 urlpatterns = [
     # ── AUTH ────────────────────────────────────────────────────────
@@ -11,22 +12,16 @@ urlpatterns = [
     path("delete-analyser/<int:id>/", views.delete_analyser),
     path('login/', views.login),
     path("forgot-password/", views.forgot_password),
-  
-    # Fixed Path: Yahan se extra 'api/' hata diya hai taaki URL hierarchy breakdown na ho
-    # path("save-gem-specs/", views.save_gem_specs, name="save_gem_specs"),
-    
-   
 
-# ── CATALOGUE PRODUCTS (Analyser portal) ────────────────────────
-path("catalogue/", views.list_catalogue_products, name="list_catalogue_products"),
-path("catalogue/create/", views.create_catalogue_product, name="create_catalogue_product"),
-path("catalogue/delete-all/", views.delete_all_catalogue_products, name="delete_all_catalogue_products"),  # ← YAHAN
-path("catalogue/extract-pdf/", views.extract_specs_from_pdf, name="extract_pdf"),
-path("catalogue/<int:product_id>/", views.get_catalogue_product, name="get_catalogue_product"),
-path("catalogue/<int:product_id>/update/", views.update_catalogue_product, name="update_catalogue_product"),
-path("catalogue/<int:product_id>/delete/", views.delete_catalogue_product, name="delete_catalogue_product"),
+    # ── CATALOGUE PRODUCTS (Analyser portal) ────────────────────────
+    path("catalogue/", views.list_catalogue_products, name="list_catalogue_products"),
+    path("catalogue/create/", views.create_catalogue_product, name="create_catalogue_product"),
+    path("catalogue/extract-pdf/", views.extract_catalogue_pdf, name="extract_catalogue_pdf"),
+    path("catalogue/delete-all/", views.delete_all_catalogue_products, name="delete_all_catalogue_products"),
+    path("catalogue/<int:product_id>/", views.get_catalogue_product, name="get_catalogue_product"),
+    path("catalogue/<int:product_id>/update/", views.update_catalogue_product, name="update_catalogue_product"),
+    path("catalogue/<int:product_id>/delete/", views.delete_catalogue_product, name="delete_catalogue_product"),
 
-   
     # ── PRICE CHECK ENDPOINTS ────────────────────────────────────────
     path("check_processor/", views.check_processor, name="check_processor"),
     path("check_ram/", views.check_ram, name="check_ram"),
@@ -40,6 +35,7 @@ path("catalogue/<int:product_id>/delete/", views.delete_catalogue_product, name=
     path("check_cabinet_type/", views.check_cabinet_type, name="check_cabinet_type"),
     path("check_keyboard/", views.check_keyboard, name="check_keyboard"),
     path("check_warranty/", views.check_warranty, name="check_warranty"),
+    path("desktop-bids/<int:bid_id>/match-catalogue/", views.match_catalogue_models),
 
     # ── 3-STEP BID CREATION ──────────────────────────────────────────
     path("desktop-bids/create/", views.create_desktop_bid, name="create_desktop_bid"),
@@ -49,13 +45,24 @@ path("catalogue/<int:product_id>/delete/", views.delete_catalogue_product, name=
 
     # ── SINGLE BID — STEP 2, 3, DETAIL ──────────────────────────────
     path("desktop-bids/<int:bid_id>/update/", views.update_desktop_bid, name="update_desktop_bid"),
-    # path("desktop-bids/<int:bid_id>/model/", views.save_model_number, name="save_model_number"),
+    path("desktop-bids/<int:bid_id>/save-model-number/", views.save_model_number, name="save_model_number"),
     path("desktop-bids/<int:bid_id>/", views.get_desktop_bid, name="get_desktop_bid"),
     path("desktop-bids/<int:bid_id>/review/", views.review_desktop_bid, name="review_desktop_bid"),
     path("desktop-bids/<int:bid_id>/admin-review/", views.admin_review_desktop_bid, name="admin_review_desktop_bid"),
 
+    # ── CERTIFICATE GENERATION ───────────────────────────────────────
+    path("desktop-bids/<int:bid_id>/generate-docs/", views.generate_certificates, name="generate-certificates"),
+    path("desktop-bids/<int:bid_id>/update-docs/", views.update_desktop_docs, name="update_desktop_docs"),
 
+    # ── ANALYSER DASHBOARD ───────────────────────────────────────────
+    path("desktop-bids/dashboard-years/", views.desktop_dashboard_years, name="desktop_dashboard_years"),
+    path("desktop-bids/monthly-performance/", views.desktop_monthly_performance, name="desktop_monthly_performance"),
+    path("desktop-bids/daily-activity/", views.desktop_daily_activity, name="desktop_daily_activity"),
+    path("desktop-bids/re-analyze-count/", views.desktop_re_analyze_count, name="desktop_re_analyze_count"),
 
-
-    
+    # ── ADMIN DASHBOARD (alag endpoints — admin-specific status logic) ──
+    path("admin/desktop-bids/dashboard-years/", views.admin_desktop_dashboard_years, name="admin_desktop_dashboard_years"),
+    path("admin/desktop-bids/monthly-performance/", views.admin_desktop_monthly_performance, name="admin_desktop_monthly_performance"),
+    path("admin/desktop-bids/daily-activity/", views.admin_desktop_daily_activity, name="admin_desktop_daily_activity"),
+    path("admin/desktop-bids/stats/", views.admin_desktop_stats, name="admin_desktop_stats"),
 ]

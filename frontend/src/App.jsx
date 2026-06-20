@@ -3,7 +3,7 @@ import Login from "./pages/auth/Login";
 import Registration from "./Registration";
 import ForgotPassword from "./pages/auth/ForgotPassword";
 import AddAnalyser from "./pages/auth/AddAnalyser";
-
+import AnalyserDocument from "./pages/Analyser/Analyserdocument";
 import DesktopBidApproval from "./Admin/DesktopBidApproval";
 import AIOBidApproval from "./Admin/AIOBidApproval";
 import PriceList from "./Admin/PriceList";
@@ -63,6 +63,7 @@ function App() {
         <Route path="/analyser-dashboard/product" element={<AnalyserProductsPage />} />
         <Route path="/analyser-dashboard/desktop/bid/:id" element={<BidDetailView product="desktop" />} />
 
+<Route path="/analyser-document" element={<AnalyserDocument />} />
         <Route path="/admin-dashboard" element={<AdminNavbar />}>
           <Route index element={<AdminWelcome />} />
           <Route path="add-user" element={<Registration />} />

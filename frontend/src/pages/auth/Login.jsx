@@ -12,22 +12,6 @@ export default function Login() {
 
   const navigate = useNavigate();
 
-  const clearOldLoginData = () => {
-    localStorage.removeItem("role");
-    localStorage.removeItem("username");
-    localStorage.removeItem("display_username");
-    localStorage.removeItem("user_id");
-    localStorage.removeItem("email");
-
-    localStorage.removeItem("user_username");
-    localStorage.removeItem("analyser_username");
-    localStorage.removeItem("admin_username");
-
-    localStorage.removeItem("bid_user_id");
-    localStorage.removeItem("desktop_bid_step");
-    localStorage.removeItem("desktop_bid_data");
-  };
-
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -52,11 +36,13 @@ export default function Login() {
         return;
       }
 
-      clearOldLoginData();
+      // ❌ clearOldLoginData() call mat karo — ye dusre users ka data delete kar deta hai
+      // ✅ Sirf current role ki keys set karo
 
       const loginName = data.username || username || "";
       const loginRole = data.role || role || "";
 
+      // Common keys (sabke liye)
       localStorage.setItem("role", loginRole);
       localStorage.setItem("username", loginName);
       localStorage.setItem("display_username", loginName);
@@ -66,6 +52,7 @@ export default function Login() {
         localStorage.setItem("email", data.email);
       }
 
+      // Role-specific keys — purani keys ko clear mat karo
       if (loginRole === "user") {
         localStorage.setItem("user_username", loginName);
         localStorage.setItem("bid_user_id", data.user_id || "");

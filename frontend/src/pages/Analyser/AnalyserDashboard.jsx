@@ -355,7 +355,7 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                                                         : "bg-amber-600 hover:bg-amber-700"
                                                     }`}
                                             >
-                                                {bid.status === "re-analyze" ? "Resolve" : "Accept/Review"}
+                                                {bid.status === "re-analyze" ? "Resolve" : "View"}
                                             </button>
 
                                         )}

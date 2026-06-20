@@ -1,83 +1,124 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 const API_BASE = "http://127.0.0.1:8000/api";
 
+// --- DATA FROM EXCEL SHEET (Filtered: 'remove' items excluded) ---
+
 const PROCESSORS = [
-  "Intel Core i3 12100","Intel Core i5 12400","Intel Core i5 12500","Intel Core i5 13500",
-  "Intel Core i5 14400","Intel Core i5 14500","Intel Core i7 12700","Intel Core i7 13700",
-  "Intel Core i7 14700","Intel Core i9 12900","Intel Core i9 13900","Intel Core i9 14900",
-  "AMD Ryzen 3 4300G","AMD Ryzen 3 5300G","AMD Ryzen 5 4600G","AMD Ryzen 5 5600G",
-  "AMD Ryzen 7 4700G","AMD Ryzen 7 5700G","AMD Ryzen 7 5750G","AMD Ryzen 9 3900G",
-  "12th Gen Composite i3","12th Gen Composite i5","12th Gen Composite i7",
+  { name: "Intel Core i3 12100", price: 12000 },
+  { name: "Intel Core i3 14100", price: 17000 },
+  { name: "Intel Core i5 12400", price: 18000 },
+  { name: "Intel Core i5 14400", price: 20000 },
+  { name: "Intel Core i5 14500", price: 22000 },
+  { name: "Intel Core i7 12700", price: 39500 },
+  { name: "Intel Core i7 13700", price: 40500 },
+  { name: "Intel Core i7 14700", price: 40500 },
+  { name: "Intel Core i9 14900", price: 60000 },
+  { name: "AMD Ryzen 3 4300G", price: 9000 },
+  { name: "AMD Ryzen 3 5300G", price: 12000 },
+  { name: "AMD Ryzen 5 5600G", price: 13500 },
+  { name: "AMD Ryzen 7 5700G", price: 18500 },
+  { name: "AMD Ryzen 9 9300G", price: 60000 },
+  { name: "12th Gen Composite i3", price: 14500 },
+  { name: "12th Gen Composite i5", price: 18000 },
+  { name: "12th Gen Composite i7", price: 21500 },
 ];
 
 const RAMS = [
-  "8GB DDR4 2666","8GB DDR4 3200","16GB DDR4 2666","8GB DDR5","16GB DDR5",
-  "16GB DDR4 3200","32GB DDR4 2666","32GB DDR4 3200","32GB DDR4 3200*2",
-  "8GB DDR5 4800","16GB DDR5 4800","32GB DDR5 4800","32GB DDR5 4800*2",
+  { name: "8GB DDR4 3200", price: 5000 },
+  { name: "16GB DDR4 3200", price: 9000 },
+  { name: "32GB DDR4 3200", price: 18000 },
+  { name: "32GB DDR4 3200*2", price: 36000 },
+  { name: "8GB DDR5 4800", price: 8000 },
+  { name: "16GB DDR5 4800", price: 13200 },
+  { name: "32GB DDR5 4800", price: 26000 },
+  { name: "32GB DDR5 4800*2", price: 52000 },
 ];
 
-const HDDS = ["1 TB","1TB","2 TB"];
+const HDDS = [
+  { name: "1 TB", price: 5000 },
+  { name: "2 TB", price: 7500 },
+];
 
 const SSDS = [
-  "128 GB SATA","256 GB SATA","512 GB SATA","1TB SATA",
-  "128 GB NVMe","256 GB NVMe","512 GB NVMe","1TB NVMe",
+  { name: "128 GB SATA", price: 3500 },
+  { name: "256 GB SATA", price: 4500 },
+  { name: "512 GB SATA", price: 6800 },
+  { name: "1TB SATA", price: 12500 },
+  { name: "128 GB NVMe", price: 4000 },
+  { name: "256 GB NVMe", price: 5000 },
+  { name: "512 GB NVMe", price: 7500 },
+  { name: "1TB NVMe", price: 13500 },
 ];
 
 const OS_OPTIONS = [
-  "Windows 10 Home","Windows 10 Professional","Windows 11 Home",
-  "Windows 11 Professional","DOS","Linex",
+  { name: "Windows 11 Home", price: 1000 },
+  { name: "Windows 11 Professional", price: 1000 },
+  { name: "DOS", price: 1000 },
+  { name: "Linex", price: 1000 },
 ];
 
-const DVDS = ["Yes"];
+const DVDS = [{ name: "Yes", price: 1200 }];
 
 const WIFIS = [
-  "PCI Based 4.2 Bluetooth","Wi-fi AC 4.2 Bluetooth",
-  "Wi-Fi 6 5.0 Bluetooth","Wi-Fi AX201 5.2 Bluetooth",
+  { name: "PCI Based 4.2 Bluetooth", price: 750 },
+  { name: "Wi-fi AC 4.2 Bluetooth", price: 850 },
+  { name: "Wi-Fi 6 5.0 Bluetooth", price: 1200 },
+  { name: "Wi-Fi AX201 5.2 Bluetooth", price: 1500 },
 ];
 
 const MONITORS = [
-  "18.5 inch","19.5 inch","21.5 inch","21.5 inch with Speaker",
-  "21.5 inch with DP Port","23.8 inch","23.8 inch with Speaker",
-  "23.8 inch with DP Port","23.8 inch with Speaker Webcam","27 inch",
+  { name: "19.5 inch", price: 4000 },
+  { name: "21.5 inch", price: 4400 },
+  { name: "21.5 inch with Speaker", price: 4600 },
+  { name: "21.5 inch with DP Port", price: 5200 },
+  { name: "23.8 inch", price: 5500 },
+  { name: "23.8 inch with Speaker", price: 5700 },
+  { name: "23.8 inch with DP Port", price: 6500 },
+  { name: "23.8 inch with Speaker Webcam", price: 9500 },
+  { name: "27 inch", price: 8000 },
 ];
 
-const CABINETS = ["SFF","Tower"];
+const CABINETS = [
+  { name: "SFF", price: 1500 },
+  { name: "Tower", price: 1500 },
+];
 
-const KEYBOARDS = ["Keyboard & Mouse Wired","Keyboard & Mouse Wireless"];
+const KEYBOARDS = [
+  { name: "Keyboard & Mouse Wired", price: 450 },
+  { name: "Keyboard & Mouse Wireless", price: 850 },
+];
 
-const WARRANTIES = ["1 Year","2 Year","3 Year","4 Year","5 Year","6 Year","7 Year"];
+const WARRANTIES = [
+  { name: "1 Year", price: 1200 },
+  { name: "2 Year", price: 1500 },
+  { name: "3 Year", price: 1800 },
+  { name: "4 Year", price: 2000 },
+  { name: "5 Year", price: 2500 },
+  { name: "6 Year", price: 3500 },
+  { name: "7 Year", price: 5000 },
+];
 
 const MOTHERBOARDS = [
-  "H610, PCI X 16- 1 PCI 4 X1, M.2 1, 4 USB 2.0, 2USB 3.0, VGA, HDMI",
-  "H610 WITH DP PROT, PCI X 16- 1 PCI 4 X1, M.2 1, 4 USB 2.0, 2USB 3.0, VGA, HDMI, DP",
-  "B760, PCI X 16- 1 PCI 4 X1, M.2 1, 4 USB 2.0, 4 USB 3.0, VGA, HDMI",
-  "Q670 DDR4 2 DIMM, PCI X 16- 1 PCI 4 X2, M.2 2, 4 USB 2.0, 4 USB 3.0 TYPE C 1, VGA, HDMI",
-  "Q670 DDR4 4 DIMM, PCI X 16- 1 PCI 4 X2, M.2 2, 4 USB 2.0, 4 USB 3.0 TYPE C 1, VGA, HDMI",
-  "Q670 DDR5 2 DIMM, PCI X 16- 1 PCI 4 X2, M.2 2, 4 USB 2.0, 4 USB 3.0 TYPE C 1, VGA, HDMI",
-  "Q670 DDR5 VPRO 4 DIMM, PCI X 16- 1 PCI 4 X2, M.2 2, 4 USB 2.0, 4 USB 3.0 TYPE C 1, VGA, HDMI",
-  "AMD B650, DDR5, 4 USB 2.0, 2 USB 3.0, PCI16*2, PCI4*1",
-  "AMD B550, 4 USB 2.0, 2 USB 3.0, PCI16*1, PCI4*1",
-  "AMD B450, 4 USB 2.0, 2 USB 3.0, PCI16*1, PCI4*1",
-  "AMD A520, 4 USB 2.0, 2 USB 3.0, PCI16*1, PCI4*1",
-  "B760 with DDR5",
-  "H610 with DDR5",
+  // Intel H610 DDR4
+  { name: "H610, PCI X 16- 1, PCI 4 X1, M.2 1, 4 USB 2.0, 2USB 3.0, VGA, HDMI", price: 5000 },
+  // Intel Q670 DDR4
+  { name: "Q670, DDR4 2 DIMM, PCI X 16- 1, PCI 4 X2, M.2 2, 4 USB 2.0, 4 USB 3.0 TYPE C 1, VGA, HDMI", price: 8000 },
+  { name: "Q670, DDR4 4 DIMM, PCI X 16- 1, PCI 4 X2, M.2 2, 4 USB 2.0, 4 USB 3.0 TYPE C 1, VGA, HDMI", price: 10000 }, // Duplicate in sheet with diff price? Keeping both or higher one. Let's keep unique names if possible, but sheet has same name. I'll use the first occurrence logic or specific variant if needed. For now, using the list as is.
+  // Intel Q670 DDR5
+  { name: "Q670 ,DDR5 VPRO 4 DIMM, PCI X 16- 1, PCI 4 X2, M.2 2, 4 USB 2.0, 4 USB 3.0 TYPE C 1, VGA, HDMI", price: 12000 },
+  // AMD B650
+  { name: "AMD B650, DDR5, 4 USB 2.0, 2 USB 3.0, PCI16*2, PCI4*2", price: 7500 },
+  // AMD A520
+  { name: "AMD A520, 4 USB 2.0, 2 USB 3.0, PCI16*1, PCI4*1", price: 5000 },
+  // Intel H610 DDR5
+  { name: "H610 with DDR5", price: 6500 },
 ];
 
-const PRICE_ENDPOINTS = {
-  processor: "check_processor",
-  ram: "check_ram",
-  hdd: "check_hdd",
-  ssd: "check_ssd",
-  ssd2: "check_ssd",
-  os: "check_os",
-  dvd: "check_dvd",
-  wifi: "check_wifi",
-  motherboard: "check_motherboard",
-  monitor: "check_monitor_size",
-  cabinet: "check_cabinet_type",
-  keyboard: "check_keyboard",
-  warranty: "check_warranty",
+// Helper to get price from local data
+const getPriceFromLocalData = (categoryList, value) => {
+  const item = categoryList.find((item) => item.name === value);
+  return item ? item.price : "";
 };
 
 const INITIAL_FORM = {
@@ -104,59 +145,123 @@ const INITIAL_FORM = {
   freightInstallation: "Yes", freightInstallation_price: "1000",
 };
 
-const fetchPrice = async (field, value) => {
-  try {
-    if (!value || value === "None") return "";
-    const endpoint = PRICE_ENDPOINTS[field];
-    if (!endpoint) return "";
-    const payloadKey = field === "ssd2" ? "ssd" : field;
-    const res = await fetch(`${API_BASE}/${endpoint}/`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ [payloadKey]: value }),
-    });
-    if (!res.ok) return "";
-    const data = await res.json();
-    return data.price ?? data ?? "";
-  } catch {
-    return "";
-  }
+const getDraftKey = (bidId) => `desktop_config_draft_${bidId || "new"}`;
+
+const normalizeInitialForm = (source = {}) => {
+  const merged = {
+    ...INITIAL_FORM,
+    ...source,
+  };
+
+  // Backend may use ssd/ssd_price while review screen uses ssd1/ssd1_price.
+  merged.ssd = source.ssd || source.ssd1 || merged.ssd || "";
+  merged.ssd_price = source.ssd_price || source.ssd1_price || merged.ssd_price || "";
+
+  // Keep default fixed fields if backend/source does not provide them.
+  merged.hddreturnable = source.hddreturnable || merged.hddreturnable || "Yes";
+  merged.freightInstallation = source.freightInstallation || merged.freightInstallation || "Yes";
+  merged.freightInstallation_price = source.freightInstallation_price || merged.freightInstallation_price || "1000";
+
+  return merged;
 };
+
 
 export default function DesktopConfig({ bidData, onNext, onBack }) {
   const bid_id = bidData?.bid_id;
 
-  const [form, setForm] = useState(INITIAL_FORM);
+  const draftKey = useMemo(() => getDraftKey(bid_id), [bid_id]);
+
+  const [form, setForm] = useState(() => {
+    try {
+      const savedDraft = localStorage.getItem(getDraftKey(bid_id));
+      if (savedDraft) {
+        return normalizeInitialForm(JSON.parse(savedDraft));
+      }
+    } catch (error) {
+      console.warn("Unable to restore desktop configuration draft", error);
+    }
+
+    return normalizeInitialForm(bidData?.desktop_config || bidData?.configuration || bidData || {});
+  });
+
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
 
-  const intelProcessors = PROCESSORS.filter(
-    (p) => p.includes("Intel") || p.includes("Gen")
-  );
-  const amdProcessors = PROCESSORS.filter((p) => p.includes("AMD"));
+  useEffect(() => {
+    setForm((prev) => {
+      try {
+        const savedDraft = localStorage.getItem(draftKey);
+        if (savedDraft) return normalizeInitialForm(JSON.parse(savedDraft));
+      } catch (error) {
+        console.warn("Unable to restore desktop configuration draft", error);
+      }
+      return normalizeInitialForm({ ...bidData, ...prev });
+    });
+  }, [draftKey]);
 
-  const intelMotherboards = MOTHERBOARDS.filter(
-    (m) => (m.startsWith("H") || m.startsWith("B") || m.startsWith("Q")) && !m.includes("AMD")
-  );
-  const amdMotherboards = MOTHERBOARDS.filter((m) => m.includes("AMD"));
+  useEffect(() => {
+    try {
+      localStorage.setItem(draftKey, JSON.stringify(form));
+    } catch (error) {
+      console.warn("Unable to save desktop configuration draft", error);
+    }
+  }, [draftKey, form]);
+
+  // Filter lists for UI separation
+  const intelProcessors = PROCESSORS.filter((p) => p.name.includes("Intel") || p.name.includes("Gen"));
+  const amdProcessors = PROCESSORS.filter((p) => p.name.includes("AMD"));
+
+  const intelMotherboards = MOTHERBOARDS.filter((m) => !m.name.includes("AMD"));
+  const amdMotherboards = MOTHERBOARDS.filter((m) => m.name.includes("AMD"));
+
+  const handleBackClick = () => {
+    try {
+      localStorage.setItem(draftKey, JSON.stringify(form));
+    } catch (error) {
+      console.warn("Unable to save desktop configuration draft before going back", error);
+    }
+
+    if (onBack) {
+      onBack({ ...form });
+    } else {
+      window.history.back();
+    }
+  };
 
   const handleChange = async (e) => {
     const { name, value } = e.target;
     const priceField = `${name}_price`;
 
+    // Update value and reset price initially
     setForm((prev) => ({
       ...prev,
       [name]: value,
-      ...(PRICE_ENDPOINTS[name] ? { [priceField]: "" } : {}),
+      [priceField]: "", 
     }));
 
-    if (PRICE_ENDPOINTS[name]) {
-      if (!value || value === "None") {
-        setForm((prev) => ({ ...prev, [priceField]: "" }));
-        return;
-      }
-      const price = await fetchPrice(name, value);
+    if (!value || value === "None") return;
+
+    // Determine which local list to check for price
+    let localList = null;
+    if (name === "processor") localList = PROCESSORS;
+    else if (name === "ram") localList = RAMS;
+    else if (name === "hdd") localList = HDDS;
+    else if (name === "ssd" || name === "ssd2") localList = SSDS;
+    else if (name === "os") localList = OS_OPTIONS;
+    else if (name === "dvd") localList = DVDS;
+    else if (name === "wifi") localList = WIFIS;
+    else if (name === "monitor") localList = MONITORS;
+    else if (name === "cabinet") localList = CABINETS;
+    else if (name === "keyboard") localList = KEYBOARDS;
+    else if (name === "warranty") localList = WARRANTIES;
+    else if (name === "motherboard") localList = MOTHERBOARDS;
+
+    if (localList) {
+      const price = getPriceFromLocalData(localList, value);
       setForm((prev) => ({ ...prev, [priceField]: price }));
+    } else {
+      // Fallback to API if not in local list (optional, based on your original code)
+      // You can keep the fetchPrice logic here if needed for dynamic items
     }
   };
 
@@ -165,19 +270,28 @@ export default function DesktopConfig({ bidData, onNext, onBack }) {
     setSaving(true);
     setMsg("");
     try {
+      // Ensure prices are numbers if sending to backend
+      const payload = { ...form };
+      // Optional: Convert price strings to numbers if your backend expects it
+      // Object.keys(payload).forEach(key => {
+      //   if (key.endsWith('_price') && payload[key]) payload[key] = Number(payload[key]);
+      // });
+
       const res = await fetch(`${API_BASE}/desktop-bids/${bid_id}/update/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
       if (res.ok) {
-        setMsg("Data Save");
+        setMsg("Data Saved Successfully");
+        localStorage.removeItem(draftKey);
         onNext({ ...form });
       } else {
-        setMsg("Data Not Save");
+        setMsg("Failed to Save Data");
       }
-    } catch {
-      setMsg("Data Not Save — server se connect nahi ho pa raha.");
+    } catch (error) {
+      console.error(error);
+      setMsg("Connection Error — Unable to connect to the server.");
     } finally {
       setSaving(false);
     }
@@ -201,7 +315,7 @@ export default function DesktopConfig({ bidData, onNext, onBack }) {
         >
           <option value="">Select</option>
           {options.map((opt) => (
-            <option key={opt} value={opt}>{opt}</option>
+            <option key={opt.name} value={opt.name}>{opt.name}</option>
           ))}
           <option value="None">None</option>
         </select>
@@ -219,7 +333,9 @@ export default function DesktopConfig({ bidData, onNext, onBack }) {
 
   const getGroupValue = (currentValue, list) => {
     if (currentValue === "None") return "None";
-    return list.includes(currentValue) ? currentValue : "";
+    // Check if current value exists in the specific sub-list
+    const exists = list.some(item => item.name === currentValue);
+    return exists ? currentValue : "";
   };
 
   return (
@@ -229,32 +345,19 @@ export default function DesktopConfig({ bidData, onNext, onBack }) {
       <div className="flex items-center gap-3 mb-4 pt-2 border-b pb-2">
         <button
           type="button"
-          onClick={onBack ? onBack : () => window.history.back()}
+          onClick={handleBackClick}
           className="flex items-center gap-1 text-sm font-medium text-gray-600 hover:text-blue-600 hover:bg-blue-50 border border-gray-300 hover:border-blue-400 px-3 py-1.5 rounded-md transition-all"
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-4 w-4"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
-          >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
           </svg>
           Back
         </button>
-        <h5 className="text-lg font-semibold text-gray-800">Create Desktop</h5>
+        <h5 className="text-lg font-semibold text-gray-800">Create Desktop Configuration</h5>
       </div>
 
       {msg && (
-        <div
-          className={`mb-4 px-4 py-2 rounded text-sm font-medium ${
-            msg.includes("Save") && !msg.includes("Not")
-              ? "bg-green-100 text-green-700"
-              : "bg-red-100 text-red-700"
-          }`}
-        >
+        <div className={`mb-4 px-4 py-2 rounded text-sm font-medium ${msg.includes("Saved") ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
           {msg}
         </div>
       )}
@@ -264,9 +367,7 @@ export default function DesktopConfig({ bidData, onNext, onBack }) {
 
           {/* ── Processor Selection ── */}
           <div className="col-span-1 md:col-span-2 lg:col-span-3">
-            <label className="block text-sm font-medium text-gray-700 mb-2 underline">
-              Processor Selection
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-2 underline">Processor Selection</label>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Intel */}
               <div className="flex flex-col">
@@ -280,13 +381,13 @@ export default function DesktopConfig({ bidData, onNext, onBack }) {
                   >
                     <option value="">Select Intel</option>
                     {intelProcessors.map((p) => (
-                      <option key={p} value={p}>{p}</option>
+                      <option key={p.name} value={p.name}>{p.name}</option>
                     ))}
                     <option value="None">None</option>
                   </select>
                   <input
                     type="text"
-                    value={intelProcessors.includes(form.processor) ? form.processor_price : ""}
+                    value={intelProcessors.some(p => p.name === form.processor) ? form.processor_price : ""}
                     readOnly
                     disabled
                     placeholder="Price"
@@ -306,13 +407,13 @@ export default function DesktopConfig({ bidData, onNext, onBack }) {
                   >
                     <option value="">Select AMD</option>
                     {amdProcessors.map((p) => (
-                      <option key={p} value={p}>{p}</option>
+                      <option key={p.name} value={p.name}>{p.name}</option>
                     ))}
                     <option value="None">None</option>
                   </select>
                   <input
                     type="text"
-                    value={amdProcessors.includes(form.processor) ? form.processor_price : ""}
+                    value={amdProcessors.some(p => p.name === form.processor) ? form.processor_price : ""}
                     readOnly
                     disabled
                     placeholder="Price"
@@ -332,28 +433,16 @@ export default function DesktopConfig({ bidData, onNext, onBack }) {
               <label className="block text-sm font-medium text-gray-700">Processor Description</label>
               <span className="text-red-500 text-[11px] font-normal">*Optional</span>
             </div>
-            <textarea
-              name="pro_descp"
-              value={form.pro_descp}
-              onChange={handleChange}
-              rows={2}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-            />
+            <textarea name="pro_descp" value={form.pro_descp} onChange={handleChange} rows={2} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
           </div>
 
           {/* Software Description */}
           <div className="col-span-1">
             <div className="flex items-center gap-2 mb-1">
-              <label className="block text-sm font-medium text-gray-700">Software Description</label>
+              <label className="block text-sm font-medium text-gray-700">Additional Software</label>
               <span className="text-red-500 text-[11px] font-normal">*Optional</span>
             </div>
-            <textarea
-              name="software1"
-              value={form.software1}
-              onChange={handleChange}
-              rows={2}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-            />
+            <textarea name="software1" value={form.software1} onChange={handleChange} rows={2} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
           </div>
 
           {/* Graphics Description */}
@@ -362,13 +451,7 @@ export default function DesktopConfig({ bidData, onNext, onBack }) {
               <label className="block text-sm font-medium text-gray-700">Graphics Description</label>
               <span className="text-red-500 text-[11px] font-normal">*Optional</span>
             </div>
-            <textarea
-              name="gp"
-              value={form.gp}
-              onChange={handleChange}
-              rows={2}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-            />
+            <textarea name="gp" value={form.gp} onChange={handleChange} rows={2} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
           </div>
 
           <SelectField label="SSD 1" name="ssd" options={SSDS} required />
@@ -384,47 +467,21 @@ export default function DesktopConfig({ bidData, onNext, onBack }) {
           {/* Bid End Date */}
           <div className="col-span-1">
             <label className="block text-sm font-medium text-gray-700 mb-1">Bid End Date</label>
-            <input
-              type="date"
-              name="date"
-              value={form.date}
-              onChange={handleChange}
-              required
-              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+            <input type="date" name="date" value={form.date} onChange={handleChange} required className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
 
           {/* EPBG */}
           <div className="col-span-1">
             <label className="block text-sm font-medium text-gray-700 mb-1">EPBG (%)</label>
-            <input
-              type="text"
-              name="epbg"
-              value={form.epbg}
-              onChange={handleChange}
-              placeholder="Price"
-              className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm text-gray-500 bg-gray-50 outline-none"
-            />
+            <input type="text" name="epbg" value={form.epbg} onChange={handleChange} placeholder="Price" className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm text-gray-500 bg-gray-50 outline-none" />
           </div>
 
           {/* Freight & Installation */}
           <div className="col-span-1">
             <label className="block text-sm font-medium text-gray-700 mb-1">Freight & Installation</label>
             <div className="flex gap-2">
-              <input
-                type="text"
-                value="Yes"
-                readOnly
-                disabled
-                className="flex-1 border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50 cursor-not-allowed"
-              />
-              <input
-                type="text"
-                value="1000"
-                readOnly
-                disabled
-                className="w-24 border border-gray-200 rounded-md px-2 py-2 text-sm bg-gray-50 cursor-not-allowed"
-              />
+              <input type="text" value="Yes" readOnly disabled className="flex-1 border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50 cursor-not-allowed" />
+              <input type="text" value="1000" readOnly disabled className="w-24 border border-gray-200 rounded-md px-2 py-2 text-sm bg-gray-50 cursor-not-allowed" />
             </div>
           </div>
 
@@ -432,34 +489,18 @@ export default function DesktopConfig({ bidData, onNext, onBack }) {
           <div className="col-span-1">
             <label className="block text-sm font-medium text-gray-700 mb-1">HDD Return Option</label>
             <div className="flex gap-2">
-              <select
-                name="hddreturnable"
-                value={form.hddreturnable}
-                onChange={handleChange}
-                className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              >
+              <select name="hddreturnable" value={form.hddreturnable} onChange={handleChange} className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
                 <option value="Yes">Yes</option>
                 <option value="None">None</option>
               </select>
-              <input
-                type="text"
-                name="hddreturnable_price"
-                value={form.hddreturnable_price}
-                onChange={handleChange}
-                placeholder="Price"
-                className="w-24 border border-gray-300 rounded-md px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+              <input type="text" name="hddreturnable_price" value={form.hddreturnable_price} onChange={handleChange} placeholder="Price" className="w-24 border border-gray-300 rounded-md px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
           </div>
 
-          {/* ── Motherboard Selection — COMPACT ── */}
+          {/* ── Motherboard Selection ── */}
           <div className="col-span-1 md:col-span-2 lg:col-span-3">
-            <label className="block text-sm font-medium text-gray-700 mb-2 underline">
-              Motherboard Selection
-            </label>
-
+            <label className="block text-sm font-medium text-gray-700 mb-2 underline">Motherboard Selection</label>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-
               {/* Intel Motherboard */}
               <div className="flex flex-col">
                 <span className="text-[11px] text-gray-500 font-medium mb-1 uppercase">Intel Motherboard</span>
@@ -472,13 +513,13 @@ export default function DesktopConfig({ bidData, onNext, onBack }) {
                   >
                     <option value="">Select Intel</option>
                     {intelMotherboards.map((m) => (
-                      <option key={m} value={m}>{m}</option>
+                      <option key={m.name} value={m.name}>{m.name}</option>
                     ))}
                     <option value="None">None</option>
                   </select>
                   <input
                     type="text"
-                    value={intelMotherboards.includes(form.motherboard) ? form.motherboard_price : ""}
+                    value={intelMotherboards.some(m => m.name === form.motherboard) ? form.motherboard_price : ""}
                     readOnly
                     disabled
                     placeholder="Price"
@@ -499,13 +540,13 @@ export default function DesktopConfig({ bidData, onNext, onBack }) {
                   >
                     <option value="">Select AMD</option>
                     {amdMotherboards.map((m) => (
-                      <option key={m} value={m}>{m}</option>
+                      <option key={m.name} value={m.name}>{m.name}</option>
                     ))}
                     <option value="None">None</option>
                   </select>
                   <input
                     type="text"
-                    value={amdMotherboards.includes(form.motherboard) ? form.motherboard_price : ""}
+                    value={amdMotherboards.some(m => m.name === form.motherboard) ? form.motherboard_price : ""}
                     readOnly
                     disabled
                     placeholder="Price"
@@ -522,14 +563,7 @@ export default function DesktopConfig({ bidData, onNext, onBack }) {
               <label className="block text-sm font-medium text-gray-700">Motherboard Description</label>
               <span className="text-red-500 text-[11px] font-normal">*Optional</span>
             </div>
-            <textarea
-              name="motherboard_descp"
-              value={form.motherboard_descp}
-              onChange={handleChange}
-              rows={2}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-              placeholder="Technical details..."
-            />
+            <textarea name="motherboard_descp" value={form.motherboard_descp} onChange={handleChange} rows={2} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" placeholder="Technical details..." />
           </div>
         </div>
 
