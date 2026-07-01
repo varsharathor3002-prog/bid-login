@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from .views.Workstation import create_workstation_bid, update_workstation_bid
 
 
 urlpatterns = [
@@ -37,32 +38,37 @@ urlpatterns = [
     path("check_warranty/", views.check_warranty, name="check_warranty"),
     path("desktop-bids/<int:bid_id>/match-catalogue/", views.match_catalogue_models),
 
-    # ── 3-STEP BID CREATION ──────────────────────────────────────────
+    # ── DESKTOP BID — 3-STEP CREATION ───────────────────────────────
     path("desktop-bids/create/", views.create_desktop_bid, name="create_desktop_bid"),
 
-    # ── BID LIST ─────────────────────────────────────────────────────
+    # ── DESKTOP BID — LIST ───────────────────────────────────────────
     path("desktop-bids/list/", views.list_desktop_bids, name="list_desktop_bids"),
 
-    # ── SINGLE BID — STEP 2, 3, DETAIL ──────────────────────────────
+    # ── DESKTOP BID — STEP 2, 3, DETAIL ─────────────────────────────
     path("desktop-bids/<int:bid_id>/update/", views.update_desktop_bid, name="update_desktop_bid"),
     path("desktop-bids/<int:bid_id>/save-model-number/", views.save_model_number, name="save_model_number"),
     path("desktop-bids/<int:bid_id>/", views.get_desktop_bid, name="get_desktop_bid"),
     path("desktop-bids/<int:bid_id>/review/", views.review_desktop_bid, name="review_desktop_bid"),
     path("desktop-bids/<int:bid_id>/admin-review/", views.admin_review_desktop_bid, name="admin_review_desktop_bid"),
 
-    # ── CERTIFICATE GENERATION ───────────────────────────────────────
+    # ── DESKTOP BID — CERTIFICATE GENERATION ────────────────────────
     path("desktop-bids/<int:bid_id>/generate-docs/", views.generate_certificates, name="generate-certificates"),
     path("desktop-bids/<int:bid_id>/update-docs/", views.update_desktop_docs, name="update_desktop_docs"),
 
-    # ── ANALYSER DASHBOARD ───────────────────────────────────────────
+    # ── DESKTOP BID — ANALYSER DASHBOARD ────────────────────────────
     path("desktop-bids/dashboard-years/", views.desktop_dashboard_years, name="desktop_dashboard_years"),
     path("desktop-bids/monthly-performance/", views.desktop_monthly_performance, name="desktop_monthly_performance"),
     path("desktop-bids/daily-activity/", views.desktop_daily_activity, name="desktop_daily_activity"),
     path("desktop-bids/re-analyze-count/", views.desktop_re_analyze_count, name="desktop_re_analyze_count"),
 
-    # ── ADMIN DASHBOARD (alag endpoints — admin-specific status logic) ──
+    # ── DESKTOP BID — ADMIN DASHBOARD ───────────────────────────────
     path("admin/desktop-bids/dashboard-years/", views.admin_desktop_dashboard_years, name="admin_desktop_dashboard_years"),
     path("admin/desktop-bids/monthly-performance/", views.admin_desktop_monthly_performance, name="admin_desktop_monthly_performance"),
     path("admin/desktop-bids/daily-activity/", views.admin_desktop_daily_activity, name="admin_desktop_daily_activity"),
     path("admin/desktop-bids/stats/", views.admin_desktop_stats, name="admin_desktop_stats"),
+    path("desktop-bids/<int:bid_id>/delete/", views.delete_desktop_bid, name="delete_desktop_bid"),
+
+    # ── WORKSTATION BID ──────────────────────────────────────────────
+    path("workstation-bids/create/", create_workstation_bid, name="create_workstation_bid"),
+    path("workstation-bids/<int:bid_id>/update/", update_workstation_bid, name="update_workstation_bid"),
 ]

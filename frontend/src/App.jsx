@@ -1,27 +1,28 @@
 import { Routes, Route, Navigate } from "react-router-dom";
-import Login from "./pages/auth/Login";
+import Login from "./components/auth/Login";
 import Registration from "./Registration";
-import ForgotPassword from "./pages/auth/ForgotPassword";
-import AddAnalyser from "./pages/auth/AddAnalyser";
-import AnalyserDocument from "./pages/Analyser/Analyserdocument";
-import DesktopBidApproval from "./Admin/DesktopBidApproval";
-import AIOBidApproval from "./Admin/AIOBidApproval";
-import PriceList from "./Admin/PriceList";
+import ForgotPassword from "./components/auth/ForgotPassword";
+import AddAnalyser from "./components/auth/AddAnalyser";
+ import AnalyserDocument from "./pages/Desktop/Analyser/Analyserdocument";
+import DesktopBidApproval from "./pages/Desktop/Admin/DesktopBidApproval";
+
+
 
 import UserNavbar from "./components/user/UserNavbar";
-import CreateDesktopBid from "./pages/user/CreateDesktopBid";
+import CreateDesktopBid from "./pages/Desktop/user/CreateDesktopBid";
+import CreateWorkstationBid from "./pages/Workstation/User/CreateWorkstationBid";
 
-import AnalyserNavbar from "./components/analyser/AnalyserNavbar";
-import AnalyserDashboard from "./pages/analyser/AnalyserDashboard";
-import BidDetailView from "./pages/analyser/BidDetailView";
-import AnalyserProductsPage from "./pages/Analyser/AnalyserProductsPage";
-import AdminNavbar from "./components/AdminNavbar";
+import AnalyserNavbar from "./components/Analyser/AnalyserNavbar";
+import AnalyserDashboard from "./pages/Desktop/Analyser/AnalyserDashboard";
+import BidDetailView from "./pages/Desktop/Analyser/BidDetailView";
+import AnalyserProductsPage from "./pages/Desktop/Analyser/AnalyserProductsPage";
+import AdminNavbar from "./components/Admin/AdminNavbar";
 
 const ComingSoon = ({ product }) => (
   <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
     <div className="text-6xl">🚧</div>
     <h2 className="text-2xl font-bold text-gray-600">{product} — Coming Soon</h2>
-    <p className="text-gray-400 text-sm">Yeh section abhi development mein hai.</p>
+    <p className="text-gray-400 +text-sm">Yeh section abhi development mein hai.</p>
   </div>
 );
 
@@ -44,12 +45,12 @@ function App() {
         <Route path="/user" element={<UserNavbar />}>
           <Route index element={<div>Select a product</div>} />
           <Route path="aio" element={<div>AIO Page Content</div>} />
-          <Route path="workstation" element={<div>Workstation Content</div>} />
           <Route path="printer" element={<div>Printer Content</div>} />
           <Route path="toner" element={<div>Toner Content</div>} />
         </Route>
 
         <Route path="/user/desktop" element={<CreateDesktopBid />} />
+        <Route path="/user/workstation" element={<CreateWorkstationBid />} />
 
         <Route path="/analyser-dashboard" element={<AnalyserNavbar />}>
           <Route index element={<Navigate to="/analyser-dashboard/desktop" replace />} />
@@ -81,8 +82,8 @@ function App() {
         <Route path="/admin-dashboard/desktop-bid-approval" element={<DesktopBidApproval />} />
         <Route path="/desktop-bid-approval" element={<Navigate to="/admin-dashboard/desktop-bid-approval" replace />} />
 
-        <Route path="/aio-bid-approval" element={<AIOBidApproval />} />
-        <Route path="/price/:type" element={<PriceList />} />
+       
+       
 
         <Route
           path="*"
