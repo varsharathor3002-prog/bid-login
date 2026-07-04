@@ -219,7 +219,11 @@ function normalizeSpecKey(value) {
 }
 
 function cleanProcessorNumber(value) {
-  return String(value || "")
+  const text = String(value || "");
+  if (/NA\s+for\s+Base\s+Processor/i.test(text)) {
+    return "Processor not specified in Excel";
+  }
+  return text
     .replace(/\bOut\s+of\s+Band\s+Management\b.*$/i, "")
     .replace(/\s+/g, " ")
     .trim();
@@ -396,6 +400,35 @@ function cleanSpecFieldValue(field, value, specs, product) {
 
 function displaySpecValue(value) {
   return cleanDisplayValue(value) || "NA";
+}
+
+function displayBasicProcessor(product, specs) {
+  return displaySpecValue(specs["Processor Number"] || product?.processor);
+}
+
+function displayBasicRam(product, specs) {
+  const size = cleanDisplayValue(
+    specs["RAM Size (Memory Card/Module) (in GB) (Capacity tobe installed in the System)"]
+  );
+  const type = cleanDisplayValue(specs["Type of RAM"]);
+  return displaySpecValue([size, type].filter(Boolean).join(" ") || product?.ram);
+}
+
+function displayBasicStorage(product, specs) {
+  const type = cleanDisplayValue(specs["Type of Storage Installed with the System"]);
+  const ssd = cleanDisplayValue(specs["SSD - Storage Capacity (in GB)"]);
+  const hdd = cleanDisplayValue(specs["HDD - Storage Capacity (in GB)"]);
+  const parts = [];
+  if (type) parts.push(type);
+  if (ssd) parts.push(`SSD ${ssd} GB`);
+  if (hdd) parts.push(`HDD ${hdd} GB`);
+  return displaySpecValue(parts.join(", ") || product?.storage);
+}
+
+function displayBasicOs(product, specs) {
+  return displaySpecValue(
+    specs["Factory Pre-loaded Operating System by DesktopOEM"] || product?.os
+  );
 }
 
 function cleanDisplayValue(value) {
@@ -615,25 +648,25 @@ function ProductDetailsModal({ product, onClose, onDeleted, onEdited }) {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="text-gray-500 font-medium">Processor</div>
                   <div className="text-gray-800">
-                    {product.processor || "—"}
+                    {displayBasicProcessor(product, specs)}
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="text-gray-500 font-medium">RAM</div>
-                  <div className="text-gray-800">{product.ram || "—"}</div>
+                  <div className="text-gray-800">{displayBasicRam(product, specs)}</div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="text-gray-500 font-medium">Storage</div>
                   <div className="text-gray-800">
-                    {product.storage || "—"}
+                    {displayBasicStorage(product, specs)}
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="text-gray-500 font-medium">OS</div>
-                  <div className="text-gray-800">{product.os || "—"}</div>
+                  <div className="text-gray-800">{displayBasicOs(product, specs)}</div>
                 </div>
               </div>
             </div>
@@ -949,6 +982,7 @@ export default function CatalogueProducts() {
   const [loadError, setLoadError] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
+  const productHistoryPushed = useRef(false);
 
   const fetchProducts = async () => {
     setLoading(true);
@@ -983,6 +1017,40 @@ export default function CatalogueProducts() {
   useEffect(() => {
     fetchProducts();
   }, [categoryFilter]);
+
+  useEffect(() => {
+    const handleBrowserBack = () => {
+      if (!productHistoryPushed.current) return;
+
+      productHistoryPushed.current = false;
+      setSelectedProduct(null);
+    };
+
+    window.addEventListener("popstate", handleBrowserBack);
+    return () => window.removeEventListener("popstate", handleBrowserBack);
+  }, []);
+
+  const openProductDetails = (product) => {
+    if (!productHistoryPushed.current) {
+      window.history.pushState(
+        { catalogueProductDetails: true },
+        "",
+        window.location.href
+      );
+      productHistoryPushed.current = true;
+    }
+
+    setSelectedProduct(product);
+  };
+
+  const closeProductDetails = () => {
+    if (productHistoryPushed.current) {
+      window.history.back();
+      return;
+    }
+
+    setSelectedProduct(null);
+  };
 
   const addProductToList = (product) => {
     if (categoryFilter !== "All" && product.category !== categoryFilter) {
@@ -1019,7 +1087,7 @@ export default function CatalogueProducts() {
       {selectedProduct && (
         <ProductDetailsModal
           product={selectedProduct}
-          onClose={() => setSelectedProduct(null)}
+          onClose={closeProductDetails}
           onDeleted={removeProductFromList}
           onEdited={updateProductInList}
         />
@@ -1150,7 +1218,7 @@ export default function CatalogueProducts() {
 
                       <td className="px-5 py-4">
                         <button
-                          onClick={() => setSelectedProduct(product)}
+                          onClick={() => openProductDetails(product)}
                           className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-xs font-bold"
                         >
                           View Details
