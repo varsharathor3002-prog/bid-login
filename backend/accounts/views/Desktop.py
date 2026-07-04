@@ -3199,23 +3199,6 @@ def get_desktop_bid(request, bid_id):
 
 
 # ═══════════════════════════════════════════════════════════
-# DELETE BID  (Admin — approved bid delete)
-# URL: /api/admin/desktop-bids/<bid_id>/delete/
-# ═══════════════════════════════════════════════════════════
-@csrf_exempt
-@require_http_methods(["DELETE"])
-def delete_desktop_bid(request, bid_id):
-    try:
-        bid = DesktopBid.objects.filter(id=bid_id).first()
-        if not bid:
-            return JsonResponse({"error": "Bid not found"}, status=404)
-        bid.delete()
-        return JsonResponse({"message": "Bid deleted successfully ✅"}, status=200)
-    except Exception as e:
-        return JsonResponse({"error": str(e)}, status=400)
-
-
-# ═══════════════════════════════════════════════════════════
 # ANALYSER REVIEW
 # ═══════════════════════════════════════════════════════════
 @csrf_exempt
@@ -3354,6 +3337,24 @@ def review_desktop_bid(request, bid_id):
 
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=400)
+
+
+# ═══════════════════════════════════════════════════════════
+# DELETE BID  (Admin — approved bid delete)
+# URL: /api/admin/desktop-bids/<bid_id>/delete/
+# ═══════════════════════════════════════════════════════════
+@csrf_exempt
+@require_http_methods(["DELETE"])
+def delete_desktop_bid(request, bid_id):
+    try:
+        bid = DesktopBid.objects.filter(id=bid_id).first()
+        if not bid:
+            return JsonResponse({"error": "Bid not found"}, status=404)
+        bid.delete()
+        return JsonResponse({"message": "Bid deleted successfully ✅"}, status=200)
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=400)
+
 
 
 # ═══════════════════════════════════════════════════════════
