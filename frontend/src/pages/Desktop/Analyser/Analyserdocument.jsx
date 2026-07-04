@@ -18,12 +18,7 @@ const ANALYSER_DOCS = [
   {
     id: "data_sheet",
     label: "DATA SHEET",
-    fields: [
-      "processor", "ram", "hdd", "ssd", "ssd1", "ssd2", "monitor", "os",
-      "wifi", "dvd", "cabinet", "keyboard", "motherboard", "motherboard_descp",
-      "warranty", "optional_ports", "optional_port1", "optional_port2", "optional_port3",
-      "bid_no", "organization",
-    ],
+    fields: ["processor", "ram", "hdd", "ssd1", "ssd2", "monitor", "os", "wifi", "dvd", "cabinet", "keyboard", "motherboard", "warranty", "bid_no", "organization"],
   },
 ];
 
@@ -707,25 +702,17 @@ export default function AnalyserDocument() {
                 )}
               </button>
 
+              {/* ✅ UPDATED BACK BUTTON (Same style as CreateDesktopBid) */}
               <button
                 type="button"
                 onClick={() => navigate(-1)}
-                style={{
-                  width: "100%",
-                  marginTop: 9,
-                  padding: "10px",
-                  borderRadius: 10,
-                  border: "1px solid #e2e8f0",
-                  background: "#f8fafc",
-                  color: "#475569",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  fontFamily: "'DM Sans', sans-serif",
-                  transition: "all 0.15s",
-                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-gray-300 bg-white text-gray-700 text-sm font-semibold hover:bg-slate-800 hover:text-white hover:border-slate-800 transition-all duration-200 shadow-sm"
+                style={{ marginTop: 9 }}
               >
-                ← Back to Review
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+                </svg>
+                Back to Review
               </button>
             </div>
           </div>

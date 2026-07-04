@@ -6,7 +6,7 @@ import json
 from django.utils import timezone
 from datetime import timedelta
 from django.views.decorators.http import require_http_methods
-from ..models import User, DesktopBid, CatalogueProduct
+from ..models import User, DesktopBid, WorkstationBid, CatalogueProduct
 import re
 import os
 from collections import OrderedDict
@@ -2257,6 +2257,9 @@ def update_desktop_docs(request, bid_id):
         ).strip()
 
         if model_number:
+            conflict_source = _model_no_conflict(model_number, desktop_bid_id=bid.id)
+            if conflict_source:
+                return _duplicate_model_response(conflict_source)
             bid.model_number = model_number
 
         if is_analyser_submit:
@@ -2620,6 +2623,36 @@ def _normalize_extra_specs(extra_specs):
         ordered["Type of RAM"] = "DDR4 RAM"
     return ordered
 
+def _model_no_conflict(model_no, *, catalogue_id=None, desktop_bid_id=None, workstation_bid_id=None):
+    model_no = str(model_no or "").strip()
+    if not model_no:
+        return ""
+
+    catalogue_qs = CatalogueProduct.objects.filter(model_no__iexact=model_no)
+    if catalogue_id:
+        catalogue_qs = catalogue_qs.exclude(id=catalogue_id)
+    if catalogue_qs.exists():
+        return "Catalogue product"
+
+    desktop_qs = DesktopBid.objects.filter(model_number__iexact=model_no)
+    if desktop_bid_id:
+        desktop_qs = desktop_qs.exclude(id=desktop_bid_id)
+    if desktop_qs.exists():
+        return "Desktop bid"
+
+    workstation_qs = WorkstationBid.objects.filter(model_number__iexact=model_no)
+    if workstation_bid_id:
+        workstation_qs = workstation_qs.exclude(id=workstation_bid_id)
+    if workstation_qs.exists():
+        return "Workstation bid"
+
+    return ""
+
+def _duplicate_model_response(conflict_source):
+    return JsonResponse({
+        "error": f"Duplicate model number is not allowed. Already used in {conflict_source}."
+    }, status=400)
+
 def _catalogue_product_data(product, request):
     extra_specs = product.extra_specs or {}
     if isinstance(extra_specs, str):
@@ -2705,7 +2738,8 @@ def create_catalogue_product(request):
         model_no = data.get("model_no", "").strip().upper()
         if not model_no: return JsonResponse({"error": "Model No. is required"}, status=400)
         if model_no in {"MEITY", "DESKTOP", "COMPUTER"}: return JsonResponse({"error": "Invalid model no. Please upload correct PDF."}, status=400)
-        if CatalogueProduct.objects.filter(model_no__iexact=model_no).exists(): return JsonResponse({"error": "A product with this model no. already exists"}, status=400)
+        conflict_source = _model_no_conflict(model_no)
+        if conflict_source: return _duplicate_model_response(conflict_source)
         try: extra_specs = json.loads(data.get("extra_specs", "{}"))
         except Exception: extra_specs = {}
         product = CatalogueProduct.objects.create(
@@ -2731,8 +2765,8 @@ def update_catalogue_product(request, product_id):
         model_no = data.get("model_no", "").strip().upper()
         if model_no:
             if model_no in {"MEITY", "DESKTOP", "COMPUTER"}: return JsonResponse({"error": "Invalid model no."}, status=400)
-            duplicate = CatalogueProduct.objects.filter(model_no__iexact=model_no).exclude(id=product.id).exists()
-            if model_no != product.model_no and duplicate: return JsonResponse({"error": "Another product with this model no. already exists"}, status=400)
+            conflict_source = _model_no_conflict(model_no, catalogue_id=product.id)
+            if conflict_source: return _duplicate_model_response(conflict_source)
             product.model_no = model_no
         for field in ["processor", "ram", "storage", "os", "category", "description"]:
             if field in data: setattr(product, field, data.get(field, ""))
@@ -2910,6 +2944,9 @@ def update_desktop_bid(request, bid_id):
         # MODEL NUMBER FIX: fetched ya manually filled dono save honge.
         model_number = _get_model_number_from_data(data)
         if model_number:
+            conflict_source = _model_no_conflict(model_number, desktop_bid_id=bid.id)
+            if conflict_source:
+                return _duplicate_model_response(conflict_source)
             bid.model_number = model_number
 
         bid.processor = data.get("processor", bid.processor)
@@ -3018,14 +3055,9 @@ def save_model_number(request, bid_id):
         model_number = model_number.strip()
 
         # ✅ Duplicate model number check
-        duplicate_exists = DesktopBid.objects.filter(
-            model_number__iexact=model_number
-        ).exclude(id=bid.id).exists()
-
-        if duplicate_exists:
-            return JsonResponse({
-                "error": "Duplicate model number is not allowed."
-            }, status=400)
+        conflict_source = _model_no_conflict(model_number, desktop_bid_id=bid.id)
+        if conflict_source:
+            return _duplicate_model_response(conflict_source)
 
         bid.model_number = model_number
 
@@ -3219,6 +3251,9 @@ def review_desktop_bid(request, bid_id):
 
         model_number = _get_model_number_from_data(data)
         if model_number:
+            conflict_source = _model_no_conflict(model_number, desktop_bid_id=bid.id)
+            if conflict_source:
+                return _duplicate_model_response(conflict_source)
             bid.model_number = model_number
 
         bid.processor = data.get("processor", bid.processor)
@@ -3340,24 +3375,6 @@ def review_desktop_bid(request, bid_id):
 
 
 # ═══════════════════════════════════════════════════════════
-# DELETE BID  (Admin — approved bid delete)
-# URL: /api/admin/desktop-bids/<bid_id>/delete/
-# ═══════════════════════════════════════════════════════════
-@csrf_exempt
-@require_http_methods(["DELETE"])
-def delete_desktop_bid(request, bid_id):
-    try:
-        bid = DesktopBid.objects.filter(id=bid_id).first()
-        if not bid:
-            return JsonResponse({"error": "Bid not found"}, status=404)
-        bid.delete()
-        return JsonResponse({"message": "Bid deleted successfully ✅"}, status=200)
-    except Exception as e:
-        return JsonResponse({"error": str(e)}, status=400)
-
-
-
-# ═══════════════════════════════════════════════════════════
 # ADMIN REVIEW
 # ═══════════════════════════════════════════════════════════
 @csrf_exempt
@@ -3388,6 +3405,9 @@ def admin_review_desktop_bid(request, bid_id):
 
         model_number = _get_model_number_from_data(data)
         if model_number:
+            conflict_source = _model_no_conflict(model_number, desktop_bid_id=bid.id)
+            if conflict_source:
+                return _duplicate_model_response(conflict_source)
             bid.model_number = model_number
 
         bid.processor = data.get("processor", bid.processor)
@@ -4461,3 +4481,23 @@ def admin_desktop_stats(request):
 
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=400)
+<<<<<<< HEAD
+=======
+    
+
+    # ═══════════════════════════════════════════════════════════
+# DELETE BID  (Admin — approved bid delete)
+# URL: /api/admin/desktop-bids/<bid_id>/delete/
+# ═══════════════════════════════════════════════════════════
+@csrf_exempt
+@require_http_methods(["DELETE"])
+def delete_desktop_bid(request, bid_id):
+    try:
+        bid = DesktopBid.objects.filter(id=bid_id).first()
+        if not bid:
+            return JsonResponse({"error": "Bid not found"}, status=404)
+        bid.delete()
+        return JsonResponse({"message": "Bid deleted successfully ✅"}, status=200)
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=400)
+>>>>>>> 482f32db751307d276954e7d5587a1f46679a850
