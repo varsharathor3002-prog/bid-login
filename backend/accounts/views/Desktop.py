@@ -1973,12 +1973,9 @@ def generate_certificates(request, bid_id):
             # ════════════════════════════════════════════════════════
 
             # ✅ v16 FIX: Track if Tender No/Dated already in page
-            page_has_tender_no = (
-                "Tender No:" in page_text_raw
-                or "Tender No :" in page_text_raw
-                or "Bid No:" in page_text_raw
-                or "Bid No :" in page_text_raw
-            )
+            page_has_tender_no = bool(
+    re.search(r'(tender|bid)\s*no\.?\s*:', page_text_raw, re.IGNORECASE)
+)
 
             gem_replaced_on_page = False
             date_replaced_on_page = False

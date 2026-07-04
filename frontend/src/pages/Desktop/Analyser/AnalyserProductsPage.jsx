@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from "react";
+import img1 from "../../../assets/img1.png";
+import img2 from "../../../assets/img2.png";
+import img3 from "../../../assets/img3.png";
 
-const API = "http://127.0.0.1:8000/api";
-const FALLBACK_IMAGE = "/src/assets/img1.png";
+const API = "https://acxxelbidding.com/api";
+const FALLBACK_IMAGES = [img1, img2, img3];
 
 const CATEGORY_OPTIONS = ["Desktop", "AIO", "Workstation", "Printer", "Toner"];
 
@@ -464,8 +467,8 @@ function getExtraSpecs(product) {
   return normalizedSpecs;
 }
 
-function getImage(product) {
-  return product?.image || FALLBACK_IMAGE;
+function getImage(product, index) {
+  return product?.image || FALLBACK_IMAGES[index % 3];
 }
 
 async function parseJsonResponse(res) {
@@ -585,11 +588,12 @@ function ProductDetailsModal({ product, onClose, onDeleted, onEdited }) {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
             <div className="w-full h-[300px] border rounded-xl flex items-center justify-center bg-white shadow-sm">
               <img
-                src={getImage(product)}
+
+                src={getImage(product, product?.id || 0)}
                 alt={product.model_no}
                 className="max-h-[280px] object-contain"
                 onError={(e) => {
-                  e.currentTarget.src = FALLBACK_IMAGE;
+                  e.currentTarget.src = FALLBACK_IMAGES[(product?.id || 0) % 3];
                 }}
               />
             </div>
@@ -1128,11 +1132,11 @@ export default function CatalogueProducts() {
                       <td className="px-5 py-4">
                         <div className="w-16 h-16 border rounded-lg bg-white flex items-center justify-center overflow-hidden">
                           <img
-                            src={getImage(product)}
+                            src={getImage(product, product?.id || 0)}
                             alt={product.model_no}
                             className="w-full h-full object-contain p-1"
                             onError={(e) => {
-                              e.currentTarget.src = FALLBACK_IMAGE;
+                              e.currentTarget.src = FALLBACK_IMAGES[(product?.id || 0) % 3];
                             }}
                           />
                         </div>
