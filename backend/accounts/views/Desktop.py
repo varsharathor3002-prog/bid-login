@@ -676,8 +676,9 @@ def generate_certificates(request, bid_id):
         return default
 
     def _prefer_catalogue(value, *labels):
-        cat_value = _catalogue_spec(*labels)
-        return cat_value if cat_value not in (None, "") else value
+        if value not in (None, ""):
+            return value
+        return _catalogue_spec(*labels)
 
     def _form_specs():
         hdd = _bid_value("hdd")
@@ -4500,12 +4501,9 @@ def admin_desktop_stats(request):
 
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=400)
-<<<<<<< HEAD
-=======
     
 
-<<<<<<< HEAD
-    # ═══════════════════════════════════════════════════════════
+ # ═══════════════════════════════════════════════════════════
 # DELETE BID  (Admin — approved bid delete)
 # URL: /api/admin/desktop-bids/<bid_id>/delete/
 # ═══════════════════════════════════════════════════════════
@@ -4520,6 +4518,3 @@ def delete_desktop_bid(request, bid_id):
         return JsonResponse({"message": "Bid deleted successfully ✅"}, status=200)
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=400)
->>>>>>> 482f32db751307d276954e7d5587a1f46679a850
-=======
->>>>>>> 45b18015471f5e88c28e34b1fe6060f689e75dd0
