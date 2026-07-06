@@ -515,23 +515,7 @@ export default function DesktopConfig({ bidData, onNext, onBack }) {
   return (
     <div className="container mx-auto px-4 mt-4 max-w-6xl">
       <div className="flex items-center gap-3 mb-4 pt-2 border-b pb-2">
-        <button
-          type="button"
-          onClick={handleBackClick}
-          className="flex items-center gap-1 text-sm font-medium text-gray-600 hover:text-blue-600 hover:bg-blue-50 border border-gray-300 hover:border-blue-400 px-3 py-1.5 rounded-md transition-all"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-4 w-4"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-          </svg>
-          Back
-        </button>
+        
         <h5 className="text-lg font-semibold text-gray-800">Create Desktop Configuration</h5>
       </div>
 
@@ -876,9 +860,25 @@ export default function DesktopConfig({ bidData, onNext, onBack }) {
           <button
             type="submit"
             disabled={saving}
-            className="mt-8 mb-10 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold px-12 py-2.5 rounded-md text-sm transition shadow-lg active:scale-95"
+            className="mt-8 mb-10 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold px-8 py-2.5 rounded-md text-sm transition shadow-lg active:scale-95 whitespace-nowrap flex items-center gap-2"
           >
-            {saving ? "Saving..." : "Next"}
+            {saving ? (
+              "Saving..."
+            ) : (
+              <>
+                View Bid Products at a Glance
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                </svg>
+              </>
+            )}
           </button>
         </div>
       </form>
