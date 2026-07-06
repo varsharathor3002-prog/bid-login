@@ -26,9 +26,6 @@ except Exception:
 
 from django.db.models import Q
 
-# =========================
-# REGISTER User
-# =========================
 @csrf_exempt
 def register(request):
     if request.method == "POST":
@@ -59,9 +56,6 @@ def register(request):
 
     return JsonResponse({"error": "Use POST method"}, status=405)
 
-# =========================
-# USER LIST
-# =========================
 @csrf_exempt
 def user_list(request):
     if request.method == "GET":
@@ -73,9 +67,6 @@ def user_list(request):
             return JsonResponse({"error": str(e)}, status=500)
     return JsonResponse({"error": "Use GET method"}, status=405)
 
-# =========================
-# DELETE USER
-# =========================
 @csrf_exempt
 def delete_user(request, id):
     if request.method == "DELETE":
@@ -89,9 +80,6 @@ def delete_user(request, id):
             return JsonResponse({"error": str(e)}, status=500)
     return JsonResponse({"error": "Use DELETE method"}, status=405)
 
-# =========================
-# Analyser LIST
-# =========================
 @csrf_exempt
 def analyser_list(request):
     if request.method == "GET":
@@ -103,9 +91,6 @@ def analyser_list(request):
             return JsonResponse({"error": str(e)}, status=500)
     return JsonResponse({"error": "Use GET method"}, status=405)
 
-# =========================
-# REGISTER Analyser
-# =========================
 @csrf_exempt
 def register_analyser(request):
     if request.method == "POST":
@@ -135,9 +120,6 @@ def register_analyser(request):
             return JsonResponse({"error": str(e)}, status=500)
     return JsonResponse({"error": "Use POST method"}, status=405)
 
-# =========================
-# DELETE Analyser
-# =========================
 @csrf_exempt
 def delete_analyser(request, id):
     if request.method == "DELETE":
@@ -151,9 +133,6 @@ def delete_analyser(request, id):
             return JsonResponse({"error": str(e)}, status=500)
     return JsonResponse({"error": "Use DELETE method"}, status=405)
 
-# =========================
-# LOGIN Admin, Analyser, User
-# =========================
 @csrf_exempt
 def login(request):
     if request.method == "POST":
@@ -214,9 +193,6 @@ def forgot_password(request):
 
     return JsonResponse({"error": "Use POST method"}, status=405)
 
-# =========================
-# HELPER
-# =========================
 def safe_float(value, default=0):
     if value in (None, "", "price"):
         return float(default or 0)
@@ -233,9 +209,6 @@ def _file_url(request, field):
         pass
     return ""
 
-# =========================
-# HELPER (used inside generate_certificates)
-# =========================
 def _get_model_number_from_data(data):
     if data is None:
         return ""
@@ -252,9 +225,6 @@ def _get_model_number_from_data(data):
 
 
 def _match_clean(value):
-    """Same normalization helper used elsewhere in the project (catalogue
-    matching code) — required here because _extract_motherboard_features_from_text
-    depends on it."""
     if value is None:
         return ""
     raw = str(value).lower().strip()
@@ -274,9 +244,6 @@ def _numbers_from_text(value):
 
 
 def _extract_motherboard_features_from_text(text):
-    """Used inside generate_certificates() -> _form_specs() to derive
-    motherboard expansion-slot / port counts from a free-text motherboard
-    description string."""
     t = _match_clean(text)
     features = {
         "pcie_x1": 0,
@@ -314,7 +281,6 @@ def _extract_motherboard_features_from_text(text):
     if m:
         features["pcie_x4"] = int(m.group(1))
 
-    # DesktopConfig values use "PCI 4 X1" / "PCI 4 X2" for PCIe x4 count.
     m = re.search(r"pci\s*4\s*x\s*(\d+)", t)
     if m:
         features["pcie_x4"] = int(m.group(1))
@@ -359,19 +325,9 @@ def _extract_motherboard_features_from_text(text):
     return features
 
 
-# ═══════════════════════════════════════════════════════════
-# PDF CERTIFICATE GENERATION — SPECIFIC PAGE ONLY
-# ═══════════════════════════════════════════════════════════
 @csrf_exempt
 @require_http_methods(["POST"])
 def generate_certificates(request, bid_id):
-    """
-    v20 — WARRANTY FIX:
-    ✅ "For warranty confirmation visit" line aur uske baad ke links remove.
-    ✅ Saare URLs/Links remove.
-    ✅ Model Number (e.g., AXL-AIO0006) placeholders ko replace karega.
-    ✅ v18/v17 ke baaki sabhi fixes (Service Support, Tender No, etc.) as-is rahenge.
-    """
     if not fitz:
         return JsonResponse({"error": "PyMuPDF installed nahi hai."}, status=500)
     try:
@@ -1254,10 +1210,6 @@ def generate_certificates(request, bid_id):
             y += line_height
 
     def _force_tender_no_date(page):
-        """
-        Bidder Financial Standing / IPV6 / PRELOADED OS jaise pages me
-        Tender No. aur Dated line ko pakka replace/insert karta hai.
-        """
         if not (bid_no or bid_date_formatted):
             return
 
@@ -1299,7 +1251,6 @@ def generate_certificates(request, bid_id):
             insert_x = first_rect.x0
             insert_y = first_rect.y1 - 2
         else:
-            # Agar template me tender line detect na ho to Subject ke upar insert karo
             insert_x = 128
             insert_y = subject_rect.y0 - 28 if subject_rect else 330
 
@@ -1335,27 +1286,11 @@ def generate_certificates(request, bid_id):
             )
 
     def _remove_to_whomsoever_line(page):
-        """
-        ✅ v19: Service Support pages par jahan bhi
-        "TO WHOMSOVER IT MAY CONCERN" / "TO WHOMSOEVER IT MAY CONCERN"
-        heading milti hai, usko white-out karke remove kar deta hai.
-
-        Agar us page par pehle se "To," wala address block (dept/org/address)
-        maujood nahi hai, to heading ki jagah par
-            To,
-            <dept_name>
-            <organization>
-            <address - pincode>
-        insert kar diya jata hai — taaki block missing na rahe.
-        """
         blocks = page.get_text("dict").get("blocks", [])
 
         heading_bbox = None
         next_line_bbox = None
         page_already_has_to_block = False
-
-        # Sare lines collect karo (sorted by vertical position) taaki heading
-        # ke turant baad wali line (insertion ka reference point) mil sake
         all_lines = []
         for block in blocks:
             if block.get("type") != 0:
@@ -1369,10 +1304,6 @@ def generate_certificates(request, bid_id):
         for i, (bbox, line_text) in enumerate(all_lines):
             normalized = re.sub(r'[^A-Za-z\s]', ' ', line_text).upper()
             normalized = re.sub(r'\s+', ' ', normalized).strip()
-
-            # Matches "TO WHOMSOVER IT MAY CONCERN" / "TO WHOMSOEVER IT MAY CONCERN"
-            # (actual template uses "WHOMSOVER" — without the middle "E" before "VER") —
-            # tolerant of extra spacing/punctuation variations
             if heading_bbox is None and re.search(
                 r'TO\s+WHOM\s*S\s*O\s*E?\s*VER\s+IT\s+MAY\s+CONCERN', normalized
             ):
@@ -1384,10 +1315,8 @@ def generate_certificates(request, bid_id):
                 page_already_has_to_block = True
 
         if heading_bbox is None:
-            # Is page par heading hi nahi hai — kuch karne ki zaroorat nahi
             return
 
-        # Heading line ko erase karo
         erase_rect = fitz.Rect(
             heading_bbox.x0 - 4, heading_bbox.y0 - 3,
             page.rect.width - 36, heading_bbox.y1 + 3,
@@ -1395,14 +1324,8 @@ def generate_certificates(request, bid_id):
         page.add_redact_annot(erase_rect, fill=(1, 1, 1))
         page.apply_redactions()
 
-        # ✅ v19: Agar page par already "To," address block nahi hai,
-        # to heading ki jagah par To,/dept/org/address block insert karo —
-        # bilkul "This is certifying..." (next content line) ke upar
         if not page_already_has_to_block:
-            # ✅ v20: Left margin ab page ke standard body-text margin se
-            # match hoti hai (next_line_bbox = "This is certifying..." wali
-            # line ka left edge) — heading center-aligned thi isliye uska
-            # x0 use karna galat tha aur block right-shifted dikh raha tha.
+
             if next_line_bbox is not None:
                 insert_x = next_line_bbox.x0
             elif heading_bbox.x0 < 200:
@@ -1418,28 +1341,16 @@ def generate_certificates(request, bid_id):
             if full_address:
                 block_lines.append(full_address)
 
-            # ✅ v21 FIX: Block aur uske neeche wali existing content
-            # ("This is certifying...") ke beech mein gap mix ho raha tha
-            # kyunki block top (heading_bbox.y0) se neeche ki taraf likha
-            # ja raha tha aur uska bottom kabhi-kabhi next line ko chhoo
-            # ya overlap kar jaata tha. Ab block ko UCHIT GAP ke saath
-            # next_line_bbox ke upar se "backward" anchor kiya jata hai,
-            # taaki dono sections ke beech hamesha proper spacing rahe.
             line_height = 14
-            gap_before_content = 24  # block aur "This is certifying..." ke beech ka gap
+            gap_before_content = 24 
             block_height = line_height * len(block_lines)
 
             if next_line_bbox is not None:
                 block_bottom_y = next_line_bbox.y0 - gap_before_content
                 insert_y = block_bottom_y - block_height + line_height
-                # Heading se upar wali content ko overlap na kare, isliye
-                # ek sensible minimum bhi rakho
                 insert_y = max(insert_y, heading_bbox.y0)
             else:
                 insert_y = heading_bbox.y0
-
-            # ✅ v20: Pura block bold (hebo) — professional letterhead jaisa look,
-            # "To," ke alawa baki lines bhi ab bold hain
             cur_y = insert_y
             for idx, bl in enumerate(block_lines):
                 page.insert_text(
@@ -1489,10 +1400,6 @@ def generate_certificates(request, bid_id):
             original_page_number = page_from + page_index
             suppress_tender_on_page = original_page_number in suppress_tender_page_numbers
             page_text_raw = page.get_text("text")
-
-            # ✅ v18: service_support ke har page par — chahe To,/address block ho
-            # ya na ho (jaise centered heading-only pages) — "TO WHOMSOVER /
-            # WHOMSOEVER IT MAY CONCERN" line ko unconditionally remove karo.
             if doc_type == "service_support":
                 _remove_to_whomsoever_line(page)
                 if original_page_number == 25:
@@ -1502,8 +1409,6 @@ def generate_certificates(request, bid_id):
             if suppress_tender_on_page:
                 _remove_tender_no_date_lines(page)
                 page_text_raw = page.get_text("text")
-
-            # ✅ FIX: In 3 documents me Tender No / Dated line forcefully update hogi
             if doc_type in [
                 "manufacturer_auth",
                 "warranty",
@@ -1525,23 +1430,17 @@ def generate_certificates(request, bid_id):
             if doc_type == "data_sheet":
                 _fill_data_sheet_page(page, page_index)
                 continue
-
-            # ✅ v20: WARRANTY CERTIFICATE - URLs Remove & Model No Fix
             if doc_type == "warranty":
-                # 1. "For warranty confirmation visit" line aur uske baad ke links ko remove karo
+            
                 page_text_now = page.get_text("text")
 
-                # Search for the specific phrase and remove it along with following URLs
                 warranty_phrase_pattern = r'For\s+warranty\s+confirmation\s+visit[^\n]*'
                 for m in re.finditer(warranty_phrase_pattern, page_text_now, re.IGNORECASE):
                     areas = page.search_for(m.group(0))
                     if areas:
                         for area in areas:
-                            # Expand area slightly to catch any trailing spaces or immediate links
                             expand_rect = fitz.Rect(area.x0 - 2, area.y0 - 2, page.rect.width - 36, area.y1 + 2)
                             page.add_redact_annot(expand_rect, fill=(1, 1, 1))
-
-                # 2. Saare URLs/Links ko remove karo (backup ke liye agar upar wala pattern miss kar de)
                 url_patterns = [
                     r'https?://[^\s]+',
                     r'www\.[^\s]+',
@@ -1560,17 +1459,16 @@ def generate_certificates(request, bid_id):
 
                 _rewrite_warranty_paragraph(page)
 
-                # 3. Model Number ko replace karo
                 if model_number:
                     formatted_model = _format_model_number(model_number)
 
-                    # Common placeholders ko search karo
+                    
                     placeholder_patterns = [
                         r'he haaaaa+',
                         r'AXL-[A-Z0-9]+',
                         r'ACXXEL[^\s]+',
                         r'ACXOEL[^\s]+',
-                        r'Model\s*No\.?\s*[:\s]*[^\n]+',  # Generic Model No line
+                        r'Model\s*No\.?\s*[:\s]*[^\n]+',  
                     ]
 
                     page_text_after_url_removal = page.get_text("text")
@@ -1584,10 +1482,9 @@ def generate_certificates(request, bid_id):
                                     page.add_redact_annot(shrunk, fill=cell_bg)
                                 page.apply_redactions()
 
-                                # Naya model number insert karo
+                               
                                 for area in areas:
                                     mid_y = (area.y0 + area.y1) / 2 + 4
-                                    # Agar pattern "Model No.: ..." tha, to prefix ke saath likho
                                     if "Model" in m.group(0):
                                         insert_text = f"Model No.: {formatted_model}"
                                     else:
@@ -1600,9 +1497,6 @@ def generate_certificates(request, bid_id):
                                         fontname="hebo",
                                         color=(0, 0, 0),
                                     )
-
-                # Warranty specific generic replacements (GEM No, Date, To block) niche wale generic code se handle honge
-                # Lekin agar warranty me bhi "To," block hai to wo bhi update hoga.
 
             if doc_type == "make_in_india":
                 mfg_block_bottom_y = None
@@ -1969,9 +1863,6 @@ def generate_certificates(request, bid_id):
 
                 continue
 
-            # ════════════════════════════════════════════════════════
-            # GENERIC CERTIFICATES — Replace GEM no, date, To block
-            # ════════════════════════════════════════════════════════
 
             # ✅ v16 FIX: Track if Tender No/Dated already in page
             page_has_tender_no = bool(
@@ -2007,8 +1898,6 @@ def generate_certificates(request, bid_id):
                         )
                         date_replaced_on_page = True
 
-            # ✅ v16: Agar page mein pehle se "Tender No:" hai, to fallback skip
-            # warna hamesha fallback insert karo
             if suppress_tender_on_page:
                 needs_fallback = False
             elif page_has_tender_no:
@@ -2017,10 +1906,8 @@ def generate_certificates(request, bid_id):
                 needs_fallback = True
 
             if "To," not in page_text_raw:
-                # ✅ v16: Agar "To," nahi hai, to default position par fallback insert karo
                 if needs_fallback and (bid_no or bid_date_formatted):
                     tender_text = f"Bid No: {bid_no if bid_no else ''} Dated: {bid_date_formatted if bid_date_formatted else ''}"
-                    # Default position: page ke top-right area
                     default_x = 50
                     default_y = 100
                     page.insert_text(
@@ -2032,11 +1919,6 @@ def generate_certificates(request, bid_id):
                     )
                 continue
 
-            # ✅ v19 FIX: service_support ke liye To,/dept/org/address block
-            # already _remove_to_whomsoever_line() ne sahi se insert kar diya
-            # hai (page ke top par, heading ki jagah). Is generic block ko
-            # yahan se skip karo — warna ye dept_line/org_line ko galat
-            # detect karke overwrite kar deta tha (dept/org gayab ho jate the).
             if doc_type == "service_support":
                 continue
 
@@ -2169,18 +2051,13 @@ def generate_certificates(request, bid_id):
                         fontsize=11.5, fontname="hebo", color=(0, 0, 0), align=0,
                     )
 
-                # ✅ v16 FIX: Fallback ab address block ke bahar hai
-                # Agar write_x/write_y available nahi hain to default position use karo
                 if needs_fallback and (bid_no or bid_date_formatted):
                     tender_text = f"Bid No: {bid_no if bid_no else ''} Dated: {bid_date_formatted if bid_date_formatted else ''}"
 
-                    # Position determine karo
                     if write_x is not None and write_y is not None:
-                        # Address block mila tha, uske neeche insert karo
                         tender_x = write_x
                         tender_y = write_y + 45
                     else:
-                        # Address block nahi mila, default position use karo
                         tender_x = 50
                         tender_y = 100
 
@@ -2213,9 +2090,6 @@ def generate_certificates(request, bid_id):
     except Exception as e:
         return JsonResponse({"error": f"PDF generate error: {str(e)}"}, status=500)
 
-# ═══════════════════════════════════════════════════════════
-# STEP 3 — FINAL DOCUMENT SUBMIT
-# ═══════════════════════════════════════════════════════════
 @csrf_exempt
 @require_http_methods(["POST"])
 def update_desktop_docs(request, bid_id):
@@ -2246,7 +2120,6 @@ def update_desktop_docs(request, bid_id):
             or selected_analyser_labels_raw
         )
 
-        # MODEL NUMBER FIX: agar Step 3/analyser submit me model aaye to bhi save hoga.
         model_number = (
             request.POST.get("model_number")
             or request.POST.get("model")
@@ -2267,7 +2140,6 @@ def update_desktop_docs(request, bid_id):
             old_docs = bid.selected_general_docs or []
             old_labels = bid.selected_general_doc_labels or []
 
-            # Admin General Documents me 13 docs ek saath dikhane ke liye merge.
             merged_docs = list(dict.fromkeys(old_docs + analyser_docs))
             merged_labels = list(dict.fromkeys(old_labels + analyser_labels))
 
@@ -2277,7 +2149,6 @@ def update_desktop_docs(request, bid_id):
             if analyser_username:
                 bid.analyser_username = analyser_username
 
-            # ANALYSER FINAL SUBMIT: ab admin ko dikhna chahiye.
             bid.status = "complete"
             bid.review_status = "reviewed"
             message = "Analyser documents saved. Bid submitted to Admin."
@@ -2289,7 +2160,6 @@ def update_desktop_docs(request, bid_id):
             bid.selected_general_docs = general_docs
             bid.selected_general_doc_labels = general_labels
 
-            # USER STEP 3: ab analyser ko dikhna chahiye, admin ko nahi.
             bid.status = "complete"
             bid.review_status = "pending"
             message = "User documents saved. Bid submitted to Analyser."
@@ -2314,9 +2184,6 @@ def update_desktop_docs(request, bid_id):
         return JsonResponse({"error": str(e)}, status=500)
 
 
-# ════════════════════════════════════════════════════════════
-# CATALOGUE PRODUCT — HELPERS
-# ════════════════════════════════════════════════════════════
 GEM_SECTIONS = [
     {"title": "PROCESSOR", "fields": ["Description of Stores", "Computer Type", "Processor Number"]},
     {"title": "MOTHERBOARD", "fields": ["Expansion Slots (PCIe x 1)", "Expansion Slots (PCIe x 4)", "Expansion Slots (PCIe x 16)", "Expansion Slots (M Dot 2) for SSD", "Expansion Slots (M Dot 2) for WiFi", "Trusted Platform Module"]},
@@ -2636,9 +2503,6 @@ def _catalogue_product_data(product, request):
         "created_at": product.created_at.strftime("%Y-%m-%d") if product.created_at else "",
     }
 
-# ════════════════════════════════════════════════════════════
-# CATALOGUE PRODUCT APIs
-# ════════════════════════════════════════════════════════════
 @csrf_exempt
 @require_http_methods(["POST"])
 def extract_catalogue_pdf(request):
@@ -2771,9 +2635,6 @@ def delete_all_catalogue_products(request):
         return JsonResponse({"error": str(e)}, status=500)
 
 
-# ════════════════════════════════════════════════════════════
-# DESKTOP BID — HELPER SERIALIZER
-# ════════════════════════════════════════════════════════════
 def _bid_data(bid, request, status_label=None):
     return {
         "id": bid.id, "user_name": bid.user.username if bid.user else "Unknown",
@@ -2813,7 +2674,6 @@ def _bid_data(bid, request, status_label=None):
         "freightInstallation_price": bid.freightInstallation_price or 0, "freight_price": bid.freightInstallation_price or 0,
         "hddreturnable": bid.hddreturnable or "", "hddreturnable_price": bid.hddreturnable_price or 0,
         
-        # ✅ Optional Ports (single field)
         "optional_ports": bid.optional_ports or "",
         "optional_port": bid.optional_ports or "",
         "optional_port1": bid.optional_ports or "",
@@ -2843,9 +2703,6 @@ def _get_model_number_from_data(data):
     return str(model or "").strip()
 
 
-# ─────────────────────────────────────────────
-# STEP 1 — Create Bid
-# ─────────────────────────────────────────────
 @csrf_exempt
 @require_http_methods(["POST"])
 def create_desktop_bid(request):
@@ -2870,7 +2727,6 @@ def create_desktop_bid(request):
             pincode=data.get("pincode", ""),
             atc=data.get("atc", ""),
 
-            # USER STEP 1: DB me save hoga, lekin analyser/admin ko abhi nahi dikhega.
             status="draft",
             review_status="pending",
 
@@ -2899,16 +2755,12 @@ def create_desktop_bid(request):
         return JsonResponse({"error": str(e)}, status=400)
 
 
-# ─────────────────────────────────────────────
-# STEP 2 — Update Bid (Specs)
-# ─────────────────────────────────────────────
 @csrf_exempt
 @require_http_methods(["POST"])
 def update_desktop_bid(request, bid_id):
     try:
         bid = DesktopBid.objects.get(id=bid_id)
         data = json.loads(request.body)
-        # MODEL NUMBER FIX: fetched ya manually filled dono save honge.
         model_number = _get_model_number_from_data(data)
         if model_number:
             bid.model_number = model_number
@@ -2968,7 +2820,6 @@ def update_desktop_bid(request, bid_id):
 
         bid.freightInstallation = data.get("freightInstallation", bid.freightInstallation)
 
-        # "No" hone par price hamesha 0 save karo
         if bid.freightInstallation == "No":
             bid.freightInstallation_price = 0
         else:
@@ -2981,8 +2832,6 @@ def update_desktop_bid(request, bid_id):
         if data.get("hddreturnable_price"):
             bid.hddreturnable_price = safe_float(data.get("hddreturnable_price"), bid.hddreturnable_price)
 
-        # USER STEP 2: DB me save hoga, lekin analyser/admin ko abhi nahi dikhega.
-        # USER STEP 3 docs ke baad hi status complete hoga.
         bid.status = "configured"
         bid.review_status = "pending"
         bid.save()
@@ -3002,9 +2851,6 @@ def update_desktop_bid(request, bid_id):
         return JsonResponse({"error": str(e)}, status=400)
 
 
-# ─────────────────────────────────────────────
-# STEP 3 — Save Model Number
-# ─────────────────────────────────────────────
 @csrf_exempt
 @require_http_methods(["POST"])
 def save_model_number(request, bid_id):
@@ -3018,7 +2864,6 @@ def save_model_number(request, bid_id):
 
         model_number = model_number.strip()
 
-        # ✅ Duplicate model number check
         duplicate_exists = DesktopBid.objects.filter(
             model_number__iexact=model_number
         ).exclude(id=bid.id).exists()
@@ -3030,7 +2875,6 @@ def save_model_number(request, bid_id):
 
         bid.model_number = model_number
 
-        # Sirf model save karo. Is API se analyser/admin visibility change nahi hogi.
         if bid.status not in ["complete", "approved"]:
             bid.status = "configured"
             bid.review_status = "pending"
@@ -3053,9 +2897,6 @@ def save_model_number(request, bid_id):
         return JsonResponse({"error": str(e)}, status=400)
 
 
-# ─────────────────────────────────────────────
-# PRICE CHECK VIEWS
-# ─────────────────────────────────────────────
 def get_price_for(component, value):
     return 0
 
@@ -3132,9 +2973,6 @@ def check_warranty(request):
         return JsonResponse({"price": get_price_for("warranty", data.get("warranty", ""))})
 
 
-# ═══════════════════════════════════════════════════════════
-# LIST BIDS
-# ═══════════════════════════════════════════════════════════
 @csrf_exempt
 @require_http_methods(["GET"])
 def list_desktop_bids(request):
@@ -3149,8 +2987,6 @@ def list_desktop_bids(request):
             }
             db_status = status_map.get(status_filter, "reviewed")
 
-            # Admin ko sirf analyser final submit ke baad dikhna chahiye.
-            # approved: latest approved pehle (updated_at), baaki: latest created pehle
             if db_status == "approved":
                 bids = DesktopBid.objects.filter(
                     status="complete",
@@ -3164,13 +3000,11 @@ def list_desktop_bids(request):
 
         else:
             if status_filter == "reviewed":
-                # Analyser history tab: admin ko bheje gaye / approved records.
                 bids = DesktopBid.objects.filter(
                     status="complete",
                     review_status__in=["reviewed", "approved"],
                 ).order_by("-created_at")
             else:
-                # Analyser pending tab: user step 3 complete ke baad.
                 bids = DesktopBid.objects.filter(
                     status="complete",
                     review_status=status_filter,
@@ -3184,9 +3018,6 @@ def list_desktop_bids(request):
         return JsonResponse({"error": str(e)}, status=400)
 
 
-# ═══════════════════════════════════════════════════════════
-# GET SINGLE BID
-# ═══════════════════════════════════════════════════════════
 @csrf_exempt
 @require_http_methods(["GET"])
 def get_desktop_bid(request, bid_id):
@@ -3199,9 +3030,6 @@ def get_desktop_bid(request, bid_id):
         return JsonResponse({"error": str(e)}, status=400)
 
 
-# ═══════════════════════════════════════════════════════════
-# ANALYSER REVIEW
-# ═══════════════════════════════════════════════════════════
 @csrf_exempt
 @require_http_methods(["PATCH"])
 def review_desktop_bid(request, bid_id):
@@ -3283,7 +3111,6 @@ def review_desktop_bid(request, bid_id):
             bid.freightInstallation
         )
 
-        # "No" hone par price hamesha 0 save karo
         if bid.freightInstallation == "No":
             bid.freightInstallation_price = 0
         else:
@@ -3302,7 +3129,6 @@ def review_desktop_bid(request, bid_id):
                 bid.hddreturnable_price
             )
 
-        # ✅ NEW: Optional Ports Save (Analyser Re-Analyze)
         if "optional_ports" in data: bid.optional_ports = data.get("optional_ports") or ""
         elif "optional_port" in data: bid.optional_ports = data.get("optional_port") or ""
         elif "optional_port1" in data: bid.optional_ports = data.get("optional_port1") or ""
@@ -3319,7 +3145,6 @@ def review_desktop_bid(request, bid_id):
         if analyser_username:
             bid.analyser_username = analyser_username
 
-        # Analyser ne review complete kiya, ab document step par rahega
         bid.status = "complete"
         bid.review_status = "pending"
         bid.save()
@@ -3341,10 +3166,6 @@ def review_desktop_bid(request, bid_id):
 
 
 
-# ═══════════════════════════════════════════════════════════
-# DELETE BID  (Admin — approved bid delete)
-# URL: /api/admin/desktop-bids/<bid_id>/delete/
-# ═══════════════════════════════════════════════════════════
 @csrf_exempt
 @require_http_methods(["DELETE"])
 def delete_desktop_bid(request, bid_id):
@@ -3360,9 +3181,6 @@ def delete_desktop_bid(request, bid_id):
 
 
 
-# ═══════════════════════════════════════════════════════════
-# ADMIN REVIEW
-# ═══════════════════════════════════════════════════════════
 @csrf_exempt
 @require_http_methods(["PATCH"])
 def admin_review_desktop_bid(request, bid_id):
@@ -3433,7 +3251,6 @@ def admin_review_desktop_bid(request, bid_id):
 
         bid.epbg = safe_float(data.get("epbg"), bid.epbg)
         bid.freightInstallation = data.get("freightInstallation", bid.freightInstallation)
-        # "No" hone par price hamesha 0 save karo
         if bid.freightInstallation == "No":
             bid.freightInstallation_price = 0
         else:
@@ -3441,7 +3258,6 @@ def admin_review_desktop_bid(request, bid_id):
         bid.hddreturnable = data.get("hddreturnable", bid.hddreturnable)
         bid.hddreturnable_price = safe_float(data.get("hddreturnable_price"), bid.hddreturnable_price)
 
-        # ✅ Optional Ports Save (Admin Review)
         if "optional_ports" in data: bid.optional_ports = data.get("optional_ports") or ""
         elif "optional_port" in data: bid.optional_ports = data.get("optional_port") or ""
         elif "optional_port1" in data: bid.optional_ports = data.get("optional_port1") or ""
@@ -3466,17 +3282,6 @@ def admin_review_desktop_bid(request, bid_id):
         return JsonResponse({"error": str(e)}, status=400)
 
 
-# ═══════════════════════════════════════════════════════════
-# CATALOGUE MATCH API — UPDATED / CONFIG BASED
-# ═══════════════════════════════════════════════════════════
-# Logic:
-# 1) Matching sirf DesktopConfig.jsx ke real configuration fields par hoga.
-# 2) SSD2, prices, descriptions, date, EPBG, freight, HDD return, optional ports ignore honge.
-# 3) Frontend body bheje ya na bheje — backend database values se fallback karega.
-# 4) "None" / "No" / "Not Required" ko zero-like value maana jayega.
-# 5) Catalogue me zero-like field absent ho aur bid me None ho, to wo field fail nahi karega.
-# 6) Perfect match ka matlab: jitne matching fields check hue, sab pass. Minimum strong fields required.
-# 7) Frontend ko sirf ek best model return hoga; debug_details sirf troubleshooting ke liye rahega.
 
 MATCH_REQUIRED_FIELDS = 12
 MIN_STRONG_MATCH_FIELDS = 8
@@ -3891,7 +3696,6 @@ def _special_zero_field_match(bid_key, bid_value, product, catalogue_keys):
         return None
     pairs = _catalogue_values_for_keys(product, catalogue_keys)
 
-    # Bid me None hai aur catalogue me field available nahi hai — optional zero-like fields ko fail na karo.
     if not pairs and bid_key in {"hdd", "dvd", "wifi"}:
         return True, bid_key, "Catalogue value blank; bid value is None", 1000
 
@@ -3905,7 +3709,6 @@ def _special_zero_field_match(bid_key, bid_value, product, catalogue_keys):
             if _is_zero_like(val) or "no optical drive" in _raw_text(val) or cv == "0":
                 return True, key, val, 3000
     if bid_key == "wifi":
-        # DesktopConfig me WiFi None means separate WiFi card nahi. Catalogue me M.2 WiFi slot 1 bhi acceptable hai.
         for key, val in pairs:
             nums = _numbers_from_text(val)
             if nums and int(float(nums[0])) >= 1:
@@ -4004,7 +3807,6 @@ def match_catalogue_models(request, bid_id):
         "processor": _value_from_body_or_bid(body, bid, "processor"),
         "ram": _value_from_body_or_bid(body, bid, "ram"),
         "hdd": _value_from_body_or_bid(body, bid, "hdd"),
-        # SSD2 intentionally ignored. Sirf SSD1 / ssd match hoga.
         "ssd": _value_from_body_or_bid(body, bid, "ssd", "ssd1"),
         "os": _value_from_body_or_bid(body, bid, "os"),
         "dvd": _value_from_body_or_bid(body, bid, "dvd"),
@@ -4071,7 +3873,6 @@ def match_catalogue_models(request, bid_id):
     perfect_results = [r for r in results if r["is_perfect"]]
 
     if not perfect_results:
-        # Best failed item bhi bhej rahe hain taaki pata chale kaunsa field fail ho raha hai.
         debug_all.sort(key=lambda x: (-x["match_count"], -x["total_score"], x["model_no"]))
         best_failed = debug_all[0] if debug_all else None
         return JsonResponse({
@@ -4277,7 +4078,6 @@ def _get_admin_status_label(bid):
         return "approved"
     if bid.review_status == "re-analyze":
         return "re-analyze"
-    # reviewed → admin ke liye pending
     return "pending"
 
 def _get_admin_base_queryset(year=None):
@@ -4293,10 +4093,6 @@ def _get_admin_base_queryset(year=None):
     return qs
 
 
-# ═══════════════════════════════════════════════════════════
-# ADMIN — AVAILABLE YEARS
-# URL: /api/admin/desktop-bids/dashboard-years/
-# ═══════════════════════════════════════════════════════════
 @csrf_exempt
 @require_http_methods(["GET"])
 def admin_desktop_dashboard_years(request):
@@ -4309,20 +4105,12 @@ def admin_desktop_dashboard_years(request):
         return JsonResponse({"error": str(e)}, status=400)
 
 
-# ═══════════════════════════════════════════════════════════
-# ADMIN — MONTHLY PERFORMANCE
-# URL: /api/admin/desktop-bids/monthly-performance/?year=2026
-# Admin-specific columns:
-# pending = review_status="reviewed" (analyser submitted, admin hasn't acted yet)
-# approved = review_status="approved"
-# reAnalyze = review_status="re-analyze"
-# ═══════════════════════════════════════════════════════════
 @csrf_exempt
 @require_http_methods(["GET"])
 def admin_desktop_monthly_performance(request):
     try:
         year = _get_year(request)
-        analyser = request.GET.get("analyser")  # analyser filter
+        analyser = request.GET.get("analyser")
         months = [
             "Jan", "Feb", "Mar", "Apr", "May", "Jun",
             "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
@@ -4365,10 +4153,6 @@ def admin_desktop_monthly_performance(request):
         return JsonResponse({"error": str(e)}, status=400)
 
 
-# ═══════════════════════════════════════════════════════════
-# ADMIN — DAILY ACTIVITY (current week: Sun → today)
-# URL: /api/admin/desktop-bids/daily-activity/
-# ═══════════════════════════════════════════════════════════
 @csrf_exempt
 @require_http_methods(["GET"])
 def admin_desktop_daily_activity(request):
@@ -4393,7 +4177,7 @@ def admin_desktop_daily_activity(request):
                 "rejected": 0,
             })
 
-        analyser = request.GET.get("analyser")  # analyser filter
+        analyser = request.GET.get("analyser")
 
         bids_qs = DesktopBid.objects.filter(
             status="complete",
@@ -4430,21 +4214,12 @@ def admin_desktop_daily_activity(request):
         return JsonResponse({"error": str(e)}, status=400)
 
 
-# ═══════════════════════════════════════════════════════════
-# ADMIN — STATS COUNTS
-# URL: /api/admin/desktop-bids/stats/
-# Ek hi API call mein saare counts:
-# pending = analyser submitted, admin ne abhi review nahi kiya
-# approved = admin approved
-# reAnalyze = admin ne re-analyze bheja
-# total = upar teeno ka sum
-# ═══════════════════════════════════════════════════════════
 @csrf_exempt
 @require_http_methods(["GET"])
 def admin_desktop_stats(request):
     try:
         year = request.GET.get("year")
-        analyser = request.GET.get("analyser")  # analyser filter
+        analyser = request.GET.get("analyser")
         base_qs = DesktopBid.objects.filter(status="complete")
         if year:
             base_qs = base_qs.filter(created_at__year=int(year))
