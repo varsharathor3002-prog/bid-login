@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-const API_BASE = "http://127.0.0.1:8000/api";
+const API_BASE = "https://acxxelbidding.com/api";
 
 // ============================================================
 // PROCESSORS - Only items NOT marked "remove" in Excel

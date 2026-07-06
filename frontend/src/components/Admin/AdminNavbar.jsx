@@ -25,8 +25,8 @@ import {
   PieChart, Pie, Cell, Legend, CartesianGrid,
 } from "recharts";
 
-const API_BASE = "http://127.0.0.1:8000/api";
-const ADMIN_API = "http://127.0.0.1:8000/api/admin";
+const API_BASE = "https://acxxelbidding.com/api";
+const ADMIN_API = "https://acxxelbidding.com/api/admin";
 
 const bidItems = [
   { name: "Desktop Bid Approval",     path: "/admin-dashboard/desktop-bid-approval", ready: true  },

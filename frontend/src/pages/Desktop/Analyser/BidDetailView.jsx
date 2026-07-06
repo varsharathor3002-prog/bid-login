@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
-const API_BASE = "http://127.0.0.1:8000/api";
+const API_BASE = "https://acxxelbidding.com/api";
 
 const REVIEW_API = {
   desktop: (id) => `${API_BASE}/desktop-bids/${id}/review/`,
@@ -235,7 +235,7 @@ function SpecialDocView({ form }) {
   const url = form?.atc_special_document;
   if (!url) return null;
 
-  const fullUrl = url.startsWith("http") ? url : `http://127.0.0.1:8000${url}`;
+  const fullUrl = url.startsWith("http") ? url : `https://acxxelbidding.com${url}`;
   const filename = url.split("/").pop() || "special_document";
 
   const handleDownload = async () => {
@@ -327,7 +327,7 @@ export default function BidDetailView({ product = "desktop" }) {
   const normalizeDocUrl = (url) => {
     if (!url) return "";
     if (url.startsWith("http")) return url;
-    return `http://127.0.0.1:8000${url}`;
+    return `https://acxxelbidding.com${url}`;
   };
 
   const normalizeBid = (bid) => {

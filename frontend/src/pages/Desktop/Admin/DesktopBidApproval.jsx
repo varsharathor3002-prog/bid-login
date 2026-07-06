@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-const API_BASE = "http://127.0.0.1:8000/api";
+const API_BASE = "https://acxxelbidding.com/api";
 
 const TABS = [
   { id: "pending", label: "Pending", icon: "⏳", color: "text-amber-600", border: "border-amber-600" },
@@ -303,7 +303,7 @@ function MakeInIndiaView({ form }) {
 function SpecialDocView({ form }) {
   const url = form?.atc_special_document;
   if (!url) return null;
-  const fullUrl = url.startsWith("http") ? url : `http://127.0.0.1:8000${url}`;
+  const fullUrl = url.startsWith("http") ? url : `https://acxxelbidding.com${url}`;
   const filename = url.split("/").pop() || "special_document";
   const handleDownload = async () => {
     try {

@@ -14,7 +14,7 @@ django.setup()
 from accounts.models import CatalogueProduct
 
 # Excel file path
-file_path =r"C:\Users\Devesh\Desktop\bid_project\backend\products\ACXXEL_Product_Catalogue.xlsx"
+file_path = "/var/www/bid-login/backend/Desktop_Product.xlsx"
 # Read excel
 df = pd.read_excel(file_path)
 

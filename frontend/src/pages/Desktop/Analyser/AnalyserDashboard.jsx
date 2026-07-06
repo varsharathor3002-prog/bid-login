@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 const API_MAP = {
-    desktop: "http://127.0.0.1:8000/api/desktop-bids/list/",
+    desktop: "https://acxxelbidding.com/api/desktop-bids/list/",
 };
 
 const ITEMS_PER_PAGE = 8;

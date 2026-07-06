@@ -34,7 +34,7 @@ export default function ForgotPassword() {
     }
 
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/forgot-password/", {
+      const res = await fetch("https://acxxelbidding.com/api/forgot-password/", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

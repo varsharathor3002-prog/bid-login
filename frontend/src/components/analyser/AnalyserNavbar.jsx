@@ -20,7 +20,7 @@ import {
   ResponsiveContainer, PieChart, Pie, Cell, Legend,
 } from "recharts";
 
-const API_BASE = "http://127.0.0.1:8000/api";
+const API_BASE = "https://acxxelbidding.com/api";
 const BID_PRODUCTS = [
   { key: "desktop", label: "Desktop", icon: <FaDesktop />, color: "#6366f1", ready: true },
   { key: "aio", label: "AIO", icon: <FaLaptop />, color: "#8b5cf6", ready: false },

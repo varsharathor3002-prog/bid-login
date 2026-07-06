@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import DesktopConfig from "./DesktopConfig";
 import Document from "./Document";
 
-const API_BASE = "http://127.0.0.1:8000/api";
+const API_BASE = "https://acxxelbidding.com/api";
 
 const Label = ({ children, optional }) => (
   <label className="block text-sm font-normal text-gray-800 mb-1">

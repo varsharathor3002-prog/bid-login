@@ -9,10 +9,10 @@ import DesktopBidApproval from "./pages/Desktop/Admin/DesktopBidApproval";
 
 
 import UserNavbar from "./components/user/UserNavbar";
-import CreateDesktopBid from "./pages/Desktop/user/CreateDesktopBid";
+import CreateDesktopBid from "./pages/Desktop/User/CreateDesktopBid";
 import CreateWorkstationBid from "./pages/Workstation/User/CreateWorkstationBid";
 
-import AnalyserNavbar from "./components/Analyser/AnalyserNavbar";
+import AnalyserNavbar from "./components/analyser/AnalyserNavbar";
 import AnalyserDashboard from "./pages/Desktop/Analyser/AnalyserDashboard";
 import BidDetailView from "./pages/Desktop/Analyser/BidDetailView";
 import AnalyserProductsPage from "./pages/Desktop/Analyser/AnalyserProductsPage";
