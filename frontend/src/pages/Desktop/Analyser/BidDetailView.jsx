@@ -348,13 +348,22 @@ export default function BidDetailView({ product = "desktop" }) {
           ? String(bid.freightInstallation_price)
           : "1000";
 
-    const isReAnalyzeBid = bid.review_status === "re-analyze" || bid.status === "re-analyze" || bid.status === "re_analyze";
-    if (isReAnalyzeBid) {
-      normalized.model_number = bid.model_number || bid.model || bid.model_no || "";
-    } else {
-      normalized.model_number = ""; 
-    }
+    normalized.model_number = bid.model_number || bid.model || bid.model_no || "";
     return normalized;
+  };
+
+  const shouldShowSavedModelInput = (bid) => {
+    const status = bid?.status;
+    const reviewStatus = bid?.review_status;
+    return (
+      readOnly ||
+      status === "reviewed" ||
+      reviewStatus === "reviewed" ||
+      reviewStatus === "approved" ||
+      status === "re-analyze" ||
+      status === "re_analyze" ||
+      reviewStatus === "re-analyze"
+    );
   };
 
   const fetchBid = async () => {
@@ -364,12 +373,7 @@ export default function BidDetailView({ product = "desktop" }) {
       if (state?.bid) {
         const normalizedData = normalizeBid(state.bid);
         setForm(normalizedData);
-        const isReAnalyzeBid = state.bid.review_status === "re-analyze" || state.bid.status === "re-analyze" || state.bid.status === "re_analyze";
-        if (isReAnalyzeBid) {
-          setModelInputValue(normalizedData.model_number || "");
-        } else {
-          setModelInputValue("");
-        }
+        setModelInputValue(shouldShowSavedModelInput(state.bid) ? normalizedData.model_number || "" : "");
         setLoadingBid(false);
         return;
       }
@@ -387,12 +391,7 @@ export default function BidDetailView({ product = "desktop" }) {
       const normalizedData = normalizeBid(data);
       setForm(normalizedData);
       
-      const isReAnalyzeBid = data.review_status === "re-analyze" || data.status === "re-analyze" || data.status === "re_analyze";
-      if (isReAnalyzeBid) {
-        setModelInputValue(normalizedData.model_number || "");
-      } else {
-        setModelInputValue(""); 
-      }
+      setModelInputValue(shouldShowSavedModelInput(data) ? normalizedData.model_number || "" : "");
     } catch (error) {
       console.log(error);
       setMsg("Error: Unable to load bid data.");
