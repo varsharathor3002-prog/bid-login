@@ -129,7 +129,7 @@ class DesktopBid(models.Model):
     # Optional ports — filled by analyser only during re-analyze (when admin requests via admin_note)
     optional_ports = models.TextField(blank=True, null=True)
 
-    model_number = models.CharField(max_length=255, blank=True, unique=True, null=True)
+    model_number = models.CharField(max_length=255, blank=True, null=True)
 
     analyser_note = models.TextField(blank=True, null=True)
     analyser_username = models.CharField(max_length=100, blank=True, null=True)

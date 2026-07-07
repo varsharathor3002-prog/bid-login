@@ -2864,14 +2864,9 @@ def save_model_number(request, bid_id):
 
         model_number = model_number.strip()
 
-        duplicate_exists = DesktopBid.objects.filter(
-            model_number__iexact=model_number
-        ).exclude(id=bid.id).exists()
-
-        if duplicate_exists:
-            return JsonResponse({
-                "error": "Duplicate model number is not allowed."
-            }, status=400)
+        catalogue_product = CatalogueProduct.objects.filter(
+            model_no__iexact=model_number
+        ).first()
 
         bid.model_number = model_number
 
@@ -2886,6 +2881,8 @@ def save_model_number(request, bid_id):
             "bid_id": bid.id,
             "model_number": bid.model_number,
             "model": bid.model_number,
+            "product_id": catalogue_product.id if catalogue_product else None,
+            "source": "catalogue" if catalogue_product else "bid",
             "status": bid.status,
             "review_status": bid.review_status,
         }, status=200)
@@ -3770,6 +3767,45 @@ def _best_catalogue_match(bid_key, bid_value, product, catalogue_keys):
     return matched, best_key, best_value, best_score
 
 
+_BID_DIRECT_FIELD_MAP = {
+    "processor": "processor",
+    "ram": "ram",
+    "hdd": "hdd",
+    "ssd": "ssd1",
+    "os": "os",
+    "dvd": "dvd",
+    "wifi": "wifi",
+    "motherboard": "motherboard",
+    "monitor": "monitor",
+    "cabinet": "cabinet",
+    "keyboard": "keyboard",
+    "warranty": "warranty",
+}
+
+
+def _best_bid_match(bid_key, bid_value, other_bid):
+    """Compare current bid's spec value against another already-saved bid's
+    direct fields (used for finding a duplicate/matching model number
+    among bids, same way we do for CatalogueProduct)."""
+    if _match_is_blank(bid_value):
+        return None, "", "", -1
+
+    field_name = _BID_DIRECT_FIELD_MAP.get(bid_key)
+    if not field_name:
+        return False, "", "", -1
+
+    other_value = getattr(other_bid, field_name, "") or ""
+    if bid_key == "ssd" and _match_is_blank(other_value):
+        other_value = getattr(other_bid, "ssd2", "") or ""
+
+    if _match_is_blank(other_value):
+        return False, "", "", -1
+
+    score = _values_overlap_score(bid_value, other_value)
+    matched = score >= 100
+    return matched, field_name, other_value, score
+
+
 def _body_json(request):
     try:
         if request.body:
@@ -3860,7 +3896,67 @@ def match_catalogue_models(request, bid_id):
         result = {
             "model_no": product.model_no or "",
             "product_id": product.id,
+            "bid_id": None,
+            "source": "catalogue",
             "category": product.category or "",
+            "match_count": matched_count,
+            "total_checked": checked_count,
+            "total_score": round(total_score, 2),
+            "is_perfect": is_perfect,
+            "debug_details": details,
+        }
+        results.append(result)
+        debug_all.append(result)
+
+    # ---- Ab DesktopBid table se bhi check karo (already saved/model-assigned bids) ----
+    other_bids_qs = (
+        DesktopBid.objects.exclude(id=bid.id)
+        .exclude(model_number__isnull=True)
+        .exclude(model_number="")
+    )
+
+    for other_bid in other_bids_qs:
+        matched_count = 0
+        checked_count = 0
+        total_score = 0
+        details = []
+
+        for bid_key in _CATALOGUE_FIELD_MAP.keys():
+            bid_value = bid_specs.get(bid_key, "")
+            if _match_is_blank(bid_value):
+                continue
+
+            matched, best_key, best_value, best_score = _best_bid_match(
+                bid_key, bid_value, other_bid
+            )
+            checked_count += 1
+
+            if matched:
+                matched_count += 1
+                total_score += max(float(best_score or 0), 0)
+            else:
+                total_score += max(float(best_score or 0), 0) * 0.25
+
+            details.append({
+                "field": bid_key,
+                "bid_value": bid_value,
+                "matched": bool(matched),
+                "catalogue_key": best_key,
+                "catalogue_value": best_value,
+                "score": best_score,
+            })
+
+        if checked_count == 0:
+            continue
+
+        is_perfect = checked_count >= MIN_STRONG_MATCH_FIELDS and matched_count == checked_count
+
+        result = {
+            "model_no": other_bid.model_number or "",
+            "product_id": None,
+            "bid_id": other_bid.id,
+            "source": "bid",
+            "category": "",
             "match_count": matched_count,
             "total_checked": checked_count,
             "total_score": round(total_score, 2),
@@ -3891,6 +3987,8 @@ def match_catalogue_models(request, bid_id):
     best_public = {
         "model_no": best["model_no"],
         "product_id": best["product_id"],
+        "bid_id": best["bid_id"],
+        "source": best["source"],
         "category": best["category"],
     }
 
