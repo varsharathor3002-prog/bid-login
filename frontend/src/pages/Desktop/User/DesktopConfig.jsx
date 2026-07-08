@@ -60,7 +60,7 @@ const OS_OPTIONS = [
   { name: "Windows 11 Home", price: 1000 },
   { name: "Windows 11 Professional", price: 1000 },
   { name: "DOS", price: 1000 },
-  { name: "Linex", price: 1000 },
+  { name: "Linux", price: 1000 },
 ];
 
 const DVDS = [{ name: "Yes", price: 1200 }];
