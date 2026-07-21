@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import DesktopConfig from "./DesktopConfig";
 import DesktopBidSummary from "./DesktopBidSummary";
 import Document from "./Document";
@@ -203,11 +203,6 @@ function Step1Form({ onNext, savedData }) {
     setError("");
 
     try {
-      if (savedData?.bid_id) {
-        onNext({ ...form, bid_id: savedData.bid_id });
-        return;
-      }
-
       const userId =
         localStorage.getItem("bid_user_id") ||
         localStorage.getItem("user_id") ||

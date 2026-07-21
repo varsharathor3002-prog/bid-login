@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 const API_BASE = import.meta.env.VITE_API_URL;
@@ -9,7 +9,7 @@ const ANALYSER_DOCS = [
     label: "WARRANTY",
     fields: ["warranty", "qty", "organization", "bid_no"],
   },
-  
+
   {
     id: "technical_compliance",
     label: "TECHNICAL COMPLIANCE",
@@ -618,8 +618,6 @@ export default function AnalyserDocument() {
                 </div>
               )}
 
-            
-
               <div style={{ marginBottom: 24 }}>
                 <button type="button" className="open-docs-btn" onClick={() => setModalOpen(true)}>
                   {selectedCount > 0 && <span className="badge-count-orange">{selectedCount}</span>}
@@ -702,7 +700,6 @@ export default function AnalyserDocument() {
                 )}
               </button>
 
-              {}
               <button
                 type="button"
                 onClick={() => navigate(-1)}

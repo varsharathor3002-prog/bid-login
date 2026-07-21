@@ -123,7 +123,7 @@ const getProcessorCategory = (processorName) => {
 
 export const getFilteredRams = (processorName) => {
   const category = getProcessorCategory(processorName);
-  if (!category) return RAMS; 
+  if (!category) return RAMS;
 
   if (category === "intel_ultra" || category === "amd_new") {
     return RAMS.filter((r) => r.name.includes("DDR5"));
@@ -247,7 +247,7 @@ const normalizeInitialForm = (source = {}) => {
   return merged;
 };
 
-export default function DesktopConfig({ bidData, onNext, onBack }) {
+export default function DesktopConfig({ bidData, onNext }) {
   const bid_id = bidData?.bid_id;
   const draftKey = useMemo(() => getDraftKey(bid_id), [bid_id]);
 
@@ -308,19 +308,6 @@ export default function DesktopConfig({ bidData, onNext, onBack }) {
     () => getFilteredAmdMotherboards(form.processor),
     [form.processor]
   );
-
-        const handleBackClick = () => {
-    try {
-      localStorage.setItem(draftKey, JSON.stringify(form));
-    } catch (error) {
-      console.warn("Unable to save desktop configuration draft before going back", error);
-    }
-    if (onBack) {
-      onBack({ ...form });
-    } else {
-      window.history.back();
-    }
-  };
 
         const handleChange = async (e) => {
     const { name, value } = e.target;
@@ -462,18 +449,10 @@ export default function DesktopConfig({ bidData, onNext, onBack }) {
   };
 
         const processorCategory = getProcessorCategory(form.processor);
-  const compatibilityInfo = {
-    intel_old: { ram: "DDR4 Only", mb: "H610 / Q670 DDR4" },
-    intel_ultra: { ram: "DDR5 Only", mb: "H810 DDR5" },
-    amd_old: { ram: "DDR4 Only", mb: "AMD A520" },
-    amd_new: { ram: "DDR5 Only", mb: "AMD B650" },
-  };
-  const currentCompat = compatibilityInfo[processorCategory];
-
   return (
     <div className="container mx-auto px-4 mt-4 max-w-6xl">
       <div className="flex items-center gap-3 mb-4 pt-2 border-b pb-2">
-        
+
         <h5 className="text-lg font-semibold text-gray-800">Create Desktop Configuration</h5>
       </div>
 
@@ -487,11 +466,8 @@ export default function DesktopConfig({ bidData, onNext, onBack }) {
         </div>
       )}
 
-     
-
       <form onSubmit={handleSubmit}>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4">
-          {}
           <div className="col-span-1 md:col-span-2 lg:col-span-3">
             <label className="block text-sm font-medium text-gray-700 mb-2 underline">
               Processor Selection
@@ -568,11 +544,9 @@ export default function DesktopConfig({ bidData, onNext, onBack }) {
             </div>
           </div>
 
-          {}
           <SelectField label="Ram" name="ram" options={filteredRams} required />
           <SelectField label="Hard Disk Drive" name="hdd" options={HDDS} required />
 
-          {}
           <div className="col-span-1">
             <div className="flex items-center gap-2 mb-1">
               <label className="block text-sm font-medium text-gray-700">
@@ -621,7 +595,6 @@ export default function DesktopConfig({ bidData, onNext, onBack }) {
             />
           </div>
 
-          {}
           <SelectField label="SSD 1" name="ssd" options={SSDS} required />
           <SelectField label="SSD 2" name="ssd2" options={SSDS} required />
           <SelectField label="OS" name="os" options={OS_OPTIONS} required />
@@ -632,7 +605,6 @@ export default function DesktopConfig({ bidData, onNext, onBack }) {
           <SelectField label="Keyboard & Mouse" name="keyboard" options={KEYBOARDS} required />
           <SelectField label="Warranty" name="warranty" options={WARRANTIES} required />
 
-          {}
           <div className="col-span-1">
             <label className="block text-sm font-medium text-gray-700 mb-1">Bid End Date</label>
             <input
@@ -682,13 +654,11 @@ export default function DesktopConfig({ bidData, onNext, onBack }) {
             </div>
           </div>
 
-          {}
           <div className="col-span-1 md:col-span-2 lg:col-span-3">
             <label className="block text-sm font-medium text-gray-700 mb-2 underline">
               Motherboard Selection
             </label>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {}
               <div className="flex flex-col">
                 <span className="text-[11px] text-gray-500 font-medium mb-1 uppercase">
                   Intel Motherboard
@@ -733,7 +703,6 @@ export default function DesktopConfig({ bidData, onNext, onBack }) {
                 </div>
               </div>
 
-              {}
               <div className="flex flex-col">
                 <span className="text-[11px] text-gray-500 font-medium mb-1 uppercase">
                   AMD Motherboard
@@ -780,7 +749,6 @@ export default function DesktopConfig({ bidData, onNext, onBack }) {
             </div>
           </div>
 
-          {}
           <div className="col-span-1 md:col-span-3">
             <div className="flex items-center gap-2 mb-1">
               <label className="block text-sm font-medium text-gray-700">
@@ -799,7 +767,6 @@ export default function DesktopConfig({ bidData, onNext, onBack }) {
           </div>
         </div>
 
-        {}
         <div className="flex justify-start items-center">
           <button
             type="submit"

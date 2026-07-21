@@ -1,4 +1,3 @@
-import React from "react";
 
 const SUMMARY_FIELDS = [
   { key: "processor", label: "Processor", priceKey: "processor_price" },
@@ -56,15 +55,13 @@ export default function DesktopBidSummary({ bidData, onNext, onBack }) {
 
   return (
     <div className="container mx-auto px-4 mt-4 max-w-5xl">
-      {}
       <div className="flex items-center gap-3 mb-4 pt-2 border-b pb-2">
-       
+
         <h5 className="text-lg font-semibold text-gray-800">
           Bid Products at a Glance
         </h5>
       </div>
 
-      {}
       <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden mb-6">
         <div className="bg-gray-50 border-b border-gray-200 px-4 py-2">
           <h6 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
@@ -110,7 +107,6 @@ export default function DesktopBidSummary({ bidData, onNext, onBack }) {
         </table>
       </div>
 
-      {}
       <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden mb-6">
         <div className="bg-gray-50 border-b border-gray-200 px-4 py-2">
           <h6 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
@@ -138,7 +134,6 @@ export default function DesktopBidSummary({ bidData, onNext, onBack }) {
         </table>
       </div>
 
-      {}
       <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden mb-6">
         <div className="bg-gray-50 border-b border-gray-200 px-4 py-2">
           <h6 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
@@ -166,7 +161,6 @@ export default function DesktopBidSummary({ bidData, onNext, onBack }) {
         </table>
       </div>
 
-      {}
       <div className="flex justify-between items-center mb-10">
         <button
           type="button"

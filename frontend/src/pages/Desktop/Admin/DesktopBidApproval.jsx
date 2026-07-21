@@ -637,7 +637,6 @@ export default function DesktopBidApproval() {
         Back
       </button>
 
-      {}
       <div className="flex gap-3 px-6 pt-3 bg-gray-50 border-b border-gray-200 overflow-visible">
         {TABS.map((tab) => (
           <button key={tab.id} onClick={() => setActiveTab(tab.id)}
@@ -657,7 +656,6 @@ export default function DesktopBidApproval() {
         ))}
       </div>
 
-      {}
       {loading ? (
         <div className="p-20 text-center text-gray-400">Loading...</div>
       ) : bids.length === 0 ? (
@@ -774,7 +772,6 @@ export default function DesktopBidApproval() {
         </>
       )}
 
-      {}
       {selected && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 overflow-hidden">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-7xl max-h-[calc(100vh-2rem)] overflow-y-auto">

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 
 const API_BASE = import.meta.env.VITE_API_URL;
 
@@ -18,7 +18,7 @@ const GENERAL_DOCS = [
   { id: "preloaded_os", label: "PRELOADED OPERATING SYSTEM" },
 ];
 
-export default function Document({ bidData, onSuccess, onBack }) {
+export default function Document({ bidData, onSuccess }) {
   const [modal, setModal] = useState(null);
   const [specialDoc, setSpecialDoc] = useState(null);
   const [selectedGeneralDocs, setSelectedGeneralDocs] = useState({});

@@ -49,7 +49,7 @@ const REQUIRED_FIELDS = [
   "address", "atc", "processor", "ram", "hdd", "ssd1", "ssd2",
   "os", "dvd", "wifi", "monitor", "cabinet", "keyboard",
   "warranty", "motherboard", "date", "epbg",
-  "freightInstallation", "hddreturnable", 
+  "freightInstallation", "hddreturnable",
 ];
 
 const CONDITIONAL_VERIFICATION_FIELDS = [
@@ -401,10 +401,9 @@ export default function BidDetailView({ product = "desktop" }) {
       const data = await res.json();
       const normalizedData = normalizeBid(data);
       setForm(normalizedData);
-      
+
       setModelInputValue(shouldShowSavedModelInput(data) ? normalizedData.model_number || "" : "");
-    } catch (error) {
-      console.log(error);
+    } catch {
       setMsg("Error: Unable to load bid data.");
     } finally {
       setLoadingBid(false);
@@ -518,10 +517,6 @@ export default function BidDetailView({ product = "desktop" }) {
       if (!item?.model_no) {
         setModelMatches([]);
         setNoMatchFound(true);
-
-                if (data.best_failed_match) {
-          console.log("Best failed catalogue match:", data.best_failed_match);
-        }
         return;
       }
 
@@ -617,7 +612,7 @@ export default function BidDetailView({ product = "desktop" }) {
     const finalBidId =
       updatedBidData.id || id || state?.id || state?.bid_id || form?.id;
 
-    const snapshot = { ...form }; 
+    const snapshot = { ...form };
 
     const payload = {
       ...snapshot,
@@ -930,9 +925,9 @@ export default function BidDetailView({ product = "desktop" }) {
           <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="freightInstallation" label="Freight & Installation">
             <div className="flex flex-col gap-1.5 w-full">
               <div className="flex gap-2">
-                <select 
-                  name="freightInstallation" 
-                  value={form?.freightInstallation ?? "Yes"} 
+                <select
+                  name="freightInstallation"
+                  value={form?.freightInstallation ?? "Yes"}
                   onChange={(e) => {
                     const val = e.target.value;
                     setForm((prev) => ({
@@ -947,17 +942,17 @@ export default function BidDetailView({ product = "desktop" }) {
                   <option value="Yes">Yes</option>
                   <option value="No">No</option>
                 </select>
-                <input 
-                  type="number" 
-                  name="freightInstallation_price" 
-                  value={form?.freightInstallation_price ?? ""} 
+                <input
+                  type="number"
+                  name="freightInstallation_price"
+                  value={form?.freightInstallation_price ?? ""}
                   onChange={(e) => {
                     const val = e.target.value;
                     setForm((prev) => ({ ...prev, freightInstallation_price: val }));
                   }}
                   disabled={readOnly || (form?.freightInstallation ?? "Yes") === "No"}
                   placeholder="Enter Amount"
-                  className="w-32 border border-gray-300 rounded-md px-3 py-2 text-sm disabled:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" 
+                  className="w-32 border border-gray-300 rounded-md px-3 py-2 text-sm disabled:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                 />
               </div>
             </div>
@@ -975,7 +970,6 @@ export default function BidDetailView({ product = "desktop" }) {
             </div>
           </VerifiedInputWrapper>
 
-          {}
           <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="optional_ports" label="Optional Ports" optional>
             <textarea name="optional_ports" value={form?.optional_ports || ""} onChange={handleChange} disabled={readOnly} rows={2} className={textareaCls} placeholder="e.g. Serial Port, Display Port, USB Type-C" />
           </VerifiedInputWrapper>

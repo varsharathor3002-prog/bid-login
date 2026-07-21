@@ -3,6 +3,7 @@ from django.http.multipartparser import MultiPartParser
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.hashers import make_password, check_password
 from django.conf import settings
+from django.db import transaction
 import json
 from django.utils import timezone
 from datetime import timedelta
@@ -15,9 +16,8 @@ import shutil
 from collections import OrderedDict
 import tempfile
 
-
 try:
-    import fitz 
+    import fitz
 except ImportError:
     fitz = None
 
@@ -25,7 +25,6 @@ try:
     from PyPDF2 import PdfReader
 except Exception:
     PdfReader = None
-
 
 @csrf_exempt
 def register(request):
@@ -218,7 +217,6 @@ def _get_model_number_from_data(data):
         )
     return str(model or "").strip()
 
-
 def _match_clean(value):
     if value is None:
         return ""
@@ -233,10 +231,8 @@ def _match_clean(value):
     v = re.sub(r"\s+", " ", v).strip()
     return v
 
-
 def _numbers_from_text(value):
     return re.findall(r"\d+(?:\.\d+)?", _match_clean(value))
-
 
 def _extract_motherboard_features_from_text(text):
     t = _match_clean(text)
@@ -318,7 +314,6 @@ def _extract_motherboard_features_from_text(text):
         features["ethernet"] = 1
 
     return features
-
 
 @csrf_exempt
 @require_http_methods(["POST"])
@@ -433,41 +428,20 @@ def generate_certificates(request, bid_id):
         })
 
     if doc_type == "approved_price_paper":
-        price_fields = [
-            ("Processor", bid.processor_price),
-            ("Processor Description", bid.pro_descp_price),
-            ("RAM", bid.ram_price),
-            ("HDD", bid.hdd_price),
-            ("SSD 1", bid.ssd1_price),
-            ("SSD 2", bid.ssd2_price),
-            ("Operating System", bid.os_price),
-            ("DVD", bid.dvd_price),
-            ("WiFi / Bluetooth", bid.wifi_price),
-            ("Monitor", bid.monitor_price),
-            ("Cabinet", bid.cabinet_price),
-            ("Keyboard & Mouse", bid.keyboard_price),
-            ("Warranty", bid.warranty_price),
-            ("Motherboard", bid.motherboard_price),
-            ("Motherboard Description", bid.motherboard_descp_price),
-            ("Additional Software", bid.software1_price),
-            ("Graphics Description", bid.gp_price),
-            ("Freight & Installation", bid.freightInstallation_price),
-            ("HDD Return Option", bid.hddreturnable_price),
-        ]
-        component_prices = []
-        for label, value in price_fields:
-            if value is None or str(value).strip() == "":
-                continue
-            try:
-                numeric_value = float(str(value).replace(",", "").strip())
-            except (TypeError, ValueError):
-                continue
-            if numeric_value == 0:
-                continue
-            component_prices.append((label, numeric_value))
+        try:
+            final_price = float(str(bid.total_price or "").replace(",", "").strip())
+        except (TypeError, ValueError):
+            final_price = 0
+        if final_price <= 0:
+            return JsonResponse(
+                {"error": "A valid final approved price is required."},
+                status=400,
+            )
+
         price_doc = fitz.open()
         page = price_doc.new_page(width=595, height=842)
         template_path = os.path.join(settings.MEDIA_ROOT, "templates", "documents.pdf")
+        signature_image = None
         if os.path.exists(template_path):
             template_doc = fitz.open(template_path)
             source_page = template_doc[5] if len(template_doc) > 5 else template_doc[0]
@@ -477,23 +451,47 @@ def generate_certificates(request, bid_id):
                 alpha=False,
             ).tobytes("png")
             page.insert_image(fitz.Rect(18, 12, 577, 112), stream=header, keep_proportion=False)
+            signature_images = source_page.get_images(full=True)
+            if len(signature_images) > 1:
+                signature_image = template_doc.extract_image(signature_images[1][0]).get("image")
             template_doc.close()
 
         page.insert_textbox(fitz.Rect(45, 135, 550, 165), "PRICE APPROVED", fontsize=14, fontname="hebo", align=1)
         page.insert_text((48, 190), f"Bid Number: {bid.bid_no}", fontsize=11, fontname="hebo")
         x_positions = [48, 390, 547]
         y, row_height = 215, 26
-        for column, heading in enumerate(("COMPONENT", "APPROVED PRICE")):
+        for column, heading in enumerate(("PRICE SUMMARY", "AMOUNT")):
             rect = fitz.Rect(x_positions[column], y, x_positions[column + 1], y + row_height)
             page.draw_rect(rect, color=(0.3, 0.3, 0.3), fill=(0.9, 0.93, 0.96), width=0.7)
             page.insert_textbox(rect + (4, 6, -4, -3), heading, fontsize=9, fontname="hebo", align=column)
         y += row_height
-        for label, value in component_prices:
-            for column, text in enumerate((label, f"Rs. {value:,.2f}")):
-                rect = fitz.Rect(x_positions[column], y, x_positions[column + 1], y + row_height)
-                page.draw_rect(rect, color=(0.55, 0.55, 0.55), width=0.5)
-                page.insert_textbox(rect + (4, 6, -4, -3), text, fontsize=8.5, fontname="helv", align=2 if column else 0)
-            y += row_height
+        for column, text in enumerate(("FINAL APPROVED PRICE", f"Rs. {final_price:,.2f}")):
+            rect = fitz.Rect(x_positions[column], y, x_positions[column + 1], y + row_height)
+            page.draw_rect(rect, color=(0.55, 0.55, 0.55), width=0.5)
+            page.insert_textbox(rect + (4, 6, -4, -3), text, fontsize=9, fontname="hebo", align=2 if column else 0)
+
+        sign_x, sign_y = 72, 570
+        page.insert_textbox(
+            fitz.Rect(sign_x, sign_y, 550, sign_y + 28),
+            "Auth. Signatory\nFor Laps N Tabs Technology Pvt. Ltd.",
+            fontsize=9,
+            fontname="hebo",
+            lineheight=1.15,
+        )
+        if signature_image:
+            page.insert_image(
+                fitz.Rect(sign_x, sign_y + 30, sign_x + 145, sign_y + 70),
+                stream=signature_image,
+                keep_proportion=False,
+            )
+        page.insert_textbox(
+            fitz.Rect(sign_x, sign_y + 74, 550, sign_y + 132),
+            "Name:- Devank Rastogi\nDesignation:- Director\n"
+            "Email:- lapsntabs123@gmail.com\nContact No.:- 9918200166",
+            fontsize=9,
+            fontname="hebo",
+            lineheight=1.15,
+        )
         output_dir = os.path.join(settings.MEDIA_ROOT, "generated")
         os.makedirs(output_dir, exist_ok=True)
         output_filename = f"bid_{bid_id}_price_approved.pdf"
@@ -2391,7 +2389,7 @@ def generate_certificates(request, bid_id):
                 block_lines.append(full_address)
 
             line_height = 14
-            gap_before_content = 24 
+            gap_before_content = 24
             block_height = line_height * len(block_lines)
 
             if next_line_bbox is not None:
@@ -2556,7 +2554,7 @@ def generate_certificates(request, bid_id):
                     _add_authorized_signatory(page, y=min(content_bottom + 8, 720), compact=True)
                 continue
             if doc_type == "warranty":
-            
+
                 page_text_now = page.get_text("text")
 
                 warranty_phrase_pattern = r'For\s+warranty\s+confirmation\s+visit[^\n]*'
@@ -2587,13 +2585,12 @@ def generate_certificates(request, bid_id):
                 if model_number:
                     formatted_model = _format_model_number(model_number)
 
-                    
                     placeholder_patterns = [
                         r'he haaaaa+',
                         r'AXL-[A-Z0-9]+',
                         r'ACXXEL[^\s]+',
                         r'ACXOEL[^\s]+',
-                        r'Model\s*No\.?\s*[:\s]*[^\n]+',  
+                        r'Model\s*No\.?\s*[:\s]*[^\n]+',
                     ]
 
                     page_text_after_url_removal = page.get_text("text")
@@ -2607,7 +2604,6 @@ def generate_certificates(request, bid_id):
                                     page.add_redact_annot(shrunk, fill=cell_bg)
                                 page.apply_redactions()
 
-                               
                                 for area in areas:
                                     mid_y = (area.y0 + area.y1) / 2 + 4
                                     if "Model" in m.group(0):
@@ -2988,8 +2984,6 @@ def generate_certificates(request, bid_id):
 
                 continue
 
-
-
             page_has_tender_no = bool(
     re.search(r'(tender|bid)\s*no\.?\s*:', page_text_raw, re.IGNORECASE)
 )
@@ -3308,7 +3302,6 @@ def update_desktop_docs(request, bid_id):
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
 
-
 GEM_SECTIONS = [
     {"title": "PROCESSOR", "fields": ["Description of Stores", "Computer Type", "Processor Number"]},
     {"title": "MOTHERBOARD", "fields": ["Expansion Slots (PCIe x 1)", "Expansion Slots (PCIe x 4)", "Expansion Slots (PCIe x 16)", "Expansion Slots (M Dot 2) for SSD", "Expansion Slots (M Dot 2) for WiFi", "Trusted Platform Module"]},
@@ -3438,8 +3431,8 @@ def _select_actual_block(pages):
     start_idx = None
     for i, lines in enumerate(page_lines):
         joined = " ".join(lines)
-        if (re.search(r"\bPROCESSOR\b", joined, re.IGNORECASE) and 
-            re.search(r"\bMOTHERBOARD\b", joined, re.IGNORECASE) and 
+        if (re.search(r"\bPROCESSOR\b", joined, re.IGNORECASE) and
+            re.search(r"\bMOTHERBOARD\b", joined, re.IGNORECASE) and
             re.search(r"Processor\s+Number", joined, re.IGNORECASE)):
             start_idx = i
             break
@@ -3759,7 +3752,6 @@ def delete_all_catalogue_products(request):
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
 
-
 def _bid_data(bid, request, status_label=None):
     return {
         "id": bid.id, "user_name": bid.user.username if bid.user else "Unknown",
@@ -3799,7 +3791,7 @@ def _bid_data(bid, request, status_label=None):
         "freightInstallation_price": bid.freightInstallation_price or 0, "freight_price": bid.freightInstallation_price or 0,
         "hddreturnable": bid.hddreturnable or "", "hddreturnable_price": bid.hddreturnable_price or 0,
         "total_price": bid.total_price or 0,
-        
+
         "optional_ports": bid.optional_ports or "",
         "optional_port": bid.optional_ports or "",
         "optional_port1": bid.optional_ports or "",
@@ -3828,7 +3820,6 @@ def _get_model_number_from_data(data):
         )
     return str(model or "").strip()
 
-
 @csrf_exempt
 @require_http_methods(["POST"])
 def create_desktop_bid(request):
@@ -3839,47 +3830,75 @@ def create_desktop_bid(request):
             return JsonResponse({"error": "User ID required"}, status=400)
 
         try:
-            user = User.objects.get(id=user_id)
+            qty = int(data.get("qty", 0) or 0)
+        except (TypeError, ValueError):
+            return JsonResponse({"error": "Quantity must be a valid number"}, status=400)
+
+        try:
+            with transaction.atomic():
+                # Lock the user row so simultaneous Step 1 requests cannot create
+                # multiple incomplete bids for the same user.
+                user = User.objects.select_for_update().get(id=user_id)
+                incomplete_bids = DesktopBid.objects.filter(
+                    user=user,
+                    status__in=("draft", "configured"),
+                ).order_by("-updated_at", "-id")
+                bid = incomplete_bids.first()
+                reused = bid is not None
+
+                if reused:
+                    bid.bid_no = data.get("bid_no", "")
+                    bid.dept_name = data.get("dept_name", "")
+                    bid.organization = data.get("organization", "")
+                    bid.qty = qty
+                    bid.address = data.get("address", "")
+                    bid.pincode = data.get("pincode", "")
+                    bid.atc = data.get("atc", "")
+                    bid.save(update_fields=[
+                        "bid_no", "dept_name", "organization", "qty",
+                        "address", "pincode", "atc", "updated_at",
+                    ])
+                    incomplete_bids.exclude(id=bid.id).delete()
+                else:
+                    bid = DesktopBid.objects.create(
+                        user=user,
+                        bid_no=data.get("bid_no", ""),
+                        dept_name=data.get("dept_name", ""),
+                        organization=data.get("organization", ""),
+                        qty=qty,
+                        address=data.get("address", ""),
+                        pincode=data.get("pincode", ""),
+                        atc=data.get("atc", ""),
+
+                        status="draft",
+                        review_status="pending",
+
+                        processor="",
+                        ram="",
+                        os="",
+                        monitor="",
+                        cabinet="",
+                        warranty="",
+                        motherboard="",
+                        date="2000-01-01",
+
+                        selected_general_docs=[],
+                        selected_general_doc_labels=[],
+                    )
         except User.DoesNotExist:
             return JsonResponse({"error": "User not found"}, status=404)
 
-        bid = DesktopBid.objects.create(
-            user=user,
-            bid_no=data.get("bid_no", ""),
-            dept_name=data.get("dept_name", ""),
-            organization=data.get("organization", ""),
-            qty=int(data.get("qty", 0) or 0),
-            address=data.get("address", ""),
-            pincode=data.get("pincode", ""),
-            atc=data.get("atc", ""),
-
-            status="draft",
-            review_status="pending",
-
-            processor="",
-            ram="",
-            os="",
-            monitor="",
-            cabinet="",
-            warranty="",
-            motherboard="",
-            date="2000-01-01",
-
-            selected_general_docs=[],
-            selected_general_doc_labels=[],
-        )
-
         return JsonResponse({
-            "message": "Desktop Bid Created Successfully",
+            "message": "Desktop Bid Resumed Successfully" if reused else "Desktop Bid Created Successfully",
             "bid_id": bid.id,
             "user": user.username,
             "status": bid.status,
             "review_status": bid.review_status,
-        }, status=201)
+            "reused": reused,
+        }, status=200 if reused else 201)
 
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=400)
-
 
 @csrf_exempt
 @require_http_methods(["POST"])
@@ -3976,7 +3995,6 @@ def update_desktop_bid(request, bid_id):
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=400)
 
-
 @csrf_exempt
 @require_http_methods(["POST"])
 def save_model_number(request, bid_id):
@@ -4018,7 +4036,6 @@ def save_model_number(request, bid_id):
 
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=400)
-
 
 def get_price_for(component, value):
     return 0
@@ -4095,7 +4112,6 @@ def check_warranty(request):
         data = json.loads(request.body)
         return JsonResponse({"price": get_price_for("warranty", data.get("warranty", ""))})
 
-
 @csrf_exempt
 @require_http_methods(["GET"])
 def list_desktop_bids(request):
@@ -4140,7 +4156,6 @@ def list_desktop_bids(request):
         print("ERROR:", str(e))
         return JsonResponse({"error": str(e)}, status=400)
 
-
 @csrf_exempt
 @require_http_methods(["GET"])
 def get_desktop_bid(request, bid_id):
@@ -4151,7 +4166,6 @@ def get_desktop_bid(request, bid_id):
         return JsonResponse({"error": "Bid not found"}, status=404)
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=400)
-
 
 @csrf_exempt
 @require_http_methods(["PATCH"])
@@ -4287,8 +4301,6 @@ def review_desktop_bid(request, bid_id):
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=400)
 
-
-
 @csrf_exempt
 @require_http_methods(["DELETE"])
 def delete_desktop_bid(request, bid_id):
@@ -4300,9 +4312,6 @@ def delete_desktop_bid(request, bid_id):
         return JsonResponse({"message": "Bid deleted successfully ✅"}, status=200)
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=400)
-
-
-
 
 @csrf_exempt
 @require_http_methods(["PATCH"])
@@ -4405,8 +4414,6 @@ def admin_review_desktop_bid(request, bid_id):
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=400)
 
-
-
 MATCH_REQUIRED_FIELDS = 12
 MIN_STRONG_MATCH_FIELDS = 8
 
@@ -4458,12 +4465,10 @@ _CATALOGUE_FIELD_MAP = {
     "warranty": ["On Site OEM Warranty (in Year)"],
 }
 
-
 def _raw_text(value):
     if value is None:
         return ""
     return str(value).lower().strip()
-
 
 def _match_clean(value):
     raw = _raw_text(value)
@@ -4527,19 +4532,15 @@ def _match_clean(value):
         return "0"
     return v
 
-
 def _match_is_blank(value):
     raw = _raw_text(value)
     return raw in {"", "na", "n a", "null", "select", "no data", "undefined"}
 
-
 def _is_zero_like(value):
     return _match_clean(value) in {"0", "00", "0 0"}
 
-
 def _numbers_from_text(value):
     return re.findall(r"\d+(?:\.\d+)?", _match_clean(value))
-
 
 def _storage_to_gb(value):
     if _is_zero_like(value):
@@ -4554,7 +4555,6 @@ def _storage_to_gb(value):
     if m_gb:
         return int(float(m_gb.group(1)))
     return None
-
 
 def _values_overlap_score(bid_value, catalogue_value):
     if _match_is_blank(catalogue_value):
@@ -4588,14 +4588,12 @@ def _values_overlap_score(bid_value, catalogue_value):
     score += len(b_words.intersection(c_words)) * 25
     return score
 
-
 def _specs_match(bid_value, catalogue_value):
     if _match_is_blank(bid_value):
         return None
     if _match_is_blank(catalogue_value):
         return False
     return _values_overlap_score(bid_value, catalogue_value) >= 100
-
 
 def _catalogue_extra_specs(product):
     extra_specs = product.extra_specs or {}
@@ -4606,7 +4604,6 @@ def _catalogue_extra_specs(product):
             extra_specs = {}
     return extra_specs if isinstance(extra_specs, dict) else {}
 
-
 def _catalogue_values_for_keys(product, keys):
     extra_specs = _catalogue_extra_specs(product)
     pairs = []
@@ -4615,7 +4612,6 @@ def _catalogue_values_for_keys(product, keys):
         if val not in (None, ""):
             pairs.append((key, str(val)))
     return pairs
-
 
 def _extract_feature_from_label_value(label, value):
     label_clean = _match_clean(label)
@@ -4651,7 +4647,6 @@ def _extract_feature_from_label_value(label, value):
     elif "ethernet ports" in label_clean:
         mapping["ethernet"] = num
     return mapping
-
 
 def _extract_motherboard_features_from_text(text):
     t = _match_clean(text)
@@ -4705,7 +4700,6 @@ def _extract_motherboard_features_from_text(text):
         features["ethernet"] = 1
     return features
 
-
 def _extract_motherboard_features_from_catalogue(product, catalogue_keys):
     features = {
         "pcie_x1": 0,
@@ -4727,7 +4721,6 @@ def _extract_motherboard_features_from_catalogue(product, catalogue_keys):
         for k, v in extracted.items():
             features[k] = v
     return features
-
 
 def _motherboard_match_50_percent(bid_value, product, catalogue_keys):
     if _match_is_blank(bid_value):
@@ -4756,7 +4749,6 @@ def _motherboard_match_50_percent(bid_value, product, catalogue_keys):
     percent = round((matched / checked) * 100, 2)
     return matched >= 1, "Motherboard + Ports Flexible Rule", " | ".join(details), percent
 
-
 def _monitor_size_match(bid_value, product, catalogue_keys):
     if _match_is_blank(bid_value):
         return None
@@ -4783,7 +4775,6 @@ def _monitor_size_match(bid_value, product, catalogue_keys):
             return True, "Monitor Screen Size", screen_value, 2800
     return False, "Monitor Screen Size", " | ".join(screen_values), 0
 
-
 def _cabinet_match(bid_value, product, catalogue_keys):
     if _match_is_blank(bid_value):
         return None
@@ -4801,7 +4792,6 @@ def _cabinet_match(bid_value, product, catalogue_keys):
         return True, "Cabinet Form Factor", "Catalogue value blank; bid zero-like", 1000
     return False, "Cabinet Form Factor", combined, 0
 
-
 def _keyboard_match(bid_value, product, catalogue_keys):
     if _match_is_blank(bid_value):
         return None
@@ -4813,7 +4803,6 @@ def _keyboard_match(bid_value, product, catalogue_keys):
     if "wireless" in b and "wireless" in combined:
         return True, "Keyboard/Mouse Connectivity", combined, 2500
     return False, "Keyboard/Mouse Connectivity", combined, 0
-
 
 def _special_zero_field_match(bid_key, bid_value, product, catalogue_keys):
     if not _is_zero_like(bid_value):
@@ -4840,7 +4829,6 @@ def _special_zero_field_match(bid_key, bid_value, product, catalogue_keys):
             if _is_zero_like(val):
                 return True, key, val, 2500
     return False, "", "", 0
-
 
 def _best_catalogue_match(bid_key, bid_value, product, catalogue_keys):
     if _match_is_blank(bid_value):
@@ -4893,7 +4881,6 @@ def _best_catalogue_match(bid_key, bid_value, product, catalogue_keys):
     matched = best_score >= 100
     return matched, best_key, best_value, best_score
 
-
 _BID_DIRECT_FIELD_MAP = {
     "processor": "processor",
     "ram": "ram",
@@ -4908,7 +4895,6 @@ _BID_DIRECT_FIELD_MAP = {
     "keyboard": "keyboard",
     "warranty": "warranty",
 }
-
 
 def _best_bid_match(bid_key, bid_value, other_bid):
     """Compare current bid's spec value against another already-saved bid's
@@ -4932,7 +4918,6 @@ def _best_bid_match(bid_key, bid_value, other_bid):
     matched = score >= 100
     return matched, field_name, other_value, score
 
-
 def _body_json(request):
     try:
         if request.body:
@@ -4941,7 +4926,6 @@ def _body_json(request):
     except Exception:
         return {}
     return {}
-
 
 def _value_from_body_or_bid(body, bid, *keys):
     for key in keys:
@@ -4954,7 +4938,6 @@ def _value_from_body_or_bid(body, bid, *keys):
             if val not in (None, ""):
                 return str(val).strip()
     return ""
-
 
 @csrf_exempt
 @require_http_methods(["POST"])
@@ -5034,7 +5017,6 @@ def match_catalogue_models(request, bid_id):
         }
         results.append(result)
         debug_all.append(result)
-
 
     other_bids_qs = (
         DesktopBid.objects.exclude(id=bid.id)
@@ -5127,7 +5109,6 @@ def match_catalogue_models(request, bid_id):
         "message": "Exact matching model found.",
         "bid_specs_used": bid_specs,
     }, status=200)
-
 
 PROJECT_START_YEAR = 2026
 def _get_year(request):
@@ -5285,7 +5266,6 @@ def desktop_re_analyze_count(request):
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=400)
 
-
 PROJECT_START_YEAR = 2026
 def _get_year(request):
     try:
@@ -5317,7 +5297,6 @@ def _get_admin_base_queryset(year=None):
         qs = qs.filter(created_at__year=year)
     return qs
 
-
 @csrf_exempt
 @require_http_methods(["GET"])
 def admin_desktop_dashboard_years(request):
@@ -5328,7 +5307,6 @@ def admin_desktop_dashboard_years(request):
         return JsonResponse(years, safe=False, status=200)
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=400)
-
 
 @csrf_exempt
 @require_http_methods(["GET"])
@@ -5376,7 +5354,6 @@ def admin_desktop_monthly_performance(request):
 
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=400)
-
 
 @csrf_exempt
 @require_http_methods(["GET"])
@@ -5438,7 +5415,6 @@ def admin_desktop_daily_activity(request):
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=400)
 
-
 @csrf_exempt
 @require_http_methods(["GET"])
 def admin_desktop_stats(request):
@@ -5464,11 +5440,6 @@ def admin_desktop_stats(request):
 
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=400)
-    
-
-
-
-
 
 @csrf_exempt
 @require_http_methods(["DELETE"])

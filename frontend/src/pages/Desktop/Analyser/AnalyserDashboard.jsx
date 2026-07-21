@@ -35,7 +35,8 @@ export default function AnalyserDashboard({ product = "desktop" }) {
             const data = await res.json();
             setReAnalyzeCount(data.length);
         } catch {
-                    }
+            setReAnalyzeCount(0);
+        }
     };
 
     const fetchBids = async () => {
@@ -101,13 +102,11 @@ export default function AnalyserDashboard({ product = "desktop" }) {
         if (page < 1 || page > totalPages) return;
         setCurrentPage(page);
     };
-    
+
     return (
 
         <div className="w-full bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
 
-
-            {}
             <div className="flex gap-4 px-6 bg-gray-50 border-b border-gray-200 mt-4">
 
                 <button
@@ -153,14 +152,12 @@ export default function AnalyserDashboard({ product = "desktop" }) {
 
             </div>
 
-            {}
             {error && (
                 <div className="mx-6 mt-4 bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">
                     ⚠️ {error}
                 </div>
             )}
 
-            {}
             <div className="w-full overflow-x-auto">
 
                 <table className="w-full table-fixed text-left border-separate border-spacing-0 [&_th]:!px-2 [&_td]:!px-2">
@@ -225,7 +222,6 @@ export default function AnalyserDashboard({ product = "desktop" }) {
 
                     <tbody>
 
-                        {}
                         {loading && (
                             <tr>
                                 <td
@@ -237,7 +233,6 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                             </tr>
                         )}
 
-                        {}
                         {!loading && bids.length === 0 && (
                             <tr>
                                 <td
@@ -249,7 +244,6 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                             </tr>
                         )}
 
-                        {}
                         {!loading &&
                             paginatedBids.length > 0 &&
                             paginatedBids.map((bid, i) => (
@@ -265,12 +259,10 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                                         }`}
                                 >
 
-                                    {}
                                     <td className="px-5 py-4 text-sm font-bold text-gray-700 border-b border-gray-100">
                                         {(safePage - 1) * ITEMS_PER_PAGE + i + 1}
                                     </td>
 
-                                    {}
                                     <td className="overflow-hidden px-5 py-4 border-b border-gray-100">
                                         <span
                                             className="block truncate whitespace-nowrap text-sm font-bold text-blue-600"
@@ -280,7 +272,6 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                                         </span>
                                     </td>
 
-                                    {}
                                     <td className="overflow-hidden px-5 py-4 border-b border-gray-100">
                                         <span
                                             className="block truncate whitespace-nowrap text-sm font-bold text-gray-800"
@@ -290,21 +281,18 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                                         </span>
                                     </td>
 
-                                    {}
                                     <td className="px-5 py-4 border-b border-gray-100">
                                         <span className="text-sm font-bold text-gray-700">
                                             {bid.qty || "—"}
                                         </span>
                                     </td>
 
-                                    {}
                                     <td className="px-5 py-4 border-b border-gray-100">
                                         <span className="text-sm font-bold text-gray-700">
                                             {bid.submitted_by || bid.user_name || "—"}
                                         </span>
                                     </td>
 
-                                    {}
                                     <td className="px-5 py-4 border-b border-gray-100">
                                         <span className="text-sm font-bold text-gray-700 whitespace-nowrap">
                                             {bid.date || bid.created_at
@@ -319,7 +307,6 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                                         </span>
                                     </td>
 
-                                    {}
                                     <td className="px-5 py-4 border-b border-gray-100">
 
                                         {bid.status === "pending" && (
@@ -342,7 +329,6 @@ export default function AnalyserDashboard({ product = "desktop" }) {
 
                                     </td>
 
-                                    {}
                                     <td className="px-5 py-4 border-b border-gray-100">
 
                                         {bid.status === "approved" ? (
@@ -411,11 +397,9 @@ export default function AnalyserDashboard({ product = "desktop" }) {
 
             </div>
 
-            {}
             {!loading && totalPages > 1 && (
                 <div className="flex items-center justify-center gap-1.5 py-4 border-t border-gray-100">
 
-                    {}
                     <button
                         onClick={() => goToPage(safePage - 1)}
                         disabled={safePage === 1}
@@ -426,7 +410,6 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                         ‹ Prev
                     </button>
 
-                    {}
                     {pageNumbers.map((page) => (
                         <button
                             key={page}
@@ -441,7 +424,6 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                         </button>
                     ))}
 
-                    {}
                     <button
                         onClick={() => goToPage(safePage + 1)}
                         disabled={safePage === totalPages}
