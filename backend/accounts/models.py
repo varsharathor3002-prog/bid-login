@@ -9,7 +9,7 @@ class User(models.Model):
         ('user', 'User'),
     ]
 
-    username = models.CharField(max_length=100, unique=True)
+    username = models.CharField(max_length=100)
     email = models.EmailField(unique=True)
     password = models.CharField(max_length=255)
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='user')
@@ -126,7 +126,8 @@ class DesktopBid(models.Model):
     hddreturnable = models.CharField(max_length=50, default="Yes")
     hddreturnable_price = models.FloatField(default=0)
 
-    # Optional ports — filled by analyser only during re-analyze (when admin requests via admin_note)
+    total_price = models.FloatField(default=0)
+
     optional_ports = models.TextField(blank=True, null=True)
 
     model_number = models.CharField(max_length=255, blank=True, null=True)
@@ -148,9 +149,9 @@ class DesktopBid(models.Model):
 
 
 class WorkstationBid(models.Model):
-    # ==========================================
-    # USER & BID META (Same as DesktopBid)
-    # ==========================================
+
+
+
     user = models.ForeignKey(
         User, on_delete=models.CASCADE,
         related_name="workstation_bids", null=True, blank=True
@@ -175,33 +176,33 @@ class WorkstationBid(models.Model):
 
     status = models.CharField(max_length=50, default="draft")
 
-    # ==========================================
-    # PROCESSOR (Threadripper / Xeon / Core i9)
-    # ==========================================
-    processor_type = models.CharField(max_length=30, default="intel_xeon")  # intel_xeon, intel_core, amd_threadripper
+
+
+
+    processor_type = models.CharField(max_length=30, default="intel_xeon")
     processor = models.CharField(max_length=255)
     pro_descp = models.TextField(blank=True, null=True)
     pro_descp_price = models.FloatField(default=0)
     processor_price = models.FloatField(default=0)
 
-    # ==========================================
-    # MOTHERBOARD (WRX80 / W790 / W680 / C621)
-    # ==========================================
-    motherboard_type = models.CharField(max_length=30, default="intel_w790")  # amd_wrx80, intel_w790, intel_w680, intel_c621
+
+
+
+    motherboard_type = models.CharField(max_length=30, default="intel_w790")
     motherboard = models.CharField(max_length=255)
     motherboard_descp = models.TextField(blank=True, null=True)
     motherboard_descp_price = models.FloatField(default=0)
     motherboard_price = models.FloatField(default=0)
 
-    # ==========================================
-    # RAM (DDR4 / DDR5 / Registered ECC)
-    # ==========================================
+
+
+
     ram = models.CharField(max_length=100)
     ram_price = models.FloatField(default=0)
 
-    # ==========================================
-    # STORAGE (SSD & HDD)
-    # ==========================================
+
+
+
     ssd1 = models.CharField(max_length=100, blank=True, null=True)
     ssd1_price = models.FloatField(default=0)
 
@@ -211,16 +212,16 @@ class WorkstationBid(models.Model):
     hdd = models.CharField(max_length=100, blank=True, null=True)
     hdd_price = models.FloatField(default=0)
 
-    # ==========================================
-    # GRAPHIC CARD (RTX Ada / A-Series / Quadro / GeForce)
-    # ==========================================
+
+
+
     graphic_card = models.CharField(max_length=255, blank=True, null=True)
     graphic_card_price = models.FloatField(default=0)
     graphics_description = models.TextField(blank=True, null=True, help_text="Technical description of GPU")
 
-    # ==========================================
-    # PERIPHERALS & CHASSIS
-    # ==========================================
+
+
+
     cabinet = models.CharField(max_length=100)
     cabinet_price = models.FloatField(default=0)
 
@@ -233,9 +234,9 @@ class WorkstationBid(models.Model):
     monitor = models.CharField(max_length=100)
     monitor_price = models.FloatField(default=0)
 
-    # ==========================================
-    # SOFTWARE, OS & CONNECTIVITY
-    # ==========================================
+
+
+
     os = models.CharField(max_length=100)
     os_price = models.FloatField(default=0)
 
@@ -247,27 +248,27 @@ class WorkstationBid(models.Model):
     dvd = models.CharField(max_length=50, blank=True, null=True)
     dvd_price = models.FloatField(default=0)
 
-    # ==========================================
-    # WARRANTY & SERVICES
-    # ==========================================
+
+
+
     warranty = models.CharField(max_length=50)
     warranty_price = models.FloatField(default=0)
 
     freightInstallation = models.CharField(max_length=50, default="Yes")
     freightInstallation_price = models.FloatField(default=1000)
 
-    # ==========================================
-    # SPECIAL CONDITIONS (Workstation Specific)
-    # ==========================================
+
+
+
     hdd_non_return = models.CharField(max_length=50, default="No", help_text="Yes/No (Data Security)")
     hdd_non_return_price = models.FloatField(default=0)
 
     extra_requirements = models.TextField(blank=True, null=True, help_text="TPM 2.0, RAID Card, Stands, etc.")
     extra_requirements_price = models.FloatField(default=0)
 
-    # ==========================================
-    # FINANCIALS & BID STATUS
-    # ==========================================
+
+
+
     date = models.DateField()
     epbg = models.FloatField(default=0)
 
@@ -279,9 +280,9 @@ class WorkstationBid(models.Model):
     bid_status = models.CharField(max_length=100, blank=True, null=True, help_text="Active, Won, Lost, Expired")
     remarks = models.TextField(blank=True, null=True)
 
-    # ==========================================
-    # ANALYSER & ADMIN TRACKING (Same as DesktopBid)
-    # ==========================================
+
+
+
     optional_ports = models.TextField(blank=True, null=True)
     model_number = models.CharField(max_length=255, blank=True, unique=True, null=True)
 
@@ -292,11 +293,135 @@ class WorkstationBid(models.Model):
     admin_note = models.TextField(blank=True, null=True)
     admin_username = models.CharField(max_length=100, blank=True, null=True)
 
-    # ==========================================
-    # TIMESTAMPS
-    # ==========================================
+
+
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return f"{self.bid_no} - {self.dept_name} (Workstation)"
+
+
+class PrinterBid(models.Model):
+
+
+
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE,
+        related_name="printer_bids", null=True, blank=True
+    )
+
+    bid_no = models.CharField(max_length=100)
+    dept_name = models.CharField(max_length=200)
+    qty = models.IntegerField(default=1)
+    address = models.TextField()
+    organization = models.CharField(max_length=255, blank=True, null=True)
+    pincode = models.CharField(max_length=10)
+    atc = models.TextField(blank=True, null=True)
+
+    atc_special_document = models.FileField(
+        upload_to="atc_special_printer/",
+        blank=True,
+        null=True
+    )
+
+    selected_general_docs = models.JSONField(default=list, blank=True)
+    selected_general_doc_labels = models.JSONField(default=list, blank=True)
+
+    status = models.CharField(max_length=50, default="draft")
+
+
+
+
+    printing_technology = models.CharField(max_length=100, blank=True, null=True)
+    cartridge_technology = models.CharField(max_length=100, blank=True, null=True)
+    type_of_printing = models.CharField(max_length=50, blank=True, null=True)
+    fax_availability = models.CharField(max_length=20, default="No")
+    operating_system_compatibility = models.CharField(max_length=255, blank=True, null=True)
+
+
+
+
+    mono_print_speed_ppm = models.CharField(max_length=100, blank=True, null=True, help_text="Mono ISO/IEC 24734 PPM (Laser/LED MFPs)")
+    mono_print_speed_ipm = models.CharField(max_length=100, blank=True, null=True, help_text="Mono ISO/IEC 24734 IPM (Inkjet MFPs)")
+    colour_print_speed_ppm = models.CharField(max_length=100, blank=True, null=True, help_text="Colour ISO/IEC 24734 PPM (Laser/LED MFPs)")
+    colour_print_speed_ipm = models.CharField(max_length=100, blank=True, null=True, help_text="Colour ISO/IEC 24734 IPM (Inkjet MFPs)")
+
+
+
+
+    auto_duplexing = models.CharField(max_length=20, default="Yes")
+    reduction_enlarge_features = models.CharField(max_length=20, blank=True, null=True)
+    printer_type = models.CharField(max_length=100, blank=True, null=True)
+
+
+
+
+    max_scan_area = models.CharField(max_length=100, blank=True, null=True)
+    a4_scan_speed_colour = models.CharField(max_length=100, blank=True, null=True)
+    scan_to_functions = models.CharField(max_length=255, blank=True, null=True)
+
+
+
+
+    document_feeder_type = models.CharField(max_length=100, blank=True, null=True)
+    feeder_capacity = models.CharField(max_length=100, blank=True, null=True, help_text="Number of Sheets")
+    main_paper_tray_count = models.CharField(max_length=50, blank=True, null=True)
+    total_paper_tray_capacity = models.CharField(max_length=100, blank=True, null=True, help_text="Combined capacity at 75 GSM")
+    bypass_tray_facility = models.CharField(max_length=20, blank=True, null=True)
+    bypass_tray_capacity = models.CharField(max_length=100, blank=True, null=True, help_text="Bypass tray capacity at 75 GSM")
+
+
+
+
+    connectivity = models.CharField(max_length=255, blank=True, null=True)
+    duty_cycle = models.CharField(max_length=100, blank=True, null=True, help_text="Number of Prints/Month")
+
+
+
+
+    onsite_warranty = models.CharField(max_length=50, blank=True, null=True, help_text="On Site Warranty (in Years)")
+    extended_warranty = models.CharField(max_length=50, blank=True, null=True, help_text="Extended Warranty (in Years)")
+    extra_requirements = models.TextField(blank=True, null=True)
+
+
+
+
+    software1 = models.TextField(blank=True, null=True)
+
+    model_number = models.CharField(max_length=255, blank=True, null=True)
+
+
+
+
+    date = models.DateField()
+    epbg = models.FloatField(default=0)
+
+    freightInstallation = models.CharField(max_length=50, default="Yes")
+    local_content = models.CharField(max_length=20, blank=True, null=True)
+
+    final_amount = models.FloatField(default=0)
+
+    special_terms = models.TextField(blank=True, null=True)
+    bid_status = models.CharField(max_length=100, blank=True, null=True, help_text="Active, Won, Lost, Expired")
+    remarks = models.TextField(blank=True, null=True)
+
+
+
+
+    analyser_note = models.TextField(blank=True, null=True)
+    analyser_username = models.CharField(max_length=100, blank=True, null=True)
+    review_status = models.CharField(max_length=20, default="pending")
+
+    admin_note = models.TextField(blank=True, null=True)
+    admin_username = models.CharField(max_length=100, blank=True, null=True)
+
+
+
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.bid_no} - {self.dept_name} (Printer)"

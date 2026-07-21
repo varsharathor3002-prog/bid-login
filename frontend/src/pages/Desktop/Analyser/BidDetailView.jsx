@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
+import {
+  PROCESSORS, RAMS, HDDS, SSDS, OS_OPTIONS, DVDS, WIFIS, MONITORS,
+  CABINETS, KEYBOARDS, WARRANTIES, MOTHERBOARDS,
+  getFilteredRams, getPriceFromLocalData, isRamCompatible, isMotherboardCompatible,
+} from "../User/DesktopConfig";
 
-const API_BASE = "https://acxxelbidding.com/api";
+const API_BASE = import.meta.env.VITE_API_URL;
 
 const REVIEW_API = {
   desktop: (id) => `${API_BASE}/desktop-bids/${id}/review/`,
@@ -21,6 +26,10 @@ const SAVE_MODEL_API = {
 
 const GENERAL_DOCS = [
   { id: "manufacturer_auth", label: "MANUFACTURER AUTHORIZATION CERTIFICATE" },
+  { id: "experience_certificate", label: "EXPERIENCE CERTIFICATE" },
+  { id: "past_performance", label: "PAST PERFORMANCE" },
+  { id: "oem_annual_turnover", label: "OEM ANNUAL TURNOVER" },
+  { id: "atc_acceptance_letter", label: "ATC ACCEPTANCE LETTER" },
   { id: "make_in_india", label: "MAKE IN INDIA" },
   { id: "warranty", label: "WARRANTY" },
   { id: "bidder_financial", label: "BIDDER FINANCIAL UNDERSTANDINGS" },
@@ -41,6 +50,10 @@ const REQUIRED_FIELDS = [
   "os", "dvd", "wifi", "monitor", "cabinet", "keyboard",
   "warranty", "motherboard", "date", "epbg",
   "freightInstallation", "hddreturnable", 
+];
+
+const CONDITIONAL_VERIFICATION_FIELDS = [
+  "pro_descp", "software1", "gp", "motherboard_descp",
 ];
 
 const Label = ({ children, optional }) => (
@@ -235,7 +248,7 @@ function SpecialDocView({ form }) {
   const url = form?.atc_special_document;
   if (!url) return null;
 
-  const fullUrl = url.startsWith("http") ? url : `https://acxxelbidding.com${url}`;
+ const fullUrl = url.startsWith("http") ? url : `${import.meta.env.VITE_API_URL}${url}`;
   const filename = url.split("/").pop() || "special_document";
 
   const handleDownload = async () => {
@@ -276,9 +289,9 @@ function SpecialDocView({ form }) {
   );
 }
 
-const VerifiedInputWrapper = ({ name, children, label, optional, verifiedFields, readOnly, toggleVerification }) => {
+const VerifiedInputWrapper = ({ name, children, label, optional, required, verifiedFields, readOnly, toggleVerification }) => {
   const isVerified = !!verifiedFields[name];
-  const isRequired = REQUIRED_FIELDS.includes(name);
+  const isRequired = required ?? REQUIRED_FIELDS.includes(name);
 
   return (
     <div className="col-span-1 relative group">
@@ -311,7 +324,6 @@ export default function BidDetailView({ product = "desktop" }) {
   const [submitting, setSubmitting] = useState(false);
   const [msg, setMsg] = useState("");
   const [verifiedFields, setVerifiedFields] = useState({});
-
   const [modelSearching, setModelSearching] = useState(false);
   const [modelSaving, setModelSaving] = useState(false);
   const [modelMatches, setModelMatches] = useState([]);
@@ -327,7 +339,7 @@ export default function BidDetailView({ product = "desktop" }) {
   const normalizeDocUrl = (url) => {
     if (!url) return "";
     if (url.startsWith("http")) return url;
-    return `https://acxxelbidding.com${url}`;
+    return `${import.meta.env.VITE_API_URL.replace('/api', '')}${url}`;
   };
 
   const normalizeBid = (bid) => {
@@ -340,8 +352,7 @@ export default function BidDetailView({ product = "desktop" }) {
 
     normalized.freightInstallation = bid.freightInstallation || "Yes";
     normalized.hddreturnable = bid.hddreturnable || "Yes";
-    // Agar "No" hai toh price hamesha 0, warna DB value ya default 1000
-    normalized.freightInstallation_price =
+        normalized.freightInstallation_price =
       normalized.freightInstallation === "No"
         ? "0"
         : bid.freightInstallation_price !== undefined && bid.freightInstallation_price !== null && bid.freightInstallation_price !== ""
@@ -402,7 +413,40 @@ export default function BidDetailView({ product = "desktop" }) {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
+    const optionLists = {
+      processor: PROCESSORS,
+      ram: RAMS,
+      hdd: HDDS,
+      ssd1: SSDS,
+      ssd2: SSDS,
+      os: OS_OPTIONS,
+      dvd: DVDS,
+      wifi: WIFIS,
+      monitor: MONITORS,
+      cabinet: CABINETS,
+      keyboard: KEYBOARDS,
+      warranty: WARRANTIES,
+      motherboard: MOTHERBOARDS,
+    };
+
+    setForm((prev) => {
+      const next = { ...prev, [name]: value };
+      const options = optionLists[name];
+      if (options) {
+        next[`${name}_price`] = value === "None" ? "" : getPriceFromLocalData(options, value);
+      }
+      if (name === "processor") {
+        if (prev.ram && !isRamCompatible(value, prev.ram)) {
+          next.ram = "";
+          next.ram_price = "";
+        }
+        if (prev.motherboard && !isMotherboardCompatible(value, prev.motherboard)) {
+          next.motherboard = "";
+          next.motherboard_price = "";
+        }
+      }
+      return next;
+    });
   };
 
   const handleModelInputChange = (e) => {
@@ -439,20 +483,16 @@ export default function BidDetailView({ product = "desktop" }) {
     const matchPayload = {
       ...form,
 
-      // Backend ko current screen values bhejna zaroori hai.
-      // SSD2 ko backend ignore karega; SSD matching sirf SSD1 se hogi.
-      ssd: form?.ssd1 || form?.ssd || "",
+                  ssd: form?.ssd1 || form?.ssd || "",
       ssd1: form?.ssd1 || form?.ssd || "",
       ssd_price: form?.ssd1_price || form?.ssd_price || "",
       ssd1_price: form?.ssd1_price || form?.ssd_price || "",
 
-      // None fields ko clear/normal form me bhej rahe hain taaki backend mismatch na kare.
-      hdd: form?.hdd || "None",
+            hdd: form?.hdd || "None",
       dvd: form?.dvd || "None",
       wifi: form?.wifi || "None",
 
-      // These fields are bid/admin specific; backend should ignore them for model matching.
-      date: form?.date || "",
+            date: form?.date || "",
       epbg: form?.epbg || "",
       freightInstallation: form?.freightInstallation || "",
       hddreturnable: form?.hddreturnable || "",
@@ -479,8 +519,7 @@ export default function BidDetailView({ product = "desktop" }) {
         setModelMatches([]);
         setNoMatchFound(true);
 
-        // Debug help: backend agar best_failed_match bhejta hai to console me dikhega.
-        if (data.best_failed_match) {
+                if (data.best_failed_match) {
           console.log("Best failed catalogue match:", data.best_failed_match);
         }
         return;
@@ -578,7 +617,7 @@ export default function BidDetailView({ product = "desktop" }) {
     const finalBidId =
       updatedBidData.id || id || state?.id || state?.bid_id || form?.id;
 
-    const snapshot = { ...form }; // form ka snapshot — re-render se safe
+    const snapshot = { ...form }; 
 
     const payload = {
       ...snapshot,
@@ -662,8 +701,12 @@ export default function BidDetailView({ product = "desktop" }) {
     }
   };
 
-  const requiredVerifiedCount = REQUIRED_FIELDS.filter((f) => !!verifiedFields[f]).length;
-  const allVerified = REQUIRED_FIELDS.every((f) => !!verifiedFields[f]);
+  const conditionalRequiredFields = CONDITIONAL_VERIFICATION_FIELDS.filter(
+    (field) => String(form?.[field] ?? "").trim() !== ""
+  );
+  const activeRequiredFields = [...REQUIRED_FIELDS, ...conditionalRequiredFields];
+  const requiredVerifiedCount = activeRequiredFields.filter((field) => !!verifiedFields[field]).length;
+  const allVerified = activeRequiredFields.every((field) => !!verifiedFields[field]);
 
   const HeaderBackButton = () => (
     <button
@@ -698,13 +741,23 @@ export default function BidDetailView({ product = "desktop" }) {
 
   const isReAnalyze = form?.status === "re-analyze" || form?.status === "re_analyze" || form?.review_status === "re-analyze";
   const isReviewed = form?.status === "reviewed" || form?.review_status === "reviewed";
-  const isPending = !isReAnalyze && !isReviewed;
+  const isApproved = form?.status === "approved" || form?.review_status === "approved";
+  const isPending = !isReAnalyze && !isReviewed && !isApproved;
   const hasExistingModel = !!form?.model_number && form.model_number.trim() !== "";
-
   const inputCls     = "w-full border border-gray-300 rounded-md px-3 py-2 text-sm disabled:bg-gray-100 focus:outline-none focus:border-blue-500 bg-white";
-  const flexInputCls = "flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white disabled:bg-gray-100";
-  const priceCls     = "w-20 border border-gray-200 rounded-md px-1 py-2 text-xs text-center text-gray-500 bg-gray-50 cursor-not-allowed";
+  const flexInputCls = "flex-1 min-w-0 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white disabled:bg-gray-100";
+  const priceCls     = "w-20 shrink-0 border border-gray-200 rounded-md px-1 py-2 text-xs text-center text-gray-500 bg-gray-50 cursor-not-allowed";
   const textareaCls  = "w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none disabled:bg-gray-100 bg-white";
+  const PriceSelect = ({ name, options }) => (
+    <div className="flex w-full min-w-0 gap-2">
+      <select name={name} value={form?.[name] || ""} onChange={handleChange} disabled={readOnly} className={flexInputCls}>
+        <option value="">Select</option>
+        {options.map((option) => <option key={option.name} value={option.name}>{option.name}</option>)}
+        <option value="None">None</option>
+      </select>
+      <input type="text" value={form?.[`${name}_price`] || ""} readOnly disabled placeholder="Price" className={priceCls} />
+    </div>
+  );
 
   return (
     <div className="container mx-auto px-4 mt-4 max-w-6xl pb-10">
@@ -732,6 +785,11 @@ export default function BidDetailView({ product = "desktop" }) {
         {readOnly && isReviewed && (
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700 border border-green-300">
             ✅ Reviewed
+          </span>
+        )}
+        {readOnly && isApproved && (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700 border border-green-300">
+            ✅ Approved
           </span>
         )}
       </div>
@@ -794,109 +852,70 @@ export default function BidDetailView({ product = "desktop" }) {
           </div>
 
           <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="processor" label="Processor">
-            <div className="flex gap-2">
-              <input type="text" name="processor" value={form?.processor || ""} onChange={handleChange} disabled={readOnly} className={flexInputCls} />
-              <input type="text" value={form?.processor_price || ""} readOnly disabled placeholder="Price" className={priceCls} />
-            </div>
+            <PriceSelect name="processor" options={PROCESSORS} />
           </VerifiedInputWrapper>
 
           <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="ram" label="RAM">
-            <div className="flex gap-2">
-              <input type="text" name="ram" value={form?.ram || ""} onChange={handleChange} disabled={readOnly} className={flexInputCls} />
-              <input type="text" value={form?.ram_price || ""} readOnly disabled placeholder="Price" className={priceCls} />
-            </div>
+            <PriceSelect name="ram" options={getFilteredRams(form?.processor)} />
           </VerifiedInputWrapper>
 
           <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="hdd" label="Hard Disk Drive">
-            <div className="flex gap-2">
-              <input type="text" name="hdd" value={form?.hdd || ""} onChange={handleChange} disabled={readOnly} className={flexInputCls} />
-              <input type="text" value={form?.hdd_price || ""} readOnly disabled placeholder="Price" className={priceCls} />
-            </div>
+            <PriceSelect name="hdd" options={HDDS} />
           </VerifiedInputWrapper>
 
           <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="ssd1" label="Solid State Drive 1">
-            <div className="flex gap-2">
-              <input type="text" name="ssd1" value={form?.ssd1 || ""} onChange={handleChange} disabled={readOnly} className={flexInputCls} />
-              <input type="text" value={form?.ssd1_price || ""} readOnly disabled placeholder="Price" className={priceCls} />
-            </div>
+            <PriceSelect name="ssd1" options={SSDS} />
           </VerifiedInputWrapper>
 
           <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="ssd2" label="Solid State Drive 2">
-            <div className="flex gap-2">
-              <input type="text" name="ssd2" value={form?.ssd2 || ""} onChange={handleChange} disabled={readOnly} className={flexInputCls} />
-              <input type="text" value={form?.ssd2_price || ""} readOnly disabled placeholder="Price" className={priceCls} />
-            </div>
+            <PriceSelect name="ssd2" options={SSDS} />
           </VerifiedInputWrapper>
 
           <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="os" label="OS">
-            <div className="flex gap-2">
-              <input type="text" name="os" value={form?.os || ""} onChange={handleChange} disabled={readOnly} className={flexInputCls} />
-              <input type="text" value={form?.os_price || ""} readOnly disabled placeholder="Price" className={priceCls} />
-            </div>
+            <PriceSelect name="os" options={OS_OPTIONS} />
           </VerifiedInputWrapper>
 
           <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="dvd" label="DVD">
-            <div className="flex gap-2">
-              <input type="text" name="dvd" value={form?.dvd || ""} onChange={handleChange} disabled={readOnly} className={flexInputCls} />
-              <input type="text" value={form?.dvd_price || ""} readOnly disabled placeholder="Price" className={priceCls} />
-            </div>
+            <PriceSelect name="dvd" options={DVDS} />
           </VerifiedInputWrapper>
 
           <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="wifi" label="WiFi Bluetooth">
-            <div className="flex gap-2">
-              <input type="text" name="wifi" value={form?.wifi || ""} onChange={handleChange} disabled={readOnly} className={flexInputCls} />
-              <input type="text" value={form?.wifi_price || ""} readOnly disabled placeholder="Price" className={priceCls} />
-            </div>
+            <PriceSelect name="wifi" options={WIFIS} />
           </VerifiedInputWrapper>
 
           <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="monitor" label="Monitor">
-            <div className="flex gap-2">
-              <input type="text" name="monitor" value={form?.monitor || ""} onChange={handleChange} disabled={readOnly} className={flexInputCls} />
-              <input type="text" value={form?.monitor_price || ""} readOnly disabled placeholder="Price" className={priceCls} />
-            </div>
+            <PriceSelect name="monitor" options={MONITORS} />
           </VerifiedInputWrapper>
 
           <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="cabinet" label="Cabinet">
-            <div className="flex gap-2">
-              <input type="text" name="cabinet" value={form?.cabinet || ""} onChange={handleChange} disabled={readOnly} className={flexInputCls} />
-              <input type="text" value={form?.cabinet_price || ""} readOnly disabled placeholder="Price" className={priceCls} />
-            </div>
+            <PriceSelect name="cabinet" options={CABINETS} />
           </VerifiedInputWrapper>
 
           <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="keyboard" label="Keyboard & Mouse">
-            <div className="flex gap-2">
-              <input type="text" name="keyboard" value={form?.keyboard || ""} onChange={handleChange} disabled={readOnly} className={flexInputCls} />
-              <input type="text" value={form?.keyboard_price || ""} readOnly disabled placeholder="Price" className={priceCls} />
-            </div>
+            <PriceSelect name="keyboard" options={KEYBOARDS} />
           </VerifiedInputWrapper>
 
           <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="warranty" label="Warranty">
-            <div className="flex gap-2">
-              <input type="text" name="warranty" value={form?.warranty || ""} onChange={handleChange} disabled={readOnly} className={flexInputCls} />
-              <input type="text" value={form?.warranty_price || ""} readOnly disabled placeholder="Price" className={priceCls} />
-            </div>
+            <PriceSelect name="warranty" options={WARRANTIES} />
           </VerifiedInputWrapper>
 
           <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="motherboard" label="Motherboard">
-            <div className="flex gap-2">
-              <input type="text" name="motherboard" value={form?.motherboard || ""} onChange={handleChange} disabled={readOnly} className={flexInputCls} />
-              <input type="text" value={form?.motherboard_price || ""} readOnly disabled placeholder="Price" className={priceCls} />
-            </div>
+            <PriceSelect name="motherboard" options={MOTHERBOARDS.filter((option) => !form?.processor || isMotherboardCompatible(form.processor, option.name))} />
           </VerifiedInputWrapper>
 
-          <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="pro_descp" label="Processor Description" optional>
+          <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="pro_descp" label="Processor Description" optional required={conditionalRequiredFields.includes("pro_descp")}>
             <textarea name="pro_descp" value={form?.pro_descp || ""} onChange={handleChange} disabled={readOnly} rows={2} className={textareaCls} />
           </VerifiedInputWrapper>
 
-          <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="software1" label="Additional Software" optional>
+          <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="software1" label="Additional Software" optional required={conditionalRequiredFields.includes("software1")}>
             <textarea name="software1" value={form?.software1 || ""} onChange={handleChange} disabled={readOnly} rows={2} className={textareaCls} />
           </VerifiedInputWrapper>
 
-          <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="gp" label="Graphics Description" optional>
+          <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="gp" label="Graphics Description" optional required={conditionalRequiredFields.includes("gp")}>
             <textarea name="gp" value={form?.gp || ""} onChange={handleChange} disabled={readOnly} rows={2} className={textareaCls} />
           </VerifiedInputWrapper>
 
-          <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="motherboard_descp" label="Motherboard Description" optional>
+          <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="motherboard_descp" label="Motherboard Description" optional required={conditionalRequiredFields.includes("motherboard_descp")}>
             <textarea name="motherboard_descp" value={form?.motherboard_descp || ""} onChange={handleChange} disabled={readOnly} rows={2} className={textareaCls} />
           </VerifiedInputWrapper>
 
@@ -956,10 +975,36 @@ export default function BidDetailView({ product = "desktop" }) {
             </div>
           </VerifiedInputWrapper>
 
-          {/* Optional Ports (single field) */}
+          {}
           <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="optional_ports" label="Optional Ports" optional>
             <textarea name="optional_ports" value={form?.optional_ports || ""} onChange={handleChange} disabled={readOnly} rows={2} className={textareaCls} placeholder="e.g. Serial Port, Display Port, USB Type-C" />
           </VerifiedInputWrapper>
+
+          {readOnly && isApproved && (
+            <div className="md:col-span-2 lg:col-span-3 rounded-lg border border-slate-300 bg-slate-50 p-4 shadow-sm">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <label className="block text-sm font-semibold text-slate-800">Total Approved Price</label>
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-slate-700">₹</span>
+                  <input
+                    type="text"
+                    value={
+                      Number(form?.total_price) > 0
+                        ? Number(form.total_price).toLocaleString("en-IN", {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })
+                        : ""
+                    }
+                    readOnly
+                    disabled
+                    placeholder="0.00"
+                    className="w-48 rounded-md border border-slate-300 bg-slate-100 px-3 py-2 text-right text-lg font-semibold text-slate-800"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="mt-8 mb-4">
@@ -1083,7 +1128,7 @@ export default function BidDetailView({ product = "desktop" }) {
                 <>
                   <span>Next</span>
                   <span className="text-[10px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full border border-gray-300">
-                    {requiredVerifiedCount} / {REQUIRED_FIELDS.length} Verified
+                    {requiredVerifiedCount} / {activeRequiredFields.length} Verified
                   </span>
                 </>
               ) : (

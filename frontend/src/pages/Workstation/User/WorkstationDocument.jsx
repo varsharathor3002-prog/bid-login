@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 
-const API_BASE = "https://acxxelbidding.com/api";
+const API_BASE = "http://127.0.0.1:8000/api";
 
 // General documents list
 const GENERAL_DOCS = [
@@ -15,7 +15,8 @@ const GENERAL_DOCS = [
   { id: "preloaded_os", label: "PRELOADED OPERATING SYSTEM" },
 ];
 
-export default function WorkstationDocument({ bidData, onSuccess, onBack }) {
+export default function WorkstationDocument({ bidData, onSuccess, onBack, submitLabel = "Forward to Analyser", analyserMode = false, docOptions = null }) {
+  const activeDocs = docOptions || GENERAL_DOCS;
   const [modal, setModal] = useState(null);
   const [specialDoc, setSpecialDoc] = useState(null);
   const [selectedGeneralDocs, setSelectedGeneralDocs] = useState({});
@@ -23,8 +24,8 @@ export default function WorkstationDocument({ bidData, onSuccess, onBack }) {
   const [error, setError] = useState("");
   const [generatingDocs, setGeneratingDocs] = useState({});
 
-  const selectedGeneralDocIds = GENERAL_DOCS.filter((doc) => selectedGeneralDocs[doc.id]).map((doc) => doc.id);
-  const selectedGeneralDocLabels = GENERAL_DOCS.filter((doc) => selectedGeneralDocs[doc.id]).map((doc) => doc.label);
+  const selectedGeneralDocIds = activeDocs.filter((doc) => selectedGeneralDocs[doc.id]).map((doc) => doc.id);
+  const selectedGeneralDocLabels = activeDocs.filter((doc) => selectedGeneralDocs[doc.id]).map((doc) => doc.label);
   const selectedGeneralDocsCount = selectedGeneralDocIds.length;
 
   const toggleGeneralDocSelection = (docId) => {
@@ -41,7 +42,7 @@ export default function WorkstationDocument({ bidData, onSuccess, onBack }) {
 
   const selectAllGeneralDocs = () => {
     const allSelected = {};
-    GENERAL_DOCS.forEach((doc) => { allSelected[doc.id] = true; });
+    activeDocs.forEach((doc) => { allSelected[doc.id] = true; });
     setSelectedGeneralDocs(allSelected);
   };
 
@@ -65,7 +66,7 @@ export default function WorkstationDocument({ bidData, onSuccess, onBack }) {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ doc_type: docId }),
+          body: JSON.stringify({ ...bidData, doc_type: docId }),
         }
       );
       if (!response.ok) {
@@ -94,12 +95,20 @@ export default function WorkstationDocument({ bidData, onSuccess, onBack }) {
     try {
       const formData = new FormData();
 
-      if (specialDoc) {
+      const docsKey = analyserMode ? "selected_analyser_docs" : "selected_general_docs";
+      const labelsKey = analyserMode ? "selected_analyser_doc_labels" : "selected_general_doc_labels";
+      if (!analyserMode && specialDoc) {
         formData.append("atc_special_document", specialDoc);
       }
-
-      formData.append("selected_general_docs", JSON.stringify(selectedGeneralDocIds));
-      formData.append("selected_general_doc_labels", JSON.stringify(selectedGeneralDocLabels));
+      formData.append(docsKey, JSON.stringify(selectedGeneralDocIds));
+      formData.append(labelsKey, JSON.stringify(selectedGeneralDocLabels));
+      if (analyserMode) {
+        formData.append(
+          "analyser_username",
+          localStorage.getItem("analyser_username") || localStorage.getItem("username") || ""
+        );
+        formData.append("model_number", bidData?.model_number || "");
+      }
 
       selectedGeneralDocIds.forEach((docId) => {
         formData.append(`general_doc_${docId}`, "true");
@@ -121,6 +130,9 @@ export default function WorkstationDocument({ bidData, onSuccess, onBack }) {
         throw new Error(data.error || "Document upload failed.");
       }
 
+      if (analyserMode) {
+        alert("The bid has been successfully submitted to Admin.");
+      }
       onSuccess();
     } catch (err) {
       console.error(err);
@@ -174,12 +186,21 @@ export default function WorkstationDocument({ bidData, onSuccess, onBack }) {
         .drop-zone:hover { background: #ede9fe; border-color: #7c3aed; }
       `}</style>
 
-      <div className="doc-wrap" style={{ width: "100%", maxWidth: 580 }}>
+      <div className="doc-wrap" style={{ width: "100%", maxWidth: 580, margin: "0 auto" }}>
         <div className="doc-card">
 
           {/* ── Header ── */}
           <div style={{ padding: "20px 24px", borderBottom: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "space-between", background: "linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              {onBack && (
+                <button
+                  type="button"
+                  onClick={onBack}
+                  style={{ border: "1px solid #cbd5e1", background: "#fff", color: "#334155", borderRadius: 8, padding: "7px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                >
+                  Back
+                </button>
+              )}
               <div style={{ width: 36, height: 36, borderRadius: 10, background: "linear-gradient(135deg, #1d4ed8, #3b82f6)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <svg width="18" height="18" fill="none" stroke="#fff" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -193,7 +214,7 @@ export default function WorkstationDocument({ bidData, onSuccess, onBack }) {
               </div>
             </div>
             <div style={{ background: "linear-gradient(135deg, #1d4ed8, #3b82f6)", color: "#fff", fontSize: 11, fontWeight: 700, padding: "4px 12px", borderRadius: 20, letterSpacing: "0.5px" }}>
-              STEP 3 / 3
+              {analyserMode ? "STEP 2 / 2" : "STEP 3 / 3"}
             </div>
           </div>
 
@@ -206,9 +227,15 @@ export default function WorkstationDocument({ bidData, onSuccess, onBack }) {
 
             <form onSubmit={handleSubmit}>
               {/* ── Upload Buttons ── */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 24 }}>
+              <div style={{
+                display: analyserMode ? "flex" : "grid",
+                justifyContent: analyserMode ? "center" : undefined,
+                gridTemplateColumns: analyserMode ? undefined : "repeat(2, minmax(0, 1fr))",
+                gap: 14,
+                marginBottom: 24,
+              }}>
 
-                <button type="button" className="upload-btn upload-btn-general" onClick={() => setModal("general")}>
+                <button type="button" className="upload-btn upload-btn-general" style={{ width: "100%", maxWidth: analyserMode ? 260 : undefined }} onClick={() => setModal("general")}>
                   {selectedGeneralDocsCount > 0 && (
                     <span className="badge-count" style={{ background: "#f97316" }}>{selectedGeneralDocsCount}</span>
                   )}
@@ -225,7 +252,8 @@ export default function WorkstationDocument({ bidData, onSuccess, onBack }) {
                   </div>
                 </button>
 
-                <button type="button" className="upload-btn upload-btn-special" onClick={() => setModal("special")}>
+                {!analyserMode && (
+                <button type="button" className="upload-btn upload-btn-special" style={{ width: "100%" }} onClick={() => setModal("special")}>
                   {specialDoc && (
                     <span className="badge-count" style={{ background: "#22c55e" }}>✓</span>
                   )}
@@ -241,14 +269,15 @@ export default function WorkstationDocument({ bidData, onSuccess, onBack }) {
                     </div>
                   </div>
                 </button>
+                )}
               </div>
 
               {/* ── Selected Docs Summary ── */}
-              {(selectedGeneralDocsCount > 0 || specialDoc) && (
+              {(selectedGeneralDocsCount > 0 || (!analyserMode && specialDoc)) && (
                 <div style={{ marginBottom: 20, padding: "14px 16px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: "#475569", marginBottom: 8, letterSpacing: "0.5px" }}>SELECTED DOCUMENTS</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    {GENERAL_DOCS.filter((doc) => selectedGeneralDocs[doc.id]).map((doc) => (
+                    {activeDocs.filter((doc) => selectedGeneralDocs[doc.id]).map((doc) => (
                       <div key={doc.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 8, padding: "7px 12px", gap: 10 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
                           <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#f97316", flexShrink: 0 }} />
@@ -260,7 +289,7 @@ export default function WorkstationDocument({ bidData, onSuccess, onBack }) {
                       </div>
                     ))}
 
-                    {specialDoc && (
+                    {!analyserMode && specialDoc && (
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#f5f3ff", border: "1px solid #ddd6fe", borderRadius: 8, padding: "7px 12px", gap: 10 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
                           <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#8b5cf6", flexShrink: 0 }} />
@@ -293,7 +322,7 @@ export default function WorkstationDocument({ bidData, onSuccess, onBack }) {
                     <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    Forward to Analyser
+                    {submitLabel}
                   </>
                 )}
               </button>
@@ -317,7 +346,7 @@ export default function WorkstationDocument({ bidData, onSuccess, onBack }) {
             <div style={{ maxHeight: 420, overflowY: "auto" }}>
               <div style={{ padding: "10px 20px", borderBottom: "1px solid #f1f5f9", background: "#fffbeb", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#92400e" }}>
-                  {selectedGeneralDocsCount} of {GENERAL_DOCS.length} selected
+                  {selectedGeneralDocsCount} of {activeDocs.length} selected
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <button type="button" onClick={selectAllGeneralDocs} style={{ border: "1px solid #fb923c", background: "#fff7ed", color: "#c2410c", borderRadius: 8, padding: "5px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
@@ -329,7 +358,7 @@ export default function WorkstationDocument({ bidData, onSuccess, onBack }) {
                 </div>
               </div>
 
-              {GENERAL_DOCS.map((doc) => {
+              {activeDocs.map((doc) => {
                 const isGenerating = generatingDocs[doc.id];
                 const isSelected = !!selectedGeneralDocs[doc.id];
                 return (
@@ -380,7 +409,7 @@ export default function WorkstationDocument({ bidData, onSuccess, onBack }) {
       )}
 
       {/* ── Special Doc Modal ── */}
-      {modal === "special" && (
+      {!analyserMode && modal === "special" && (
         <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && setModal(null)}>
           <div className="modal-box">
             <div className="modal-header-orange" style={{ background: "linear-gradient(135deg, #f5f3ff, #ede9fe)", borderBottomColor: "#ddd6fe" }}>

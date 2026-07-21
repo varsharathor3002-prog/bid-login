@@ -7,7 +7,7 @@ import {
   FaTimes,
 } from "react-icons/fa";
 
-const API_BASE = "https://acxxelbidding.com/api";
+const API_BASE = import.meta.env.VITE_API_URL;
 
 export default function AddAnalyser() {
 
@@ -28,8 +28,7 @@ export default function AddAnalyser() {
     confirmPassword: "",
   });
 
-  // ================= FETCH =================
-
+  
   const fetchAnalysers = async () => {
 
     try {
@@ -63,8 +62,7 @@ export default function AddAnalyser() {
 
   }, []);
 
-  // ================= CHANGE =================
-
+  
   const handleChange = (e) => {
 
     setForm({
@@ -73,8 +71,7 @@ export default function AddAnalyser() {
     });
   };
 
-  // ================= ADD =================
-
+  
   const handleSubmit = async (e) => {
 
     e.preventDefault();
@@ -149,8 +146,7 @@ export default function AddAnalyser() {
     }
   };
 
-  // ================= DELETE =================
-
+  
   const deleteAnalyser = async (id) => {
 
     const confirmDelete = window.confirm(
@@ -193,7 +189,7 @@ export default function AddAnalyser() {
 
     <div className="min-h-screen bg-gray-100 p-6">
 
-      {/* HEADER */}
+      {}
 
       <div className="flex items-center justify-between mb-6">
 
@@ -211,7 +207,7 @@ export default function AddAnalyser() {
 
       </div>
 
-      {/* TABLE */}
+      {}
 
       <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
 
@@ -301,7 +297,7 @@ export default function AddAnalyser() {
 
       </div>
 
-      {/* MODAL */}
+      {}
 
       {
         showForm && (
@@ -310,7 +306,7 @@ export default function AddAnalyser() {
 
             <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl p-8 relative">
 
-              {/* CLOSE */}
+              {}
 
               <button
                 onClick={() => setShowForm(false)}

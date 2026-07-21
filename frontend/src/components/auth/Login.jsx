@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import loginImg from "../../assets/images.png";
 
 export default function Login() {
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState("user");
   const [showPassword, setShowPassword] = useState(false);
@@ -17,10 +17,10 @@ export default function Login() {
     setLoading(true);
 
     try {
-      const res = await fetch("https://acxxelbidding.com/api/login/", {
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/login/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password, role }),
+        body: JSON.stringify({ email, password, role }),
       });
 
       const data = await res.json();
@@ -36,14 +36,11 @@ export default function Login() {
         return;
       }
 
-      // ❌ clearOldLoginData() call mat karo — ye dusre users ka data delete kar deta hai
-      // ✅ Sirf current role ki keys set karo
-
-      const loginName = data.username || username || "";
+            
+      const loginName = data.username || "";
       const loginRole = data.role || role || "";
 
-      // Common keys (sabke liye)
-      localStorage.setItem("role", loginRole);
+            localStorage.setItem("role", loginRole);
       localStorage.setItem("username", loginName);
       localStorage.setItem("display_username", loginName);
       localStorage.setItem("user_id", data.user_id || "");
@@ -52,8 +49,7 @@ export default function Login() {
         localStorage.setItem("email", data.email);
       }
 
-      // Role-specific keys — purani keys ko clear mat karo
-      if (loginRole === "user") {
+            if (loginRole === "user") {
         localStorage.setItem("user_username", loginName);
         localStorage.setItem("bid_user_id", data.user_id || "");
         navigate("/user");
@@ -153,11 +149,11 @@ export default function Login() {
             <form onSubmit={handleLogin}>
               <div style={{ marginBottom: "14px" }}>
                 <input
-                  type="text"
-                  placeholder="Enter Username"
-                  autoComplete="off"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  type="email"
+                  placeholder="Enter Email"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   required
                   style={{
                     width: "100%",

@@ -3,7 +3,7 @@ import pandas as pd
 import os
 import django
 
-# Django setup
+
 os.environ.setdefault(
     "DJANGO_SETTINGS_MODULE",
     "config.settings"
@@ -13,9 +13,9 @@ django.setup()
 
 from accounts.models import CatalogueProduct
 
-# Excel file path
+
 file_path = "/var/www/bid-login/backend/Desktop_Product.xlsx"
-# Read excel
+
 df = pd.read_excel(file_path)
 
 print("Total Rows:", len(df))

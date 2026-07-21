@@ -1,29 +1,58 @@
 import { useEffect, useMemo, useState } from "react";
 
-const API_BASE = "https://acxxelbidding.com/api";
+const API_BASE = "http://127.0.0.1:8000/api";
 
-// ============================================================
-// PROCESSORS (Source: Workstation Excel bid sheet)
-// ============================================================
 const INTEL_PROCESSORS = [
+  { name: "Intel Core i5 12400", price: "" },
+  { name: "Intel Core i5 12500", price: "" },
+  { name: "Intel Core i5 13400", price: "" },
+  { name: "Intel Core i5 13500", price: 25500 },
   { name: "Intel Core i5 13600", price: 23000 },
+  { name: "Intel Core i5 13600K", price: 25000 },
+  { name: "Intel Core i5 14500", price: "" },
   { name: "Intel Core i7 12700", price: 24500 },
+  { name: "Intel Core i7 12700K", price: "" },
   { name: "Intel Core i7 13700", price: 29500 },
-  { name: "Intel Core i7 14700", price: 30500 },
+  { name: "Intel Core i7 13700K", price: 39500 },
+  { name: "Intel Core i7 14700", price: 45000 },
+  { name: "Intel Core i7 14700K", price: 40000 },
   { name: "Intel Core i9 12900", price: 43000 },
   { name: "Intel Core i9 12900K", price: 43000 },
-  { name: "Intel Core i9 13900", price: 38000 },
-  { name: "Intel Core i9 13900K", price: 40000 },
-  { name: "Intel Core i9 14900K", price: 42500 },
+  { name: "Intel Core i9 13900", price: 41000 },
+  { name: "Intel Core i9 13900K", price: 43600 },
+  { name: "Intel Core i9 14900", price: 65000 },
+  { name: "Intel Core i9 14900K", price: 47600 },
+  { name: "Intel Core Ultra 9 285K", price: "" },
 ];
 
 const INTEL_XEON_PROCESSORS = [
+  { name: "Intel Xeon Gold 6342", price: "" },
+  { name: "Intel Xeon W-2225", price: "" },
+  { name: "Intel Xeon W3-2423", price: 290000 },
+  { name: "Intel Xeon W3-2425", price: 90000 },
   { name: "Intel Xeon W3-2435", price: 98000 },
+  { name: "Intel Xeon W3-2535", price: 115000 },
+  { name: "Intel Xeon W-3245", price: "" },
+  { name: "Intel Xeon W5-2445", price: 95000 },
   { name: "Intel Xeon W5-2455X", price: 105000 },
+  { name: "Intel Xeon W5-2465X", price: 150000 },
+  { name: "Intel Xeon W5-2545", price: 95000 },
+  { name: "Intel Xeon W5-2565X", price: 135000 },
   { name: "Intel Xeon W5-3435X", price: 155760 },
+  { name: "Intel Xeon W7-2495X", price: "" },
+  { name: "Intel Xeon W7-2575X", price: "" },
+  { name: "Intel Xeon W7-3545", price: "" },
+  { name: "Intel Xeon W7-3565X", price: 185000 },
+  { name: "Intel Xeon W9-3475X", price: 384000 },
+  { name: "Intel Xeon W9-3495X", price: "" },
+  { name: "Intel Xeon W9-3595X", price: "" },
 ];
 
 const AMD_THREADRIPPER_PROCESSORS = [
+  { name: "AMD Threadripper 3355WX", price: "" },
+  { name: "AMD Threadripper 5945WX", price: "" },
+  { name: "AMD Threadripper 5955WX", price: "" },
+  { name: "AMD Threadripper 5965WX", price: "" },
   { name: "AMD CPU 5955WX Threadripper", price: 99120 },
   { name: "AMD CPU 5965WX Threadripper", price: 161660 },
   { name: "AMD CPU 5975WX Threadripper", price: 185260 },
@@ -42,24 +71,24 @@ const AMD_THREADRIPPER_PROCESSORS = [
 // MOTHERBOARDS
 // ============================================================
 const INTEL_MOTHERBOARDS = [
-  { name: "B660/B760 DDR4 (Supports i9)", price: 9000 },
-  { name: "B660/B760 with DDR5", price: 9500 },
+  { name: "B660/B760 Biostar DDR4 Support i9 Processor", price: 9000 },
+  { name: "B660/B760 Biostar with DDR5", price: "" },
   { name: "Q670 DDR4", price: 12000 },
-  { name: "Q670 with DDR5", price: 12000 },
-  { name: "Asus Pro W680 Ace (i5-i9 Support)", price: 31680 },
+  { name: "Q670 with DDR5", price: 15000 },
+  { name: "Asus Pro W680 Ace (i5 to i9 Processor Support)", price: 50000 },
 ];
 
 const INTEL_XEON_MOTHERBOARDS = [
-  { name: "W790 (Supports Xeon W-3400/W-2400 Series)", price: 82600 },
+  { name: "W790 Ace Asus (Supports Xeon W-3400/W-2400 Series, Single Socket ECC RAM)", price: 90000 },
   { name: "C621 Asus E Sage", price: 63720 },
-  { name: "C622", price: 65000 },
+  { name: "C622", price: "" },
 ];
 
 const AMD_MOTHERBOARDS = [
-  { name: "ASRock WRX80 (Supports 12th-14th Gen i5/i7/i9)", price: 45000 },
-  { name: "Asus WRX80", price: 50000 },
-  { name: "MSI WRX80", price: 48000 },
-  { name: "Gigabyte WRX80", price: 47000 },
+  { name: "ASrock WRX80 (Supports 12th, 13th & 14th Gen i5/i7/i9)", price: "" },
+  { name: "Asus WRX80 (Graphic Card Required for Display)", price: 50000 },
+  { name: "MSI WRX80 (Graphic Card Required for Display)", price: "" },
+  { name: "Gigabyte WRX80", price: "" },
 ];
 
 // ============================================================
@@ -71,10 +100,12 @@ const RAMS = [
   { name: "16GB DDR4 3200MHz", price: 3000 },
   { name: "32GB DDR4", price: 4000 },
   { name: "64GB DDR4", price: 5500 },
+  { name: "256GB DDR4", price: "" },
   { name: "8GB DDR5", price: 1800 },
-  { name: "16GB DDR5", price: 3000 },
-  { name: "32GB DDR5", price: 6000 },
-  { name: "64GB DDR5", price: 12000 },
+  { name: "16GB DDR5", price: 14000 },
+  { name: "32GB DDR5", price: 28000 },
+  { name: "64GB DDR5", price: 60000 },
+  { name: "256GB DDR5", price: 36000 },
 ];
 
 // ============================================================
@@ -88,92 +119,111 @@ const REGISTERED_RAMS = [
 
 const SSDS = [
   { name: "256 GB Sata SSD", price: 2000 },
-  { name: "512 GB Sata SSD", price: 3000 },
+  { name: "512 GB Sata SSD", price: 5000 },
+  { name: "1000 GB Sata SSD", price: "" },
   { name: "1024 GB (1TB) Sata SSD", price: 7500 },
-  { name: "1024 GB (1TB) PCIe/NVMe SSD", price: 8500 },
+  { name: "M.2 SSD NVME 1024GB", price: 14000 },
 ];
 
 const HDDS = [
-  { name: "1 TB", price: 3600 },
-  { name: "2 TB", price: 6000 },
+  { name: "512GB", price: 4000 },
+  { name: "1 TB", price: 4000 },
+  { name: "2 TB", price: 8000 },
   { name: "4 TB", price: 9500 },
 ];
 
-// ============================================================
-// GRAPHICS CARD (Workstation-class GPUs)
-// ============================================================
+
 const GRAPHICS_CARDS = [
   { name: "NVIDIA Quadro P620 2GB", price: 10000 },
-  { name: "NVIDIA T400 4GB", price: 10620 },
+  { name: "NVIDIA Quadro P4000 8GB", price: 23000 },
+  { name: "NVIDIA T400 2GB +", price: 6500 },
+  { name: "NVIDIA T400 4GB", price: 14000 },
   { name: "NVIDIA T1000 8GB", price: 31000 },
-  { name: "NVIDIA GeForce RTX 4060 8GB", price: 27000 },
-  { name: "NVIDIA RTX A2000 12GB", price: 54000 },
+  { name: "NVIDIA GTX 1650 4GB", price: 16000 },
+  { name: "NVIDIA 3060", price: "" },
+  { name: "NVIDIA GeForce RTX 4060 8GB Graphics", price: 27000 },
+  { name: "NVIDIA RTX 4070 Super 12GB", price: 65000 },
+  { name: "NVIDIA RTX 4070 Super 12 GB", price: 158000 },
+  { name: "NVIDIA GeForce RTX 5070 12GB", price: "" },
+  { name: "NVIDIA GeForce RTX 5070 Ti", price: "" },
+  { name: "NVIDIA RTX 5090 32GB", price: 180000 },
+  { name: "NVIDIA RTX A400 4GB", price: 12800 },
+  { name: "NVIDIA RTX A1000 8GB", price: 45000 },
+  { name: "NVIDIA RTX A2000 12GB", price: 65000 },
   { name: "NVIDIA RTX A4000 16GB", price: 99000 },
+  { name: "NVIDIA RTX A4000 16GB 4DP GFX", price: 95000 },
   { name: "NVIDIA RTX A5000 24GB", price: 185000 },
   { name: "NVIDIA RTX A5500 24GB", price: 305000 },
-  { name: "NVIDIA RTX 6000 Ada 48GB", price: 400000 },
+  { name: "NVIDIA RTX A6000 48GB (48GB GDDR6)", price: "" },
+  { name: "NVIDIA RTX 2000 Ada Generation 16GB", price: 73500 },
+  { name: "NVIDIA RTX 4000 ADA GEN 20GB", price: 115000 },
+  { name: "NVIDIA RTX 4000 Ada Generation 20GB", price: 130000 },
+  { name: "NVIDIA RTX 4500 Ada Generation 24GB", price: 165000 },
+  { name: "NVIDIA RTX Pro 2000 Blackwell 16GB", price: "" },
+  { name: "NVIDIA RTX 6000 Ada 48GB 4DP Graphics", price: 400000 },
+  { name: "NVIDIA RTX 6000 Ada Generation 48GB", price: 650000 },
 ];
 
-const CABINETS = [
-  { name: "Cabinet with Desktop Board", price: 2500 },
-  { name: "Cabinet with Workstation Board", price: 3500 },
-];
+const CABINETS = [{ name: "Tower", price: "" }];
 
 const KEYBOARDS = [
   { name: "Wired Keyboard & Mouse", price: 600 },
   { name: "Wireless Keyboard & Mouse", price: 1200 },
 ];
 
-// ============================================================
-// POWER SUPPLY (Workstation-specific field — not in Desktop)
-// ============================================================
+
 const POWER_SUPPLIES = [
   { name: "400W", price: 2200 },
   { name: "450W", price: 2600 },
   { name: "500W", price: 3000 },
-  { name: "550W", price: 3500 },
+  { name: "550W", price: 4100 },
+  { name: "600W", price: 4200 },
   { name: "650W", price: 4500 },
+  { name: "700W", price: 6500 },
   { name: "750W", price: 7000 },
-  { name: "800W", price: 8500 },
+  { name: "800W", price: 10000 },
+  { name: "850W", price: 12000 },
   { name: "1000W", price: 13600 },
+  { name: "1100W", price: 15500 },
+  { name: "1200W", price: 18500 },
+  { name: "1800W", price: "" },
+  { name: "2250W", price: "" },
 ];
 
 const OS_OPTIONS = [
-  { name: "Windows", price: 1000 },
-  { name: "DOS", price: 0 },
-  { name: "Linux", price: 0 },
+  { name: "Windows 11 Pro", price: 1000 },
+  { name: "DOS", price: "" },
+  { name: "Linux", price: 1000 },
 ];
 
 const DVDS = [{ name: "DVD R/W", price: 1800 }];
 
-const WIFIS = [{ name: "Wi-Fi 6 + Bluetooth 5.2", price: 1900 }];
+const WIFIS = [
+  { name: "Wi-Fi 6 + Bluetooth 5.2", price: 1900 },
+  { name: "Wi-Fi 6 + Bluetooth 5.3", price: 2400 },
+  { name: "Wi-Fi 7 (802.11be) + Bluetooth 5.4", price: 2500 },
+];
 
 const MONITORS = [
   { name: "21.5 inch", price: 5250 },
-  { name: "23.8 inch", price: 8250 },
-  { name: "27 inch", price: 10500 },
-  { name: "32 inch", price: 18500 },
+  { name: "23.8 inch 58-61 cm (23 inch)", price: 9400 },
+  { name: "68-71 cm (27 inch)", price: 12800 },
+  { name: "72-81 cm (32 inch)", price: 13000 },
+  { name: "32 inch (78.1-83 cm)", price: 18500 },
 ];
 
 const WARRANTIES = [
-  { name: "3 Year", price: 3000 },
-  { name: "5 Year", price: 5500 },
+  { name: "1 Year", price: 2000 },
+  { name: "3 Year", price: 4500 },
+  { name: "5 Year", price: 6500 },
 ];
 
-// ============================================================
-// HELPER: Get price from local data
-// ============================================================
 const getPriceFromLocalData = (categoryList, value) => {
   const item = categoryList.find((item) => item.name === value);
   return item ? item.price : "";
 };
 
-// ============================================================
-// PROCESSOR CATEGORIZATION
-// ============================================================
-// - "intel_standard"  : Core i5/i7/i9      → Standard DDR4/DDR5 RAM + B660/Q670
-// - "intel_xeon"       : Intel Xeon         → Registered ECC RAM + W790/C621/C622
-// - "amd_threadripper" : AMD Threadripper   → Registered ECC RAM + WRX80
+
 const getProcessorCategory = (processorName) => {
   if (!processorName) return null;
   if (processorName.includes("Threadripper")) return "amd_threadripper";
@@ -187,7 +237,7 @@ const getFilteredRams = (processorName) => {
   if (category === "amd_threadripper" || category === "intel_xeon") {
     return REGISTERED_RAMS;
   }
-  return RAMS; // Standard Intel or no processor selected yet
+  return RAMS;
 };
 
 const getFilteredIntelMotherboards = (processorName) => {
@@ -203,9 +253,7 @@ const getFilteredAmdMotherboards = (processorName) => {
   return [];
 };
 
-// ============================================================
-// FORM INITIALIZATION
-// ============================================================
+
 const INITIAL_FORM = {
   processor: "",
   processor_price: "",
@@ -247,7 +295,7 @@ const INITIAL_FORM = {
   hddreturnable: "Yes",
   hddreturnable_price: "",
   freightInstallation: "Yes",
-  freightInstallation_price: "2000",
+  freightInstallation_price: "",
 };
 
 const getDraftKey = (bidId) => `workstation_config_draft_${bidId || "new"}`;
@@ -262,13 +310,11 @@ const normalizeInitialForm = (source = {}) => {
   merged.hddreturnable = source.hddreturnable || merged.hddreturnable || "Yes";
   merged.freightInstallation = source.freightInstallation || merged.freightInstallation || "Yes";
   merged.freightInstallation_price =
-    source.freightInstallation_price || merged.freightInstallation_price || "2000";
+    source.freightInstallation_price || merged.freightInstallation_price || "";
   return merged;
 };
 
-// ============================================================
-// MAIN COMPONENT
-// ============================================================
+
 export default function WorkstationConfig({ bidData, onNext, onBack }) {
   const bid_id = bidData?.bid_id;
   const draftKey = useMemo(() => getDraftKey(bid_id), [bid_id]);
@@ -310,9 +356,6 @@ export default function WorkstationConfig({ bidData, onNext, onBack }) {
     }
   }, [draftKey, form]);
 
-  // ============================================================
-  // DYNAMIC FILTERED LISTS (based on selected processor)
-  // ============================================================
   const intelProcessors = [...INTEL_PROCESSORS, ...INTEL_XEON_PROCESSORS];
   const amdProcessors = AMD_THREADRIPPER_PROCESSORS;
 
@@ -326,9 +369,7 @@ export default function WorkstationConfig({ bidData, onNext, onBack }) {
     [form.processor]
   );
 
-  // ============================================================
-  // BACK HANDLER
-  // ============================================================
+
   const handleBackClick = () => {
     try {
       localStorage.setItem(draftKey, JSON.stringify(form));
@@ -342,9 +383,6 @@ export default function WorkstationConfig({ bidData, onNext, onBack }) {
     }
   };
 
-  // ============================================================
-  // CHANGE HANDLER (with compatibility checks)
-  // ============================================================
   const handleChange = async (e) => {
     const { name, value } = e.target;
     const priceField = `${name}_price`;
@@ -400,9 +438,7 @@ export default function WorkstationConfig({ bidData, onNext, onBack }) {
     }
   };
 
-  // ============================================================
-  // SUBMIT HANDLER
-  // ============================================================
+  
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSaving(true);
@@ -430,9 +466,6 @@ export default function WorkstationConfig({ bidData, onNext, onBack }) {
     }
   };
 
-  // ============================================================
-  // SELECT FIELD COMPONENT
-  // ============================================================
   const SelectField = ({ label, name, options, required, optional }) => (
     <div className="col-span-1">
       <div className="flex items-center gap-2 mb-1">
@@ -469,9 +502,7 @@ export default function WorkstationConfig({ bidData, onNext, onBack }) {
     </div>
   );
 
-  // ============================================================
-  // GET GROUP VALUE (for processor/motherboard dropdowns)
-  // ============================================================
+
   const getGroupValue = (currentValue, list) => {
     if (currentValue === "None") return "None";
     if (!currentValue) return "";
@@ -479,9 +510,7 @@ export default function WorkstationConfig({ bidData, onNext, onBack }) {
     return exists ? currentValue : "";
   };
 
-  // ============================================================
-  // COMPATIBILITY BADGE (shows what RAM/MB is required)
-  // ============================================================
+
   const processorCategory = getProcessorCategory(form.processor);
   const compatibilityInfo = {
     intel_standard: { ram: "DDR4 / DDR5", mb: "B660 / Q670" },
@@ -525,9 +554,7 @@ export default function WorkstationConfig({ bidData, onNext, onBack }) {
 
       <form onSubmit={handleSubmit}>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4">
-          {/* ============================================================
-              PROCESSOR SELECTION (Intel/Xeon vs AMD/Threadripper)
-          ============================================================ */}
+          
           <div className="col-span-1 md:col-span-2 lg:col-span-3">
             <label className="block text-sm font-medium text-gray-700 mb-2 underline">
               Processor Selection
@@ -607,16 +634,12 @@ export default function WorkstationConfig({ bidData, onNext, onBack }) {
             )}
           </div>
 
-          {/* ============================================================
-              RAM (Filtered based on processor)
-          ============================================================ */}
+         
           <SelectField label="Ram" name="ram" options={filteredRams} required />
           <SelectField label="Hard Disk Drive" name="hdd" options={HDDS} required />
           <SelectField label="Graphics Card" name="graphics" options={GRAPHICS_CARDS} required />
 
-          {/* ============================================================
-              DESCRIPTIONS
-          ============================================================ */}
+        
           <div className="col-span-1">
             <div className="flex items-center gap-2 mb-1">
               <label className="block text-sm font-medium text-gray-700">
@@ -665,9 +688,7 @@ export default function WorkstationConfig({ bidData, onNext, onBack }) {
             />
           </div>
 
-          {/* ============================================================
-              OTHER COMPONENTS
-          ============================================================ */}
+          
           <SelectField label="SSD 1" name="ssd" options={SSDS} required />
           <SelectField label="SSD 2" name="ssd2" options={SSDS} />
           <SelectField label="OS" name="os" options={OS_OPTIONS} required />
@@ -679,9 +700,30 @@ export default function WorkstationConfig({ bidData, onNext, onBack }) {
           <SelectField label="Power Supply (SMPS)" name="power_supply" options={POWER_SUPPLIES} required />
           <SelectField label="Warranty" name="warranty" options={WARRANTIES} required />
 
-          {/* ============================================================
-              DATE, EPBG, HDD RETURN
-          ============================================================ */}
+          <div className="col-span-1">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Freight Installation</label>
+            <div className="flex gap-2">
+              <select
+                name="freightInstallation"
+                value={form.freightInstallation}
+                onChange={handleChange}
+                className="flex-1 min-w-0 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              >
+                <option value="Yes">Yes</option>
+                <option value="No">No</option>
+              </select>
+              <input
+                type="text"
+                name="freightInstallation_price"
+                value={form.freightInstallation_price}
+                onChange={handleChange}
+                placeholder="Price"
+                className="w-24 shrink-0 border border-gray-300 rounded-md px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+
+        
           <div className="col-span-1">
             <label className="block text-sm font-medium text-gray-700 mb-1">Bid End Date</label>
             <input
@@ -706,39 +748,12 @@ export default function WorkstationConfig({ bidData, onNext, onBack }) {
             />
           </div>
 
-          <div className="col-span-1">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              HDD Return Option
-            </label>
-            <div className="flex gap-2">
-              <select
-                name="hddreturnable"
-                value={form.hddreturnable}
-                onChange={handleChange}
-                className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              >
-                <option value="Yes">Yes</option>
-                <option value="None">None</option>
-              </select>
-              <input
-                type="text"
-                name="hddreturnable_price"
-                value={form.hddreturnable_price}
-                onChange={handleChange}
-                placeholder="Price"
-                className="w-24 border border-gray-300 rounded-md px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-          </div>
-
-          {/* ============================================================
-              MOTHERBOARD SELECTION (Filtered based on processor)
-          ============================================================ */}
+         =
           <div className="col-span-1 md:col-span-2 lg:col-span-3">
             <label className="block text-sm font-medium text-gray-700 mb-2 underline">
               Motherboard Selection
             </label>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {/* Intel Motherboard Section */}
               <div className="flex flex-col">
                 <span className="text-[11px] text-gray-500 font-medium mb-1 uppercase">
@@ -782,7 +797,6 @@ export default function WorkstationConfig({ bidData, onNext, onBack }) {
                 </div>
               </div>
 
-              {/* AMD Motherboard Section */}
               <div className="flex flex-col">
                 <span className="text-[11px] text-gray-500 font-medium mb-1 uppercase">
                   AMD Motherboard
@@ -819,53 +833,72 @@ export default function WorkstationConfig({ bidData, onNext, onBack }) {
                   />
                 </div>
               </div>
-            </div>
-          </div>
 
-          {/* ============================================================
-              MOTHERBOARD DESCRIPTION
-          ============================================================ */}
-          <div className="col-span-1 md:col-span-3">
-            <div className="flex items-center gap-2 mb-1">
-              <label className="block text-sm font-medium text-gray-700">
-                Motherboard Description
-              </label>
-              <span className="text-red-500 text-[11px] font-normal">*Optional</span>
-            </div>
-            <textarea
-              name="motherboard_descp"
-              value={form.motherboard_descp}
-              onChange={handleChange}
-              rows={2}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-              placeholder="Technical details..."
-            />
-          </div>
+              <div className="flex flex-col">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  HDD Return Option
+                </label>
+                <div className="flex gap-2">
+                  <select
+                    name="hddreturnable"
+                    value={form.hddreturnable}
+                    onChange={handleChange}
+                    className="flex-1 min-w-0 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  >
+                    <option value="Yes">Yes</option>
+                    <option value="None">None</option>
+                  </select>
+                  <input
+                    type="text"
+                    name="hddreturnable_price"
+                    value={form.hddreturnable_price}
+                    onChange={handleChange}
+                    placeholder="Price"
+                    className="w-24 shrink-0 border border-gray-300 rounded-md px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
 
-          {/* ============================================================
-              EXTRA REQUIREMENTS (frequently used in Workstation bids)
-          ============================================================ */}
-          <div className="col-span-1 md:col-span-3">
-            <div className="flex items-center gap-2 mb-1">
-              <label className="block text-sm font-medium text-gray-700">
-                Extra Requirements
-              </label>
-              <span className="text-red-500 text-[11px] font-normal">*Optional</span>
+              <div className="col-span-1 md:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Motherboard Description
+                    </label>
+                    <span className="text-red-500 text-[11px] font-normal">*Optional</span>
+                  </div>
+                  <textarea
+                    name="motherboard_descp"
+                    value={form.motherboard_descp}
+                    onChange={handleChange}
+                    rows={2}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                    placeholder="Technical details..."
+                  />
+                </div>
+
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Extra Requirements
+                    </label>
+                    <span className="text-red-500 text-[11px] font-normal">*Optional</span>
+                  </div>
+                  <textarea
+                    name="extra_requirements"
+                    value={form.extra_requirements}
+                    onChange={handleChange}
+                    rows={2}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                    placeholder="e.g. Height adjustable stand, Dual Gigabit NIC, TCO 9.0, etc."
+                  />
+                </div>
+              </div>
             </div>
-            <textarea
-              name="extra_requirements"
-              value={form.extra_requirements}
-              onChange={handleChange}
-              rows={2}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-              placeholder="e.g. Height adjustable stand, Dual Gigabit NIC, TCO 9.0, etc."
-            />
           </div>
         </div>
 
-        {/* ============================================================
-              SUBMIT BUTTON
-        ============================================================ */}
+     
         <div className="flex justify-start items-center">
           <button
             type="submit"

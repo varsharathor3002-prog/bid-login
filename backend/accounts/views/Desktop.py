@@ -2,16 +2,18 @@ from django.http import JsonResponse
 from django.http.multipartparser import MultiPartParser
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.hashers import make_password, check_password
+from django.conf import settings
 import json
 from django.utils import timezone
 from datetime import timedelta
 from django.views.decorators.http import require_http_methods
+from django.test import RequestFactory
 from ..models import User, DesktopBid, CatalogueProduct
 import re
 import os
+import shutil
 from collections import OrderedDict
 import tempfile
-from datetime import datetime
 
 
 try:
@@ -24,24 +26,20 @@ try:
 except Exception:
     PdfReader = None
 
-from django.db.models import Q
 
 @csrf_exempt
 def register(request):
     if request.method == "POST":
         try:
             data = json.loads(request.body)
-            username = data.get("username")
-            email = data.get("email")
+            username = (data.get("username") or "").strip()
+            email = (data.get("email") or "").strip().lower()
             password = data.get("password")
 
             if not username or not email or not password:
                 return JsonResponse({"error": "All fields required"}, status=400)
 
-            if User.objects.filter(username=username).exists():
-                return JsonResponse({"error": "Username already exists"}, status=400)
-
-            if User.objects.filter(email=email).exists():
+            if User.objects.filter(email__iexact=email).exists():
                 return JsonResponse({"error": "Email already exists"}, status=400)
 
             User.objects.create(
@@ -96,17 +94,14 @@ def register_analyser(request):
     if request.method == "POST":
         try:
             data = json.loads(request.body)
-            username = data.get("username")
-            email = data.get("email")
+            username = (data.get("username") or "").strip()
+            email = (data.get("email") or "").strip().lower()
             password = data.get("password")
 
             if not username or not email or not password:
                 return JsonResponse({"error": "All fields required"}, status=400)
 
-            if User.objects.filter(username=username).exists():
-                return JsonResponse({"error": "Username already exists"}, status=400)
-
-            if User.objects.filter(email=email).exists():
+            if User.objects.filter(email__iexact=email).exists():
                 return JsonResponse({"error": "Email already exists"}, status=400)
 
             User.objects.create(
@@ -138,16 +133,16 @@ def login(request):
     if request.method == "POST":
         try:
             data = json.loads(request.body)
-            username = data.get("username")
+            email = (data.get("email") or "").strip().lower()
             password = data.get("password")
             role = data.get("role")
 
-            if not username or not password:
-                return JsonResponse({"error": "Username and Password required"}, status=400)
+            if not email or not password:
+                return JsonResponse({"error": "Email and Password required"}, status=400)
 
-            user = User.objects.filter(username=username).first()
+            user = User.objects.filter(email__iexact=email).first()
             if not user:
-                return JsonResponse({"error": "User not found"}, status=404)
+                return JsonResponse({"error": "Email not found"}, status=404)
 
             if role and user.role != role:
                 return JsonResponse({"error": "Invalid role selected"}, status=400)
@@ -343,7 +338,7 @@ def generate_certificates(request, bid_id):
         doc_type = ""
 
     CERT_PAGE_RANGES = {
-        "manufacturer_auth":    (2, 3),
+        "manufacturer_auth":    (2, 4),
         "make_in_india":        (5, 5),
         "warranty":             (6, 6),
         "bidder_financial":     (7, 7),
@@ -358,8 +353,418 @@ def generate_certificates(request, bid_id):
         "preloaded_os":         (22, 22),
     }
 
-    if not doc_type or doc_type not in CERT_PAGE_RANGES:
+    STATIC_DOCUMENTS = {
+        "experience_certificate": "experience_certificate.pdf",
+        "past_performance": "past_performance.pdf",
+        "oem_annual_turnover": "oem_annual_turnover.pdf",
+    }
+    DYNAMIC_STANDALONE_DOCUMENTS = {"atc_acceptance_letter"}
+
+    APPROVED_DOWNLOADS = {
+        "approved_atc_documents",
+        "approved_price_paper",
+        "approved_all_documents",
+    }
+    if (
+        not doc_type
+        or doc_type not in CERT_PAGE_RANGES
+        and doc_type not in STATIC_DOCUMENTS
+        and doc_type not in DYNAMIC_STANDALONE_DOCUMENTS
+        and doc_type not in APPROVED_DOWNLOADS
+    ):
         return JsonResponse({"error": f"Invalid doc_type: '{doc_type}'"}, status=400)
+
+    if doc_type in APPROVED_DOWNLOADS and bid.review_status != "approved":
+        return JsonResponse({"error": "Only approved bids can be downloaded"}, status=403)
+
+    if doc_type == "atc_acceptance_letter":
+        source_path = os.path.join(
+            settings.MEDIA_ROOT,
+            "templates",
+            "static_documents",
+            "atc_acceptance_letter.pdf",
+        )
+        if not os.path.exists(source_path):
+            return JsonResponse({"error": "ATC Acceptance Letter template not found"}, status=404)
+
+        document = fitz.open(source_path)
+        page = document[0]
+        dynamic_rect = fitz.Rect(65, 96, 535, 235)
+        page.add_redact_annot(dynamic_rect, fill=(1, 1, 1))
+        page.apply_redactions()
+
+        bid_date = str(bid.date or "")
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", bid_date):
+            year, month, day = bid_date.split("-")
+            bid_date = f"{day}-{month}-{year}"
+
+        recipient_lines = [
+            "To,",
+            str(bid.dept_name or "").strip(),
+            str(bid.organization or "").strip(),
+        ]
+        address = str(bid.address or "").strip()
+        if address:
+            recipient_lines.extend(
+                line.strip() for line in re.split(r"[\r\n]+", address) if line.strip()
+            )
+        recipient_lines.extend([
+            "",
+            f"Bid No:- {str(bid.bid_no or '').strip()}",
+            f"Dated:- {bid_date}",
+        ])
+        page.insert_textbox(
+            fitz.Rect(72, 102, 525, 235),
+            "\n".join(recipient_lines),
+            fontsize=10.5,
+            fontname="hebo",
+            lineheight=1.28,
+            align=0,
+        )
+
+        output_dir = os.path.join(settings.MEDIA_ROOT, "generated")
+        os.makedirs(output_dir, exist_ok=True)
+        output_filename = f"bid_{bid_id}_atc_acceptance_letter.pdf"
+        document.save(os.path.join(output_dir, output_filename))
+        document.close()
+        return JsonResponse({
+            "success": True,
+            "pdf_url": request.build_absolute_uri(f"/media/generated/{output_filename}"),
+        })
+
+    if doc_type == "approved_price_paper":
+        price_fields = [
+            ("Processor", bid.processor_price),
+            ("Processor Description", bid.pro_descp_price),
+            ("RAM", bid.ram_price),
+            ("HDD", bid.hdd_price),
+            ("SSD 1", bid.ssd1_price),
+            ("SSD 2", bid.ssd2_price),
+            ("Operating System", bid.os_price),
+            ("DVD", bid.dvd_price),
+            ("WiFi / Bluetooth", bid.wifi_price),
+            ("Monitor", bid.monitor_price),
+            ("Cabinet", bid.cabinet_price),
+            ("Keyboard & Mouse", bid.keyboard_price),
+            ("Warranty", bid.warranty_price),
+            ("Motherboard", bid.motherboard_price),
+            ("Motherboard Description", bid.motherboard_descp_price),
+            ("Additional Software", bid.software1_price),
+            ("Graphics Description", bid.gp_price),
+            ("Freight & Installation", bid.freightInstallation_price),
+            ("HDD Return Option", bid.hddreturnable_price),
+        ]
+        component_prices = []
+        for label, value in price_fields:
+            if value is None or str(value).strip() == "":
+                continue
+            try:
+                numeric_value = float(str(value).replace(",", "").strip())
+            except (TypeError, ValueError):
+                continue
+            if numeric_value == 0:
+                continue
+            component_prices.append((label, numeric_value))
+        price_doc = fitz.open()
+        page = price_doc.new_page(width=595, height=842)
+        template_path = os.path.join(settings.MEDIA_ROOT, "templates", "documents.pdf")
+        if os.path.exists(template_path):
+            template_doc = fitz.open(template_path)
+            source_page = template_doc[5] if len(template_doc) > 5 else template_doc[0]
+            header = source_page.get_pixmap(
+                matrix=fitz.Matrix(2, 2),
+                clip=fitz.Rect(0, 0, source_page.rect.width, 112),
+                alpha=False,
+            ).tobytes("png")
+            page.insert_image(fitz.Rect(18, 12, 577, 112), stream=header, keep_proportion=False)
+            template_doc.close()
+
+        page.insert_textbox(fitz.Rect(45, 135, 550, 165), "PRICE APPROVED", fontsize=14, fontname="hebo", align=1)
+        page.insert_text((48, 190), f"Bid Number: {bid.bid_no}", fontsize=11, fontname="hebo")
+        x_positions = [48, 390, 547]
+        y, row_height = 215, 26
+        for column, heading in enumerate(("COMPONENT", "APPROVED PRICE")):
+            rect = fitz.Rect(x_positions[column], y, x_positions[column + 1], y + row_height)
+            page.draw_rect(rect, color=(0.3, 0.3, 0.3), fill=(0.9, 0.93, 0.96), width=0.7)
+            page.insert_textbox(rect + (4, 6, -4, -3), heading, fontsize=9, fontname="hebo", align=column)
+        y += row_height
+        for label, value in component_prices:
+            for column, text in enumerate((label, f"Rs. {value:,.2f}")):
+                rect = fitz.Rect(x_positions[column], y, x_positions[column + 1], y + row_height)
+                page.draw_rect(rect, color=(0.55, 0.55, 0.55), width=0.5)
+                page.insert_textbox(rect + (4, 6, -4, -3), text, fontsize=8.5, fontname="helv", align=2 if column else 0)
+            y += row_height
+        output_dir = os.path.join(settings.MEDIA_ROOT, "generated")
+        os.makedirs(output_dir, exist_ok=True)
+        output_filename = f"bid_{bid_id}_price_approved.pdf"
+        price_doc.save(os.path.join(output_dir, output_filename))
+        price_doc.close()
+        return JsonResponse({
+            "success": True,
+            "pdf_url": request.build_absolute_uri(f"/media/generated/{output_filename}"),
+        })
+
+    if doc_type == "approved_all_documents":
+        non_atc_documents = [
+            ("manufacturer_auth", "MAF CERTIFICATE"),
+            ("experience_certificate", "EXPERIENCE CERTIFICATE"),
+            ("past_performance", "PAST PERFORMANCE"),
+            ("oem_annual_turnover", "OEM ANNUAL TURNOVER"),
+            ("make_in_india", "MAKE IN INDIA"),
+            ("atc_acceptance_letter", "ATC ACCEPTANCE LETTER"),
+        ]
+        atc_labels = {
+            "warranty": "WARRANTY",
+            "bidder_financial": "BIDDER FINANCIAL UNDERSTANDINGS",
+            "non_obsolete": "NON OBSOLETE",
+            "data_sheet": "DATA SHEET",
+            "non_malicious": "NON MALICIOUS CODE",
+            "non_return_hdd": "NON RETURN OF HARD DISK",
+            "technical_compliance": "TECHNICAL COMPLIANCE",
+            "non_blacklisting": "NON BLACKLISTING",
+            "service_support": "SERVICE SUPPORT CONSIGNEE LOCATION",
+            "ipv6": "IPV6",
+            "preloaded_os": "PRELOADED OPERATING SYSTEM",
+        }
+        selected_atc_ids = list(dict.fromkeys(
+            child_id for child_id in (bid.selected_general_docs or [])
+            if child_id in atc_labels
+        ))
+        grouped_documents = [
+            ("NON-ATC DOCUMENTS", non_atc_documents),
+            ("ATC DOCUMENTS", [(child_id, atc_labels[child_id]) for child_id in selected_atc_ids]),
+        ]
+
+        output_dir = os.path.join(settings.MEDIA_ROOT, "generated")
+        os.makedirs(output_dir, exist_ok=True)
+        factory = RequestFactory()
+        generated_groups = []
+        for section, documents in grouped_documents:
+            generated_docs = []
+            for child_id, label in documents:
+                child_request = factory.post(
+                    f"/api/desktop-bids/{bid_id}/generate-docs/",
+                    data=json.dumps({"doc_type": child_id}),
+                    content_type="application/json",
+                    HTTP_HOST=request.get_host(),
+                )
+                child_response = generate_certificates(child_request, bid_id)
+                if child_response.status_code != 200:
+                    return child_response
+                child_path = os.path.join(output_dir, f"bid_{bid_id}_{child_id}.pdf")
+                if os.path.exists(child_path):
+                    generated_docs.append((label, fitz.open(child_path)))
+            if generated_docs:
+                generated_groups.append((section, generated_docs))
+
+        if not generated_groups:
+            return JsonResponse({"error": "No approved documents available"}, status=400)
+
+        index_groups, page_number = [], 1
+        for section, generated_docs in generated_groups:
+            rows = []
+            for label, child_doc in generated_docs:
+                start = page_number
+                end = start + len(child_doc) - 1
+                rows.append((label, start, end))
+                page_number = end + 1
+            index_groups.append((section, rows))
+
+        bundle = fitz.open()
+        index_page = bundle.new_page(width=595, height=842)
+        index_page.insert_textbox(
+            fitz.Rect(45, 60, 550, 100),
+            "Index of all approved documents",
+            fontsize=17,
+            fontname="hebo",
+            align=1,
+        )
+        index_page.insert_text((48, 127), f"Bid Number: {bid.bid_no}", fontsize=12, fontname="hebo")
+        columns, y, row_height = [48, 92, 380, 462, 547], 152, 32
+
+        headings = ("S.NO.", "DOCUMENTS", "PAGE FROM", "PAGE TO")
+        for column, heading in enumerate(headings):
+            rect = fitz.Rect(columns[column], y, columns[column + 1], y + row_height)
+            index_page.draw_rect(rect, color=(0.45, 0.45, 0.45), fill=(0.92, 0.94, 0.96), width=0.6)
+            index_page.insert_textbox(rect + (4, 9, -4, -3), heading, fontsize=9.2, fontname="hebo", align=1 if column != 1 else 0)
+        y += row_height
+
+        serial_number = 1
+        for section, rows in index_groups:
+            section_rect = fitz.Rect(columns[0], y, columns[-1], y + row_height)
+            index_page.draw_rect(section_rect, color=(0.35, 0.35, 0.35), fill=(0.85, 0.88, 0.92), width=0.7)
+            index_page.insert_textbox(section_rect + (5, 9, -5, -3), section, fontsize=9.5, fontname="hebo", align=0)
+            y += row_height
+            for label, start, end in rows:
+                values = (str(serial_number), label, str(start), str(end))
+                for column, value in enumerate(values):
+                    rect = fitz.Rect(columns[column], y, columns[column + 1], y + row_height)
+                    index_page.draw_rect(rect, color=(0.55, 0.55, 0.55), width=0.5)
+                    index_page.insert_textbox(rect + (4, 9, -4, -3), value, fontsize=9.2, fontname="hebo", align=1 if column != 1 else 0)
+                serial_number += 1
+                y += row_height
+
+        for _, generated_docs in generated_groups:
+            for _, child_doc in generated_docs:
+                bundle.insert_pdf(child_doc)
+                child_doc.close()
+        for page_index in range(1, len(bundle)):
+            page = bundle[page_index]
+            for block in page.get_text("dict").get("blocks", []):
+                if block.get("type") != 0:
+                    continue
+                for line in block.get("lines", []):
+                    text = " ".join(span.get("text", "") for span in line.get("spans", [])).strip()
+                    if line["bbox"][1] > page.rect.height - 60 and re.fullmatch(r"(?:Page\s*)?\d+", text, re.IGNORECASE):
+                        rect = fitz.Rect(line["bbox"])
+                        page.add_redact_annot(rect + (-3, -2, 3, 2), fill=(1, 1, 1))
+            page.apply_redactions()
+            page.insert_textbox(
+                fitz.Rect(page.rect.width - 60, page.rect.height - 28, page.rect.width - 18, page.rect.height - 8),
+                str(page_index),
+                fontsize=9,
+                fontname="hebo",
+                align=2,
+            )
+
+        output_filename = f"bid_{bid_id}_all_approved_documents.pdf"
+        bundle.save(os.path.join(output_dir, output_filename))
+        bundle.close()
+        return JsonResponse({
+            "success": True,
+            "pdf_url": request.build_absolute_uri(f"/media/generated/{output_filename}"),
+        })
+
+    if doc_type == "approved_atc_documents":
+        separate_ids = {
+            "manufacturer_auth",
+            "experience_certificate",
+            "past_performance",
+            "oem_annual_turnover",
+            "make_in_india",
+        }
+        labels = {
+            "warranty": "WARRANTY",
+            "bidder_financial": "BIDDER FINANCIAL UNDERSTANDINGS",
+            "non_obsolete": "NON OBSOLETE",
+            "data_sheet": "DATA SHEET",
+            "non_malicious": "NON MALICIOUS CODE",
+            "non_return_hdd": "NON RETURN OF HARD DISK",
+            "technical_compliance": "TECHNICAL COMPLIANCE",
+            "non_blacklisting": "NON BLACKLISTING",
+            "service_support": "SERVICE SUPPORT CONSIGNEE LOCATION",
+            "ipv6": "IPV6",
+            "preloaded_os": "PRELOADED OPERATING SYSTEM",
+        }
+        selected_ids = list(dict.fromkeys(
+            doc_id for doc_id in (bid.selected_general_docs or [])
+            if doc_id in labels and doc_id not in separate_ids
+        ))
+        if not selected_ids:
+            return JsonResponse({"error": "No ATC-related documents selected"}, status=400)
+
+        output_dir = os.path.join(settings.MEDIA_ROOT, "generated")
+        os.makedirs(output_dir, exist_ok=True)
+        factory = RequestFactory()
+        generated_docs = []
+        for child_id in selected_ids:
+            child_request = factory.post(
+                f"/api/desktop-bids/{bid_id}/generate-docs/",
+                data=json.dumps({"doc_type": child_id}),
+                content_type="application/json",
+                HTTP_HOST=request.get_host(),
+            )
+            child_response = generate_certificates(child_request, bid_id)
+            if child_response.status_code != 200:
+                return child_response
+            child_path = os.path.join(output_dir, f"bid_{bid_id}_{child_id}.pdf")
+            if os.path.exists(child_path):
+                generated_docs.append((labels[child_id], fitz.open(child_path)))
+
+        page_ranges, page_number = [], 1
+        for label, child_doc in generated_docs:
+            start = page_number
+            end = start + len(child_doc) - 1
+            page_ranges.append((label, start, end))
+            page_number = end + 1
+
+        bundle = fitz.open()
+        index_page = bundle.new_page(width=595, height=842)
+        index_page.insert_textbox(
+            fitz.Rect(45, 60, 550, 100),
+            "Index of documents file with ATC",
+            fontsize=17,
+            fontname="hebo",
+            align=1,
+        )
+        index_page.insert_text((48, 127), f"Bid Number: {bid.bid_no}", fontsize=12, fontname="hebo")
+        columns, y, row_height = [48, 92, 380, 462, 547], 152, 32
+        for row_index, values in enumerate(
+            [("S.NO.", "DOCUMENTS", "PAGE FROM", "PAGE TO")]
+            + [(str(i), label, str(start), str(end)) for i, (label, start, end) in enumerate(page_ranges, 1)]
+        ):
+            for column, value in enumerate(values):
+                rect = fitz.Rect(columns[column], y, columns[column + 1], y + row_height)
+                index_page.draw_rect(
+                    rect,
+                    color=(0.45, 0.45, 0.45),
+                    fill=(0.92, 0.94, 0.96) if row_index == 0 else None,
+                    width=0.6,
+                )
+                index_page.insert_textbox(
+                    rect + (4, 9, -4, -3),
+                    value,
+                    fontsize=9.2,
+                    fontname="hebo",
+                    align=1 if column != 1 else 0,
+                )
+            y += row_height
+
+        for _, child_doc in generated_docs:
+            bundle.insert_pdf(child_doc)
+            child_doc.close()
+        for page_index in range(1, len(bundle)):
+            page = bundle[page_index]
+            for block in page.get_text("dict").get("blocks", []):
+                if block.get("type") != 0:
+                    continue
+                for line in block.get("lines", []):
+                    text = " ".join(span.get("text", "") for span in line.get("spans", [])).strip()
+                    if line["bbox"][1] > page.rect.height - 60 and re.fullmatch(r"(?:Page\s*)?\d+", text, re.IGNORECASE):
+                        rect = fitz.Rect(line["bbox"])
+                        page.add_redact_annot(rect + (-3, -2, 3, 2), fill=(1, 1, 1))
+            page.apply_redactions()
+            page.insert_textbox(fitz.Rect(page.rect.width - 60, page.rect.height - 28, page.rect.width - 18, page.rect.height - 8), str(page_index), fontsize=9, fontname="hebo", align=2)
+
+        output_filename = f"bid_{bid_id}_approved_atc_documents.pdf"
+        bundle.save(os.path.join(output_dir, output_filename))
+        bundle.close()
+        return JsonResponse({
+            "success": True,
+            "pdf_url": request.build_absolute_uri(f"/media/generated/{output_filename}"),
+        })
+
+    if doc_type in STATIC_DOCUMENTS:
+        source_path = os.path.join(
+            settings.MEDIA_ROOT,
+            "templates",
+            "static_documents",
+            STATIC_DOCUMENTS[doc_type],
+        )
+        if not os.path.exists(source_path):
+            return JsonResponse({"error": "Static document template not found"}, status=404)
+
+        output_dir = os.path.join(settings.MEDIA_ROOT, "generated")
+        os.makedirs(output_dir, exist_ok=True)
+        output_filename = f"bid_{bid_id}_{doc_type}.pdf"
+        output_path = os.path.join(output_dir, output_filename)
+        shutil.copyfile(source_path, output_path)
+
+        return JsonResponse({
+            "success": True,
+            "pdf_url": request.build_absolute_uri(f"/media/generated/{output_filename}"),
+            "message": f"{doc_type} document copied successfully",
+        }, status=200)
 
     template_path = os.path.join("media", "templates", "documents.pdf")
     if not os.path.exists(template_path):
@@ -870,7 +1275,15 @@ def generate_certificates(request, bid_id):
         if not value:
             return
         area = fitz.Rect(rect)
-        page.add_redact_annot(area, fill=(1, 1, 1))
+        # Keep the original table grid visible by redacting only inside the
+        # cell instead of erasing its border lines.
+        erase_area = fitz.Rect(
+            area.x0 + 1.5,
+            area.y0 + 1.5,
+            area.x1 - 1.5,
+            area.y1 - 1.5,
+        )
+        page.add_redact_annot(erase_area, fill=(1, 1, 1))
         page.apply_redactions()
         inner = fitz.Rect(area.x0 + 3, area.y0 + 3, area.x1 - 3, area.y1 - 3)
         if inner.height <= 22:
@@ -989,6 +1402,18 @@ def generate_certificates(request, bid_id):
             _fill_blank_data_sheet_page(page, page_index, specs)
 
     def _fill_technical_compliance_page(page):
+        allowed_processors_display = (
+            "Intel Core i3: 12100, 14100\n"
+            "Intel Core i5: 12400, 14400\n"
+            "Intel Core i7: 12700, 14700\n"
+            "Intel Core i9: 14900\n"
+            "Intel Ultra 5: 225, 245K | Ultra 7: 265K\n"
+            "AMD Ryzen 3: 4300G, 5300G\n"
+            "AMD Ryzen 5: 5600G, 8500G\n"
+            "AMD Ryzen 7: 5700G | Ryzen 9: 9300G\n"
+            "12th Gen Composite: i5, i7 Or higher"
+        )
+
         heading_areas = page.search_for("Compliance or BOQ") or page.search_for("Compliance or BOq")
         for area in heading_areas:
             page.add_redact_annot(
@@ -1029,8 +1454,400 @@ def generate_certificates(request, bid_id):
             ((316, 606, 542, 624), specs["ram_type"], 8.8),
             ((316, 650, 542, 670), specs["ram_size_gb"], 8.8),
         ]
+        allowed_replacements = [
+            (
+                (183, 176, 313, 269),
+                "Desktop Computer with Table Mount Monitor System with Compatible Chipset as per Processor make with Minimum 6 USB Port",
+                8.0,
+            ),
+            ((183, 273, 313, 389), allowed_processors_display, 7.2),
+            ((183, 523, 313, 596), "Windows 11 Home\nWindows 11 Professional\nDOS | Linux", 9.0),
+            ((183, 598, 313, 641), "DDR4 | DDR5 Or higher", 9.0),
+            ((183, 641, 313, 681), "8 | 16 | 32 | 64 GB Or higher", 9.0),
+        ]
+        for rect, value, fontsize in allowed_replacements:
+            _replace_technical_cell(page, rect, value, fontsize=fontsize)
+
         for rect, value, fontsize in replacements:
             _replace_technical_cell(page, rect, value, fontsize=fontsize)
+
+    def _fill_desktop_technical_compliance_page(page, page_index):
+        specs = _form_specs()
+
+        def _capacity(value):
+            numbers = re.findall(r"\d+(?:\.\d+)?", str(value or ""))
+            if not numbers:
+                return "0"
+            number = float(numbers[0])
+            if re.search(r"TB", str(value), re.IGNORECASE):
+                number *= 1024
+            return str(int(number)) if number.is_integer() else str(number)
+
+        if page_index == 0:
+            base_processors = [
+                "Intel Core i3 12100", "Intel Core i3 14100",
+                "Intel Core i5 12400", "Intel Core i5 14400",
+                "Intel Core i7 12700", "12th Gen Composite i5",
+                "12th Gen Composite i7", "AMD Ryzen 3 4300G",
+                "AMD Ryzen 3 5300G", "AMD Ryzen 5 5600G",
+                "AMD Ryzen 7 5700G", "AMD Ryzen 5 8500G",
+                "AMD Ryzen 9 9300G",
+            ]
+            higher_processors = [
+                "Intel Core i7 13700", "Intel Core i7 13700K",
+                "Intel Core i7 14700", "Intel Core i7 14700K",
+                "Intel Core i9 12900", "Intel Core i9 12900K",
+                "Intel Core i9 13900", "Intel Core i9 13900K",
+                "Intel Core i9 14900", "Intel Core i9 14900K",
+                "Intel Core Ultra 5 225", "Intel Core Ultra 5 225T",
+                "Intel Core Ultra 5 235", "Intel Core Ultra 5 235T",
+                "Intel Core Ultra 5 245", "Intel Core Ultra 5 245K",
+                "Intel Core Ultra 5 245T", "Intel Core Ultra 7 265",
+                "Intel Core Ultra 7 265K", "Intel Core Ultra 7 265T",
+                "Intel Core Ultra 9 285",
+            ]
+            processor = specs["processor"]
+            normalized_processor = re.sub(r"[^a-z0-9]", "", processor.lower())
+            normalized_base = {
+                re.sub(r"[^a-z0-9]", "", value.lower()) for value in base_processors
+            }
+            is_base_processor = normalized_processor in normalized_base
+
+            _replace_technical_cell(
+                page, (273, 269, 397, 303),
+                ", ".join(base_processors) + ", NA for Higher Processor Or higher",
+                fontsize=4.0,
+            )
+            _replace_technical_cell(
+                page, (273, 307, 397, 534),
+                ", ".join(higher_processors) + " Or higher",
+                fontsize=6.2,
+            )
+
+            primary_storage = specs["ssd1"] or specs["hdd"]
+            replacements = [
+                ((400, 178, 502, 265), "Desktop Computer with Table Mount Monitor System with Compatible Chipset as per Processor make with Minimum 6 USB Port", 7.4),
+                ((400, 269, 502, 303), processor if is_base_processor else "NA for Higher Processor", 7.5),
+                ((400, 307, 502, 534), "NA" if is_base_processor else processor, 8.0),
+                ((400, 538, 502, 559), specs["pcie_x16"] or "1", 8.0),
+                ((400, 563, 502, 583), specs["tpm"] or "Discrete TPM 2.0", 7.5),
+                ((400, 587, 502, 622), specs["graphics_memory"] or "0", 8.0),
+                ((400, 626, 502, 648), specs["os"], 7.5),
+                ((400, 652, 502, 699), specs["ram_size_gb"], 8.0),
+                ((400, 703, 502, 725), _capacity(primary_storage), 8.0),
+            ]
+        else:
+            secondary_storage = specs["ssd2"] or specs["hdd"]
+            has_secondary = bool(
+                secondary_storage
+                and str(secondary_storage).strip().lower() not in {"none", "no", "0"}
+            )
+            monitor_text = str(specs["monitor"] or "")
+            monitor_numbers = re.findall(r"\d+(?:\.\d+)?", monitor_text)
+            monitor_inches = float(monitor_numbers[0]) if monitor_numbers else 0
+            screen_range = (
+                '58.1 - 63 (22.87" - 24.8")'
+                if monitor_inches >= 22.87
+                else '53.1 - 58 (20.91" - 22.83")'
+            )
+            warranty_numbers = re.findall(r"\d+(?:\.\d+)?", str(specs["warranty"] or ""))
+            warranty_years = warranty_numbers[0] if warranty_numbers else specs["warranty"]
+
+            replacements = [
+                ((400, 83, 502, 118), specs["storage_type"] if has_secondary else "No Secondary Storage", 7.2),
+                ((400, 122, 502, 147), _capacity(secondary_storage) if has_secondary else "0", 8.0),
+                ((400, 151, 502, 174), specs["monitor_available"] or "Yes as per IS 13252 (Part 1)", 7.0),
+                ((400, 178, 502, 200), specs["panel_type"] or "Vertical Alignment (VA)", 7.0),
+                ((400, 204, 502, 227), screen_range, 7.0),
+                ((400, 231, 502, 253), specs["max_resolution"] or "1920 x 1080 (Full HD)", 7.0),
+                ((400, 257, 502, 279), warranty_years, 8.0),
+            ]
+
+        for rect, value, fontsize in replacements:
+            _replace_technical_cell(page, rect, value, fontsize=fontsize)
+
+        if page_index == 0 and bid_no:
+            tender_areas = page.search_for("GEM/2026/B/7577756")
+            for area in tender_areas:
+                replace_area = fitz.Rect(area.x0 - 2, area.y0 - 2, area.x1 + 4, area.y1 + 3)
+                page.add_redact_annot(replace_area, fill=(1, 1, 1))
+            if tender_areas:
+                page.apply_redactions()
+                page.insert_text(
+                    (tender_areas[0].x0, tender_areas[0].y1 - 2),
+                    bid_no,
+                    fontsize=11,
+                    fontname="hebo",
+                    color=(0, 0, 0),
+                )
+
+    def _fill_storage_warranty_compliance_page(page):
+        specs = _form_specs()
+        heading = "Technical Compliance Certificate"
+        heading_width = fitz.get_text_length(heading, fontname="hebo", fontsize=14)
+        page.insert_text(
+            ((page.rect.width - heading_width) / 2, 150),
+            heading,
+            fontsize=14,
+            fontname="hebo",
+            color=(0, 0, 0),
+        )
+
+        columns = [52, 115, 220, 395, 543]
+        header_top, header_bottom = 178, 208
+        headers = ["Specification", "Title", "Allowed Values", "Offered"]
+        for index, header in enumerate(headers):
+            rect = fitz.Rect(columns[index], header_top, columns[index + 1], header_bottom)
+            page.draw_rect(rect, color=(0.35, 0.35, 0.35), fill=(0.92, 0.94, 0.97), width=0.7)
+            page.insert_textbox(
+                rect + (5, 8, -4, -3),
+                header,
+                fontsize=8.5,
+                fontname="hebo",
+                color=(0, 0, 0),
+            )
+
+        storage_offered = ", ".join(
+            value for value in [specs["hdd"], specs["ssd1"], specs["ssd2"]] if value
+        ) or "None"
+        rows = [
+            (
+                208, 302,
+                "STORAGE",
+                "Storage Configuration",
+                "HDD: 1 TB, 2 TB\nSSD SATA/NVMe: 128 GB, 256 GB, 512 GB, 1 TB",
+                storage_offered,
+            ),
+            (
+                302, 362,
+                "WARRANTY",
+                "On Site OEM Warranty\n(In year)",
+                "1, 2, 3, 4, 5, 6, 7 Years Or higher",
+                specs["warranty"],
+            ),
+        ]
+        for top, bottom, specification, title, allowed, offered in rows:
+            values = [specification, title, allowed, offered]
+            for index, value in enumerate(values):
+                rect = fitz.Rect(columns[index], top, columns[index + 1], bottom)
+                page.draw_rect(rect, color=(0.45, 0.45, 0.45), width=0.65)
+                page.insert_textbox(
+                    rect + (5, 8, -5, -5),
+                    str(value or ""),
+                    fontsize=8.5 if index != 2 else 8.2,
+                    fontname="hebo" if index == 0 else "helv",
+                    color=(0, 0, 0),
+                    align=0,
+                )
+
+    def _fill_main_technical_compliance_page(page):
+        specs = _form_specs()
+        heading = "Technical Compliance Certificate"
+        heading_width = fitz.get_text_length(heading, fontname="hebo", fontsize=14)
+        page.insert_text(
+            ((page.rect.width - heading_width) / 2, 122),
+            heading,
+            fontsize=14,
+            fontname="hebo",
+            color=(0, 0, 0),
+        )
+        if bid_no:
+            bid_text = f"Bid No: {bid_no}"
+            bid_width = fitz.get_text_length(bid_text, fontname="hebo", fontsize=9)
+            page.insert_text(
+                ((page.rect.width - bid_width) / 2, 143),
+                bid_text,
+                fontsize=9,
+                fontname="hebo",
+                color=(0.2, 0.2, 0.2),
+            )
+
+        columns = [52, 115, 220, 395, 543]
+        header_top, header_bottom = 160, 190
+        headers = ["Specification", "Title", "Allowed Values", "Offered"]
+        for index, header in enumerate(headers):
+            rect = fitz.Rect(columns[index], header_top, columns[index + 1], header_bottom)
+            page.draw_rect(rect, color=(0.35, 0.35, 0.35), fill=(0.92, 0.94, 0.97), width=0.7)
+            page.insert_textbox(
+                rect + (5, 8, -4, -3),
+                header,
+                fontsize=8.5,
+                fontname="hebo",
+                color=(0, 0, 0),
+            )
+
+        processor_allowed = (
+            "Intel Core i3: 12100, 14100\n"
+            "Intel Core i5: 12400, 14400\n"
+            "Intel Core i7: 12700, 14700\n"
+            "Intel Core i9: 14900\n"
+            "Intel Ultra 5: 225, 245K | Ultra 7: 265K\n"
+            "AMD Ryzen 3: 4300G, 5300G\n"
+            "AMD Ryzen 5: 5600G, 8500G\n"
+            "AMD Ryzen 7: 5700G | Ryzen 9: 9300G\n"
+            "12th Gen Composite: i5, i7 Or higher"
+        )
+        description_allowed = (
+            "Desktop Computer with Table Mount Monitor System with Compatible "
+            "Chipset as per Processor make with Minimum 6 USB Port"
+        )
+        rows = [
+            (190, 280, "Description of Store", description_allowed, specs["description"], 8.0),
+            (280, 420, "Processor Number", processor_allowed, specs["processor"], 7.2),
+            (420, 468, "Mouse Connectivity", "Wired | Wireless Or higher", specs["mouse_connectivity"], 8.5),
+            (468, 516, "Keyboard Connectivity", "Wired | Wireless Or higher", specs["keyboard_connectivity"], 8.5),
+            (516, 560, "Graphics Type", "Integrated", specs["graphics_type"], 8.5),
+            (
+                560, 628,
+                "Operating System\n(Factory Preloaded with Certification)",
+                "Windows 11 Home\nWindows 11 Professional\nDOS | Linux",
+                specs["os"],
+                8.5,
+            ),
+            (628, 674, "Type of RAM", "DDR4 | DDR5 Or higher", specs["ram_type"], 8.5),
+            (674, 720, "RAM Size (GB)", "8 | 16 | 32 | 64 GB Or higher", specs["ram_size_gb"], 8.5),
+        ]
+        groups = [
+            ("DESCRIPTION", 190, 420),
+            ("INPUT DEVICES", 420, 516),
+            ("GRAPHICS", 516, 560),
+            ("OPERATING\nSYSTEM", 560, 628),
+            ("MEMORY", 628, 720),
+        ]
+
+        for group, top, bottom in groups:
+            rect = fitz.Rect(columns[0], top, columns[1], bottom)
+            page.draw_rect(rect, color=(0.45, 0.45, 0.45), width=0.65)
+            page.insert_textbox(
+                rect + (5, 8, -5, -5),
+                group,
+                fontsize=6.8,
+                fontname="hebo",
+                color=(0, 0, 0),
+            )
+
+        for top, bottom, title, allowed, offered, allowed_fontsize in rows:
+            values = [title, allowed, offered]
+            for index, value in enumerate(values, start=1):
+                rect = fitz.Rect(columns[index], top, columns[index + 1], bottom)
+                page.draw_rect(rect, color=(0.45, 0.45, 0.45), width=0.65)
+                page.insert_textbox(
+                    rect + (5, 8, -5, -5),
+                    str(value or ""),
+                    fontsize=allowed_fontsize if index == 2 else 8.3,
+                    fontname="helv",
+                    color=(0, 0, 0),
+                    align=0,
+                )
+
+    def _fill_generated_data_sheet_page(page, page_index):
+        specs = _form_specs()
+        heading = "Desktop Product Data Sheet"
+        heading_width = fitz.get_text_length(heading, fontname="hebo", fontsize=14)
+        page.insert_text(
+            ((page.rect.width - heading_width) / 2, 122),
+            heading,
+            fontsize=14,
+            fontname="hebo",
+            color=(0, 0, 0),
+        )
+        if page_index == 0:
+            sections = [
+                ("PRODUCT DETAILS", [
+                    ("Model Number", specs["model_number"]),
+                    ("Brand", specs["brand"].upper()),
+                ]),
+                ("PROCESSOR", [
+                    ("Processor Number", specs["processor"]),
+                ]),
+                ("MOTHERBOARD", [
+                    ("Chipset / Motherboard", specs["motherboard"]),
+                    ("Expansion Slots (PCIe x 1)", specs["pcie_x1"]),
+                    ("Expansion Slots (PCIe x 4)", specs["pcie_x4"]),
+                    ("Expansion Slots (PCIe x 16)", specs["pcie_x16"]),
+                    ("M.2 Slot for SSD", specs["m2_ssd"]),
+                    ("M.2 Slot for WiFi", specs["m2_wifi"]),
+                ]),
+                ("OPERATING SYSTEM & MEMORY", [
+                    ("Factory Pre-loaded Operating System", specs["os"]),
+                    ("Type of RAM", specs["ram_type"]),
+                    ("RAM Size", specs["ram_size"]),
+                ]),
+                ("CONNECTIVITY & PORTS", [
+                    ("WiFi / Bluetooth", specs["wifi"]),
+                    ("USB 2.0 Ports", specs["usb2"]),
+                    ("USB 3.0 Ports", specs["usb3"]),
+                    ("VGA Ports", specs["vga"]),
+                    ("HDMI Ports", specs["hdmi"]),
+                ]),
+            ]
+        else:
+            sections = [
+                ("STORAGE", [
+                    ("Hard Disk Drive", specs["hdd"]),
+                    ("Solid State Drive 1", specs["ssd1"]),
+                    ("Solid State Drive 2", specs["ssd2"]),
+                ]),
+                ("CABINET", [
+                    ("Cabinet Form Factor", specs["cabinet"]),
+                ]),
+                ("MONITOR", [
+                    ("Availability of Monitor", specs["monitor_available"]),
+                    ("Monitor", specs["monitor"]),
+                    ("Speaker", specs["speaker"]),
+                ]),
+                ("INPUT DEVICES", [
+                    ("Keyboard & Mouse", specs["keyboard"]),
+                ]),
+                ("ADDITIONAL DETAILS", [
+                    ("Optional Ports", specs["optional_ports"]),
+                    ("On Site OEM Warranty", specs["warranty"]),
+                ]),
+            ]
+
+        left, split, right = 52, 255, 543
+        y = 160
+        section_height = 24
+        row_height = 22
+        for section_title, rows in sections:
+            section_rect = fitz.Rect(left, y, right, y + section_height)
+            page.draw_rect(
+                section_rect,
+                color=(0.35, 0.35, 0.35),
+                fill=(0.9, 0.9, 0.9),
+                width=0.7,
+            )
+            page.insert_textbox(
+                section_rect + (7, 6, -5, -3),
+                section_title,
+                fontsize=8.5,
+                fontname="hebo",
+                color=(0, 0, 0),
+            )
+            y += section_height
+
+            for label, value in rows:
+                label_rect = fitz.Rect(left, y, split, y + row_height)
+                value_rect = fitz.Rect(split, y, right, y + row_height)
+                page.draw_rect(label_rect, color=(0.55, 0.55, 0.55), fill=(0.97, 0.97, 0.97), width=0.55)
+                page.draw_rect(value_rect, color=(0.55, 0.55, 0.55), width=0.55)
+                page.insert_textbox(
+                    label_rect + (7, 5, -5, -1),
+                    label,
+                    fontsize=7.6,
+                    fontname="hebo",
+                    color=(0.15, 0.15, 0.15),
+                )
+                page.insert_textbox(
+                    value_rect + (7, 5, -5, -1),
+                    str(value).strip() if value not in (None, "") else "Not Specified",
+                    fontsize=7.8,
+                    fontname="helv",
+                    color=(0, 0, 0),
+                )
+                y += row_height
+            y += 3
+        return y
 
     def _remove_tender_no_date_lines(page):
         blocks = page.get_text("dict").get("blocks", [])
@@ -1285,6 +2102,238 @@ def generate_certificates(request, bid_id):
                 color=(63 / 255, 49 / 255, 81 / 255),
             )
 
+    def _replace_service_support_heading(page):
+        old_text = "ACXXEL SERVICE PARTNERS"
+        new_text = "List Of Acxxel Service Center In Major City"
+        areas = page.search_for(old_text)
+        if not areas:
+            return
+
+        for area in areas:
+            page.add_redact_annot(
+                fitz.Rect(area.x0 - 2, area.y0 - 1, area.x1 + 2, area.y1 - 0.8),
+                fill=(1, 1, 0),
+            )
+        page.apply_redactions()
+
+        for area in areas:
+            page.insert_textbox(
+                fitz.Rect(92, area.y0 - 1, page.rect.width - 92, area.y1 + 6),
+                new_text,
+                fontsize=11,
+                fontname="hebo",
+                color=(0, 0, 0),
+                align=1,
+            )
+
+    def _remove_commas_from_service_contact_numbers(page):
+        page_text = page.get_text("text")
+        formatted_numbers = set(re.findall(r"\b\d{1,2}(?:,\d{3}){3}\b", page_text))
+
+        for formatted_number in formatted_numbers:
+            clean_number = formatted_number.replace(",", "")
+            areas = page.search_for(formatted_number)
+            for area in areas:
+                page.add_redact_annot(
+                    fitz.Rect(area.x0 - 1, area.y0 - 1, area.x1 + 1, area.y1 + 1),
+                    fill=(1, 1, 1),
+                )
+            if areas:
+                page.apply_redactions()
+            for area in areas:
+                page.insert_text(
+                    (area.x0, area.y1 - 2),
+                    clean_number,
+                    fontsize=10,
+                    fontname="hebo",
+                    color=(0, 0, 0),
+                )
+
+    def _add_service_support_table_note(page):
+        prefix = "Note: For other locations, please email us at "
+        email_text = "support@acxxel.com"
+        middle = " or visit our website "
+        website_text = "acxxel.com"
+        suffix = "."
+        note = f"{prefix}{email_text}{middle}{website_text}{suffix}"
+        if note in page.get_text("text").replace("\n", " "):
+            return
+        font_name, font_size = "hebo", 11
+        note_x, note_y = 42, 520
+        prefix_width = fitz.get_text_length(prefix, fontname=font_name, fontsize=font_size)
+        email_width = fitz.get_text_length(email_text, fontname=font_name, fontsize=font_size)
+        middle_width = fitz.get_text_length(middle, fontname=font_name, fontsize=font_size)
+        website_width = fitz.get_text_length(website_text, fontname=font_name, fontsize=font_size)
+
+        email_x = note_x + prefix_width
+        middle_x = email_x + email_width
+        website_x = middle_x + middle_width
+
+        page.insert_text((note_x, note_y), prefix, fontsize=font_size, fontname=font_name, color=(0, 0, 0))
+        page.insert_text((email_x, note_y), email_text, fontsize=font_size, fontname=font_name, color=(0, 0, 1))
+        page.insert_text((middle_x, note_y), middle, fontsize=font_size, fontname=font_name, color=(0, 0, 0))
+        page.insert_text((website_x, note_y), f"{website_text}{suffix}", fontsize=font_size, fontname=font_name, color=(0, 0, 1))
+
+        page.insert_link({
+            "kind": fitz.LINK_URI,
+            "from": fitz.Rect(email_x, note_y - 12, email_x + email_width, note_y + 3),
+            "uri": "mailto:support@acxxel.com",
+        })
+        page.insert_link({
+            "kind": fitz.LINK_URI,
+            "from": fitz.Rect(website_x, note_y - 12, website_x + website_width, note_y + 3),
+            "uri": "https://acxxel.com",
+        })
+
+    def _replace_service_support_clause_heading(page):
+        old_text = "Service & Support"
+        new_text = (
+            "As per the Buyer ATC 'Service and Support' clause in the availability guidance, "
+            "the authorized service center is as follows"
+        )
+        areas = page.search_for(old_text)
+        if not areas:
+            return
+
+        for area in areas:
+            page.add_redact_annot(
+                fitz.Rect(area.x0 - 2, area.y0 - 2, page.rect.width - 45, area.y1 + 3),
+                fill=(1, 1, 1),
+            )
+        page.apply_redactions()
+
+        first_area = areas[0]
+        clause_areas = page.search_for("Availability of Service Centres")
+        text_x = clause_areas[0].x0 if clause_areas else 72
+        text_right = page.rect.width - text_x
+        page.insert_textbox(
+            fitz.Rect(text_x, first_area.y0 - 2, text_right, first_area.y1 + 38),
+            new_text,
+            fontsize=11,
+            fontname="hebo",
+            color=(0, 0, 0),
+            align=0,
+            lineheight=1.1,
+        )
+
+    def _replace_presented_with_represented(page):
+        areas = page.search_for("presented")
+        for area in areas:
+            page.add_redact_annot(
+                fitz.Rect(area.x0 - 1, area.y0 - 1, area.x1 + 1, area.y1 + 1),
+                fill=(1, 1, 1),
+            )
+        if areas:
+            page.apply_redactions()
+        for area in areas:
+            page.insert_text(
+                (area.x0, area.y1 - 2),
+                "represented",
+                fontsize=11,
+                fontname="hebo",
+                color=(0, 0, 0),
+            )
+
+    def _render_service_support_clause_page(page):
+        page.add_redact_annot(
+            fitz.Rect(38, 112, page.rect.width - 38, page.rect.height - 24),
+            fill=(1, 1, 1),
+        )
+        page.apply_redactions()
+
+        recipient_lines = ["To,"]
+        if dept_name:
+            recipient_lines.append(dept_name)
+        if organization:
+            recipient_lines.append(organization)
+        if full_address:
+            recipient_lines.append(full_address)
+        page.insert_textbox(
+            fitz.Rect(62, 138, page.rect.width - 62, 215),
+            "\n".join(recipient_lines),
+            fontsize=10,
+            fontname="hebo",
+            color=(0.1, 0.1, 0.1),
+            lineheight=1.15,
+        )
+
+        reference_rect = fitz.Rect(62, 224, page.rect.width - 62, 292)
+        page.draw_rect(
+            reference_rect,
+            color=(0.45, 0.52, 0.62),
+            fill=(0.94, 0.96, 0.98),
+            width=0.8,
+        )
+        page.insert_text(
+            (74, 244),
+            "SERVICE CENTRE AVAILABILITY",
+            fontsize=9.5,
+            fontname="hebo",
+            color=(0.12, 0.2, 0.32),
+        )
+        page.insert_textbox(
+            fitz.Rect(74, 252, page.rect.width - 74, 285),
+            "As per the Buyer ATC 'Service and Support' clause in the availability guidance, "
+            "the authorized service center is as follows.",
+            fontsize=8.8,
+            fontname="helv",
+            color=(0.12, 0.12, 0.12),
+            lineheight=1.2,
+        )
+
+        clause = (
+            "Availability of Service Centres: Bidder/OEM must have a Functional Service Centre "
+            "in the State of each Consignee's Location in case of carry-in warranty. "
+            "(Not applicable in case of goods having on-site warranty.) If service center is not "
+            "already there at the time of bidding, successful bidder/OEM shall establish one "
+            "within 30 days of award of contract. Payment shall be released only after submission "
+            "of documentary evidence of having Functional Service Centre."
+        )
+        clause_rect = fitz.Rect(62, 308, page.rect.width - 62, 447)
+        page.draw_rect(clause_rect, color=(0.65, 0.65, 0.65), width=0.7)
+        page.insert_text(
+            (74, 329),
+            "BUYER ATC CLAUSE",
+            fontsize=9.2,
+            fontname="hebo",
+            color=(0.18, 0.18, 0.18),
+        )
+        page.insert_textbox(
+            fitz.Rect(74, 340, page.rect.width - 74, 438),
+            clause,
+            fontsize=8.7,
+            fontname="helv",
+            color=(0.08, 0.08, 0.08),
+            lineheight=1.25,
+        )
+
+        confirmation_rect = fitz.Rect(62, 466, page.rect.width - 62, 546)
+        page.draw_rect(
+            confirmation_rect,
+            color=(0.35, 0.55, 0.42),
+            fill=(0.95, 0.98, 0.95),
+            width=0.8,
+        )
+        page.insert_text(
+            (74, 487),
+            "OEM CONFIRMATION",
+            fontsize=9.2,
+            fontname="hebo",
+            color=(0.12, 0.32, 0.18),
+        )
+        page.insert_textbox(
+            fitz.Rect(74, 498, page.rect.width - 74, 538),
+            "Since the desktop includes on-site warranty, the carry-in service centre clause is "
+            "not applicable. If required, we will establish service support in the consignee's "
+            "area where it is not already represented.",
+            fontsize=8.7,
+            fontname="helv",
+            color=(0.08, 0.08, 0.08),
+            lineheight=1.2,
+        )
+
+        _add_authorized_signatory(page, y=570, compact=True)
+
     def _remove_to_whomsoever_line(page):
         blocks = page.get_text("dict").get("blocks", [])
 
@@ -1364,10 +2413,67 @@ def generate_certificates(request, bid_id):
 
     try:
         doc = fitz.open(template_path)
+        signature_image = None
+        if len(doc) > 5:
+            signature_images = doc[5].get_images(full=True)
+            if len(signature_images) > 1:
+                signature_image = doc.extract_image(signature_images[1][0]).get("image")
+
+        def _add_authorized_signatory(page, y=685, compact=False):
+            x = 58
+            header_height = 20 if compact else 24
+            signature_top = 19 if compact else 23
+            signature_bottom = 50 if compact else 62
+            signature_width = 132 if compact else 145
+            details_top = 51 if compact else 63
+            details_bottom = 91 if compact else 112
+            font_size = 7.5 if compact else 8.2
+            page.insert_textbox(
+                fitz.Rect(x, y, page.rect.width - 45, y + header_height),
+                "Auth. Signatory\nFor Laps N Tabs Technology Pvt. Ltd.",
+                fontsize=font_size,
+                fontname="hebo",
+                lineheight=1.05,
+            )
+            if signature_image:
+                page.insert_image(
+                    fitz.Rect(x, y + signature_top, x + signature_width, y + signature_bottom),
+                    stream=signature_image,
+                    keep_proportion=False,
+                )
+            page.insert_textbox(
+                fitz.Rect(x, y + details_top, page.rect.width - 45, min(page.rect.height - 5, y + details_bottom)),
+                "Name:- Devank Rastogi\nDesignation:- Director\n"
+                "Email:- lapsntabs123@gmail.com\nContact No.:- 9918200166",
+                fontsize=font_size,
+                fontname="hebo",
+                lineheight=1.0 if compact else 1.05,
+            )
         page_from, page_to = CERT_PAGE_RANGES[doc_type]
 
-        new_doc = fitz.open()
-        new_doc.insert_pdf(doc, from_page=page_from - 1, to_page=page_to - 1)
+        if doc_type in {"technical_compliance", "data_sheet"}:
+            source_page = doc[page_from - 1]
+            header_source_page = (
+                doc[CERT_PAGE_RANGES["technical_compliance"][0] - 1]
+                if doc_type == "data_sheet"
+                else source_page
+            )
+            header_image = header_source_page.get_pixmap(
+                matrix=fitz.Matrix(2, 2),
+                clip=fitz.Rect(18, 12, header_source_page.rect.width - 18, 80),
+                alpha=False,
+            ).tobytes("png")
+            new_doc = fitz.open()
+            for _ in range(2):
+                generated_page = new_doc.new_page(width=source_page.rect.width, height=source_page.rect.height)
+                generated_page.insert_image(
+                    fitz.Rect(18, 12, generated_page.rect.width - 18, 80),
+                    stream=header_image,
+                    keep_proportion=False,
+                )
+        else:
+            new_doc = fitz.open()
+            new_doc.insert_pdf(doc, from_page=page_from - 1, to_page=page_to - 1)
         doc.close()
 
         all_gem_numbers = set()
@@ -1398,12 +2504,25 @@ def generate_certificates(request, bid_id):
 
         for page_index, page in enumerate(new_doc):
             original_page_number = page_from + page_index
+            # The Trade Mark Certificate (page 4 in the master template) is a
+            # legal source document and must remain byte-for-byte visually
+            # unchanged inside the MAF output.
+            if doc_type == "manufacturer_auth" and original_page_number == 4:
+                continue
             suppress_tender_on_page = original_page_number in suppress_tender_page_numbers
             page_text_raw = page.get_text("text")
             if doc_type == "service_support":
                 _remove_to_whomsoever_line(page)
+                _remove_commas_from_service_contact_numbers(page)
+                if original_page_number == 26:
+                    _replace_service_support_heading(page)
                 if original_page_number == 25:
                     _replace_service_support_consignee_contact(page)
+                if original_page_number == 29:
+                    _add_service_support_table_note(page)
+                if original_page_number == 30:
+                    _replace_service_support_clause_heading(page)
+                    _replace_presented_with_represented(page)
                 page_text_raw = page.get_text("text")
 
             if suppress_tender_on_page:
@@ -1424,11 +2543,17 @@ def generate_certificates(request, bid_id):
                 page_text_raw = page.get_text("text")
 
             if doc_type == "technical_compliance":
-                _fill_technical_compliance_page(page)
+                if page_index == 0:
+                    _fill_main_technical_compliance_page(page)
+                else:
+                    _fill_storage_warranty_compliance_page(page)
+                    _add_authorized_signatory(page, y=400)
                 continue
 
             if doc_type == "data_sheet":
-                _fill_data_sheet_page(page, page_index)
+                content_bottom = _fill_generated_data_sheet_page(page, page_index)
+                if page_index == len(new_doc) - 1:
+                    _add_authorized_signatory(page, y=min(content_bottom + 8, 720), compact=True)
                 continue
             if doc_type == "warranty":
             
@@ -1864,7 +2989,7 @@ def generate_certificates(request, bid_id):
                 continue
 
 
-            # ✅ v16 FIX: Track if Tender No/Dated already in page
+
             page_has_tender_no = bool(
     re.search(r'(tender|bid)\s*no\.?\s*:', page_text_raw, re.IGNORECASE)
 )
@@ -2673,6 +3798,7 @@ def _bid_data(bid, request, status_label=None):
         "epbg": bid.epbg or 0, "freightInstallation": bid.freightInstallation or "",
         "freightInstallation_price": bid.freightInstallation_price or 0, "freight_price": bid.freightInstallation_price or 0,
         "hddreturnable": bid.hddreturnable or "", "hddreturnable_price": bid.hddreturnable_price or 0,
+        "total_price": bid.total_price or 0,
         
         "optional_ports": bid.optional_ports or "",
         "optional_port": bid.optional_ports or "",
@@ -3254,6 +4380,7 @@ def admin_review_desktop_bid(request, bid_id):
             bid.freightInstallation_price = safe_float(data.get("freightInstallation_price"), bid.freightInstallation_price)
         bid.hddreturnable = data.get("hddreturnable", bid.hddreturnable)
         bid.hddreturnable_price = safe_float(data.get("hddreturnable_price"), bid.hddreturnable_price)
+        bid.total_price = safe_float(data.get("total_price"), bid.total_price)
 
         if "optional_ports" in data: bid.optional_ports = data.get("optional_ports") or ""
         elif "optional_port" in data: bid.optional_ports = data.get("optional_port") or ""
@@ -3908,7 +5035,7 @@ def match_catalogue_models(request, bid_id):
         results.append(result)
         debug_all.append(result)
 
-    # ---- Ab DesktopBid table se bhi check karo (already saved/model-assigned bids) ----
+
     other_bids_qs = (
         DesktopBid.objects.exclude(id=bid.id)
         .exclude(model_number__isnull=True)
@@ -4109,17 +5236,17 @@ def desktop_daily_activity(request):
 
         bids = DesktopBid.objects.filter(
             status="complete",
-            created_at__date__gte=sunday,
-            created_at__date__lte=today,
+            updated_at__date__gte=sunday,
+            updated_at__date__lte=today,
         )
 
         date_map = {item["date"]: item for item in result}
 
         for bid in bids:
-            if not bid.created_at:
+            if not bid.updated_at:
                 continue
 
-            bid_date = timezone.localtime(bid.created_at).date().strftime("%Y-%m-%d")
+            bid_date = timezone.localtime(bid.updated_at).date().strftime("%Y-%m-%d")
 
             if bid_date not in date_map:
                 continue
@@ -4280,8 +5407,8 @@ def admin_desktop_daily_activity(request):
         bids_qs = DesktopBid.objects.filter(
             status="complete",
             review_status__in=["reviewed", "approved", "re-analyze"],
-            created_at__date__gte=sunday,
-            created_at__date__lte=today,
+            updated_at__date__gte=sunday,
+            updated_at__date__lte=today,
         )
         if analyser:
             bids_qs = bids_qs.filter(analyser_username=analyser)
@@ -4289,10 +5416,10 @@ def admin_desktop_daily_activity(request):
         date_map = {item["date"]: item for item in result}
 
         for bid in bids_qs:
-            if not bid.created_at:
+            if not bid.updated_at:
                 continue
 
-            bid_date = timezone.localtime(bid.created_at).date().strftime("%Y-%m-%d")
+            bid_date = timezone.localtime(bid.updated_at).date().strftime("%Y-%m-%d")
             if bid_date not in date_map:
                 continue
 
@@ -4339,10 +5466,10 @@ def admin_desktop_stats(request):
         return JsonResponse({"error": str(e)}, status=400)
     
 
- # ═══════════════════════════════════════════════════════════
-# DELETE BID  (Admin — approved bid delete)
-# URL: /api/admin/desktop-bids/<bid_id>/delete/
-# ═══════════════════════════════════════════════════════════
+
+
+
+
 @csrf_exempt
 @require_http_methods(["DELETE"])
 def delete_desktop_bid(request, bid_id):

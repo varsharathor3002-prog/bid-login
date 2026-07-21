@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-const API_BASE = "https://acxxelbidding.com/api";
+const API_BASE = import.meta.env.VITE_API_URL;
 
 const ANALYSER_DOCS = [
   {
@@ -702,7 +702,7 @@ export default function AnalyserDocument() {
                 )}
               </button>
 
-              {/* ✅ UPDATED BACK BUTTON (Same style as CreateDesktopBid) */}
+              {}
               <button
                 type="button"
                 onClick={() => navigate(-1)}

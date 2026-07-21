@@ -2,9 +2,29 @@ import { useEffect, useRef, useState } from "react";
 import img1 from "../../../assets/img1.png";
 import img2 from "../../../assets/img2.png";
 import img3 from "../../../assets/img3.png";
+import printerOm052 from "../../../assets/OMO52.png";
+import printerOm271 from "../../../assets/OM271.png";
+import printerOm050 from "../../../assets/OMO50.png";
+import printerOm035 from "../../../assets/OMO35.png";
+import printerOm010 from "../../../assets/OMO10.png";
+import printerOm235 from "../../../assets/OM235.png";
+import printerOm249 from "../../../assets/OM249.png";
+import printerOm221 from "../../../assets/OM221.png";
+import printerOm240 from "../../../assets/OM240.png";
 
-const API = "https://acxxelbidding.com/api";
+const API = "http://127.0.0.1:8000/api";
 const FALLBACK_IMAGES = [img1, img2, img3];
+const PRINTER_MODEL_IMAGES = {
+  OM052: printerOm052,
+  OM271: printerOm271,
+  OM050: printerOm050,
+  OM035: printerOm035,
+  OM010: printerOm010,
+  OM235: printerOm235,
+  OM249: printerOm249,
+  OM221: printerOm221,
+  OM240: printerOm240,
+};
 
 const CATEGORY_OPTIONS = ["Desktop", "AIO", "Workstation", "Printer", "Toner"];
 
@@ -118,6 +138,90 @@ const GEM_SECTIONS = [
 ];
 
 const ALL_SPEC_FIELDS = GEM_SECTIONS.flatMap((section) => section.fields);
+
+const WORKSTATION_SECTIONS = [
+  {
+    title: "PROCESSOR",
+    fields: ["Processor Number"],
+  },
+  {
+    title: "MOTHERBOARD",
+    fields: ["Motherboard"],
+  },
+  {
+    title: "MEMORY (RAM)",
+    fields: ["RAM"],
+  },
+  {
+    title: "STORAGE",
+    fields: ["SSD", "HDD"],
+  },
+  {
+    title: "GRAPHICS",
+    fields: ["Graphic Card Make and Model"],
+  },
+  {
+    title: "OPERATING SYSTEM",
+    fields: ["Factory Pre-loaded Operating System"],
+  },
+  {
+    title: "MONITOR",
+    fields: ["Screen Size"],
+  },
+  {
+    title: "POWER",
+    fields: ["Power Supply"],
+  },
+];
+
+const PRINTER_SECTIONS = [
+  {
+    title: "GENERAL PRODUCT INFO",
+    fields: [
+      "Printing Technology",
+      "Cartridge Technology",
+      "Type of Printing",
+      "Availability of Fax",
+      "Operating System Compatibility",
+    ],
+  },
+  {
+    title: "PRINTING PERFORMANCE",
+    fields: [
+      "Mono Print Speed (PPM)",
+      "Mono Print Speed (IPM)",
+      "Colour Print Speed (PPM)",
+      "Colour Print Speed (IPM)",
+    ],
+  },
+  {
+    title: "DUPLEXING AND COPYING",
+    fields: ["Auto Duplexing", "Reduction and Enlarge Features", "Printer Type"],
+  },
+  {
+    title: "SCANNING AND FEEDING",
+    fields: [
+      "Maximum Scan Area",
+      "A4 Scan Speed Colour",
+      "Scan To Functions",
+      "Document Feeder Type",
+      "Feeder Capacity",
+    ],
+  },
+  {
+    title: "PAPER HANDLING",
+    fields: [
+      "Main Paper Tray Count",
+      "Total Paper Tray Capacity",
+      "Bypass Tray Facility",
+      "Bypass Tray Capacity",
+    ],
+  },
+  {
+    title: "CONNECTIVITY AND WARRANTY",
+    fields: ["Connectivity", "Duty Cycle", "On Site Warranty", "Extended Warranty"],
+  },
+];
 
 const SPEC_ALIASES = {
   "Expansion Slots (M Dot 2) for SSD": [
@@ -500,8 +604,113 @@ function getExtraSpecs(product) {
   return normalizedSpecs;
 }
 
-function getImage(product, index) {
-  return product?.image || FALLBACK_IMAGES[index % 3];
+function isWorkstationProduct(product) {
+  return String(product?.category || "").toLowerCase() === "workstation" ||
+    String(product?.id || "").toLowerCase().startsWith("workstation-");
+}
+
+function getRawExtraSpecs(product) {
+  let specs = product?.extra_specs || {};
+  if (typeof specs === "string") {
+    try {
+      specs = JSON.parse(specs);
+    } catch {
+      specs = {};
+    }
+  }
+  return specs || {};
+}
+
+function getWorkstationSpecs(product) {
+  const raw = getRawExtraSpecs(product);
+  return {
+    "Processor Number": cleanDisplayValue(raw["Processor Number"] || product?.processor),
+    "Motherboard": cleanDisplayValue(raw.Motherboard || product?.motherboard),
+    "RAM": cleanDisplayValue(raw.RAM || product?.ram),
+    "SSD": cleanDisplayValue(raw.SSD || product?.ssd),
+    "HDD": cleanDisplayValue(raw.HDD || product?.hdd),
+    "Graphic Card Make and Model": cleanDisplayValue(raw["Graphic Card Make and Model"] || product?.graphics),
+    "Factory Pre-loaded Operating System": cleanDisplayValue(raw["Factory Pre-loaded Operating System"] || product?.os),
+    "Screen Size": cleanDisplayValue(raw["Screen Size"] || product?.monitor),
+    "Power Supply": cleanDisplayValue(raw["Power Supply"] || product?.power_supply),
+  };
+}
+
+function getPrinterSpecs(product) {
+  const raw = getRawExtraSpecs(product);
+  return {
+    "Printing Technology": cleanDisplayValue(raw["Printing Technology"] || product?.printing_technology),
+    "Cartridge Technology": cleanDisplayValue(raw["Cartridge Technology"] || product?.cartridge_technology),
+    "Type of Printing": cleanDisplayValue(raw["Type of Printing"] || product?.type_of_printing),
+    "Availability of Fax": cleanDisplayValue(raw["Availability of Fax"] || product?.fax_availability),
+    "Operating System Compatibility": cleanDisplayValue(
+      raw["Operating System Compatibility"] || product?.operating_system_compatibility
+    ),
+    "Mono Print Speed (PPM)": cleanDisplayValue(raw["Mono Print Speed (PPM)"] || product?.mono_print_speed_ppm),
+    "Mono Print Speed (IPM)": cleanDisplayValue(raw["Mono Print Speed (IPM)"] || product?.mono_print_speed_ipm),
+    "Colour Print Speed (PPM)": cleanDisplayValue(raw["Colour Print Speed (PPM)"] || product?.colour_print_speed_ppm),
+    "Colour Print Speed (IPM)": cleanDisplayValue(raw["Colour Print Speed (IPM)"] || product?.colour_print_speed_ipm),
+    "Auto Duplexing": cleanDisplayValue(raw["Auto Duplexing"] || product?.auto_duplexing),
+    "Reduction and Enlarge Features": cleanDisplayValue(
+      raw["Reduction and Enlarge Features"] || product?.reduction_enlarge_features
+    ),
+    "Printer Type": cleanDisplayValue(raw["Printer Type"] || product?.printer_type),
+    "Maximum Scan Area": cleanDisplayValue(raw["Maximum Scan Area"] || product?.max_scan_area),
+    "A4 Scan Speed Colour": cleanDisplayValue(raw["A4 Scan Speed Colour"] || product?.a4_scan_speed_colour),
+    "Scan To Functions": cleanDisplayValue(raw["Scan To Functions"] || product?.scan_to_functions),
+    "Document Feeder Type": cleanDisplayValue(raw["Document Feeder Type"] || product?.document_feeder_type),
+    "Feeder Capacity": cleanDisplayValue(raw["Feeder Capacity"] || product?.feeder_capacity),
+    "Main Paper Tray Count": cleanDisplayValue(raw["Main Paper Tray Count"] || product?.main_paper_tray_count),
+    "Total Paper Tray Capacity": cleanDisplayValue(
+      raw["Total Paper Tray Capacity"] || product?.total_paper_tray_capacity
+    ),
+    "Bypass Tray Facility": cleanDisplayValue(raw["Bypass Tray Facility"] || product?.bypass_tray_facility),
+    "Bypass Tray Capacity": cleanDisplayValue(raw["Bypass Tray Capacity"] || product?.bypass_tray_capacity),
+    "Connectivity": cleanDisplayValue(raw["Connectivity"] || product?.connectivity),
+    "Duty Cycle": cleanDisplayValue(raw["Duty Cycle"] || product?.duty_cycle),
+    "On Site Warranty": cleanDisplayValue(raw["On Site Warranty"] || product?.onsite_warranty),
+    "Extended Warranty": cleanDisplayValue(raw["Extended Warranty"] || product?.extended_warranty),
+  };
+}
+
+function displayWorkstationStorage(product, specs) {
+  const parts = [];
+  if (cleanDisplayValue(specs.SSD || product?.ssd)) parts.push(`SSD: ${cleanDisplayValue(specs.SSD || product?.ssd)}`);
+  if (cleanDisplayValue(specs.HDD || product?.hdd)) parts.push(`HDD: ${cleanDisplayValue(specs.HDD || product?.hdd)}`);
+  return displaySpecValue(parts.join(", ") || product?.storage);
+}
+
+function getFallbackImage(index = 0) {
+  return FALLBACK_IMAGES[Math.abs(index) % FALLBACK_IMAGES.length];
+}
+
+function isPrinterProduct(product) {
+  return (
+    String(product?.category || "").toLowerCase() === "printer" ||
+    String(product?.id || "").toLowerCase().startsWith("printer-")
+  );
+}
+
+function isDesktopOrWorkstationProduct(product) {
+  const category = String(product?.category || "").toLowerCase();
+  return category === "desktop" || category === "workstation";
+}
+
+function getImage(product, index = 0) {
+  if (isPrinterProduct(product)) {
+    const normalizedModel = String(product?.model_no || "")
+      .trim()
+      .toUpperCase()
+      .replace(/\s+/g, "");
+
+    return PRINTER_MODEL_IMAGES[normalizedModel] || product?.image || getFallbackImage(index);
+  }
+
+  if (isDesktopOrWorkstationProduct(product)) {
+    return getFallbackImage(index);
+  }
+
+  return product?.image || getFallbackImage(index);
 }
 
 async function parseJsonResponse(res) {
@@ -524,7 +733,18 @@ function ProductDetailsModal({ product, onClose, onDeleted, onEdited }) {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
 
-  const specs = getExtraSpecs(product);
+  const workstation = isWorkstationProduct(product);
+  const printer = isPrinterProduct(product);
+  const specs = printer
+    ? getPrinterSpecs(product)
+    : workstation
+      ? getWorkstationSpecs(product)
+      : getExtraSpecs(product);
+  const sections = printer
+    ? PRINTER_SECTIONS
+    : workstation
+      ? WORKSTATION_SECTIONS
+      : GEM_SECTIONS;
 
   const deleteProduct = async () => {
     setDeleting(true);
@@ -547,7 +767,7 @@ function ProductDetailsModal({ product, onClose, onDeleted, onEdited }) {
 
   return (
     <>
-      {showEdit && (
+      {!workstation && !printer && showEdit && (
         <ProductFormModal
           mode="edit"
           product={product}
@@ -567,6 +787,8 @@ function ProductDetailsModal({ product, onClose, onDeleted, onEdited }) {
           </h1>
 
           <div className="flex items-center gap-3">
+            {!workstation && !printer && (
+              <>
             <button
               onClick={() => setShowEdit(true)}
               className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-bold text-sm"
@@ -601,6 +823,8 @@ function ProductDetailsModal({ product, onClose, onDeleted, onEdited }) {
                 </button>
               </div>
             )}
+              </>
+            )}
 
             <button
               onClick={onClose}
@@ -621,12 +845,11 @@ function ProductDetailsModal({ product, onClose, onDeleted, onEdited }) {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
             <div className="w-full h-[300px] border rounded-xl flex items-center justify-center bg-white shadow-sm">
               <img
-
-                src={getImage(product, product?.id || 0)}
+                src={getImage(product, product?.__imageIndex || 0)}
                 alt={product.model_no}
                 className="max-h-[280px] object-contain"
                 onError={(e) => {
-                  e.currentTarget.src = FALLBACK_IMAGES[(product?.id || 0) % 3];
+                  e.currentTarget.src = getFallbackImage(product?.__imageIndex || 0);
                 }}
               />
             </div>
@@ -649,35 +872,51 @@ function ProductDetailsModal({ product, onClose, onDeleted, onEdited }) {
                   <div className="text-gray-800">{product.category || "—"}</div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="text-gray-500 font-medium">Processor</div>
-                  <div className="text-gray-800">
-                    {displayBasicProcessor(product, specs)}
-                  </div>
-                </div>
+                {!printer && (
+                  <>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="text-gray-500 font-medium">Processor</div>
+                      <div className="text-gray-800">
+                        {workstation ? displaySpecValue(specs["Processor Number"] || product?.processor) : displayBasicProcessor(product, specs)}
+                      </div>
+                    </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="text-gray-500 font-medium">RAM</div>
-                  <div className="text-gray-800">{displayBasicRam(product, specs)}</div>
-                </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="text-gray-500 font-medium">RAM</div>
+                      <div className="text-gray-800">
+                        {workstation ? displaySpecValue(specs.RAM || product?.ram) : displayBasicRam(product, specs)}
+                      </div>
+                    </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="text-gray-500 font-medium">Storage</div>
-                  <div className="text-gray-800">
-                    {displayBasicStorage(product, specs)}
-                  </div>
-                </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="text-gray-500 font-medium">Storage</div>
+                      <div className="text-gray-800">
+                        {workstation ? displayWorkstationStorage(product, specs) : displayBasicStorage(product, specs)}
+                      </div>
+                    </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="text-gray-500 font-medium">OS</div>
-                  <div className="text-gray-800">{displayBasicOs(product, specs)}</div>
-                </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="text-gray-500 font-medium">OS</div>
+                      <div className="text-gray-800">
+                        {workstation ? displaySpecValue(specs["Factory Pre-loaded Operating System"] || product?.os) : displayBasicOs(product, specs)}
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>
 
           <div className="space-y-5">
-            {GEM_SECTIONS.map((section) => (
+            {sections
+              .map((section) => ({
+                ...section,
+                fields: printer || workstation
+                  ? section.fields.filter((field) => cleanDisplayValue(specs[field]))
+                  : section.fields,
+              }))
+              .filter((section) => section.fields.length > 0)
+              .map((section) => (
               <div
                 key={section.title}
                 className="border rounded-xl overflow-hidden shadow-sm"
@@ -851,7 +1090,7 @@ function ProductFormModal({ mode = "add", product = null, onClose, onSaved }) {
                     alt="preview"
                     className="w-full h-full object-contain p-4"
                     onError={(e) => {
-                      e.currentTarget.src = FALLBACK_IMAGE;
+                      e.currentTarget.src = getFallbackImage(0);
                     }}
                   />
                 ) : (
@@ -993,23 +1232,69 @@ export default function CatalogueProducts() {
     setLoadError("");
 
     try {
-      const params = new URLSearchParams();
+      const requests = [];
+      const shouldLoadMainCatalogue =
+        categoryFilter === "All" ||
+        categoryFilter === "Desktop" ||
+        categoryFilter === "AIO" ||
+        categoryFilter === "Toner";
+      const shouldLoadWorkstations =
+        categoryFilter === "All" || categoryFilter === "Workstation";
+      const shouldLoadPrinters =
+        categoryFilter === "All" || categoryFilter === "Printer";
 
-      if (search.trim()) {
-        params.append("search", search.trim());
+      if (shouldLoadMainCatalogue) {
+        const params = new URLSearchParams();
+        if (search.trim()) {
+          params.append("search", search.trim());
+        }
+        if (categoryFilter !== "All" && categoryFilter !== "Workstation" && categoryFilter !== "Printer") {
+          params.append("category", categoryFilter);
+        }
+
+        const query = params.toString();
+        const url = query ? `${API}/catalogue/?${query}` : `${API}/catalogue/`;
+        requests.push(
+          fetch(url)
+            .then(parseJsonResponse)
+            .then((data) => (Array.isArray(data) ? data : []))
+        );
       }
 
-      if (categoryFilter !== "All") {
-        params.append("category", categoryFilter);
+      if (shouldLoadWorkstations) {
+        const params = new URLSearchParams();
+        if (search.trim()) {
+          params.append("search", search.trim());
+        }
+        const query = params.toString();
+        const url = query ? `${API}/workstation-catalogue/?${query}` : `${API}/workstation-catalogue/`;
+        requests.push(
+          fetch(url)
+            .then(parseJsonResponse)
+            .then((data) => (Array.isArray(data) ? data : []))
+        );
       }
 
-      const query = params.toString();
-      const url = query ? `${API}/catalogue/?${query}` : `${API}/catalogue/`;
+      if (shouldLoadPrinters) {
+        const params = new URLSearchParams();
+        if (search.trim()) {
+          params.append("search", search.trim());
+        }
+        const query = params.toString();
+        const url = query ? `${API}/printer-catalogue/?${query}` : `${API}/printer-catalogue/`;
+        requests.push(
+          fetch(url)
+            .then(parseJsonResponse)
+            .then((data) => (Array.isArray(data) ? data : []))
+        );
+      }
 
-      const res = await fetch(url);
-      const data = await parseJsonResponse(res);
+      const responses = await Promise.all(requests);
+      const mergedProducts = responses
+        .flat()
+        .map((product, index) => ({ ...product, __imageIndex: index }));
 
-      setProducts(Array.isArray(data) ? data : []);
+      setProducts(mergedProducts);
     } catch (err) {
       setLoadError(err.message);
       setProducts([]);
@@ -1061,7 +1346,7 @@ export default function CatalogueProducts() {
       return;
     }
 
-    setProducts((prev) => [product, ...prev]);
+    setProducts((prev) => [{ ...product, __imageIndex: 0 }, ...prev.map((item, index) => ({ ...item, __imageIndex: index + 1 }))]);
   };
 
   const updateProductInList = (updated) => {
@@ -1070,7 +1355,7 @@ export default function CatalogueProducts() {
         return prev.filter((p) => p.id !== updated.id);
       }
 
-      return prev.map((p) => (p.id === updated.id ? updated : p));
+      return prev.map((p, index) => (p.id === updated.id ? { ...updated, __imageIndex: index } : p));
     });
   };
 
@@ -1200,11 +1485,11 @@ export default function CatalogueProducts() {
                       <td className="px-5 py-4">
                         <div className="w-16 h-16 border rounded-lg bg-white flex items-center justify-center overflow-hidden">
                           <img
-                            src={getImage(product, product?.id || 0)}
+                            src={getImage(product, product?.__imageIndex ?? index)}
                             alt={product.model_no}
                             className="w-full h-full object-contain p-1"
                             onError={(e) => {
-                              e.currentTarget.src = FALLBACK_IMAGES[(product?.id || 0) % 3];
+                              e.currentTarget.src = getFallbackImage(product?.__imageIndex ?? index);
                             }}
                           />
                         </div>

@@ -1,4 +1,6 @@
 __pycache__/
 *.pyc
 backend/media/generated/
+backend/media/generated_docs/
+frontend/.env
 venv/

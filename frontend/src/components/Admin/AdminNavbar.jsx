@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
+import useOutsideClick from "../../hooks/useOutsideClick";
 import {
   FaSignOutAlt,
   FaChevronDown,
@@ -25,14 +26,14 @@ import {
   PieChart, Pie, Cell, Legend, CartesianGrid,
 } from "recharts";
 
-const API_BASE = "https://acxxelbidding.com/api";
-const ADMIN_API = "https://acxxelbidding.com/api/admin";
+const API_BASE = "http://127.0.0.1:8000/api";
+const ADMIN_API = "http://127.0.0.1:8000/api/admin";
 
 const bidItems = [
   { name: "Desktop Bid Approval",     path: "/admin-dashboard/desktop-bid-approval", ready: true  },
   { name: "AIO Bid Approval",         path: "/aio-bid-approval",                     ready: false },
-  { name: "Workstation Bid Approval", path: "/workstation-bid-approval",              ready: false },
-  { name: "Printer Bid Approval",     path: "/printer-bid-approval",                 ready: false },
+  { name: "Workstation Bid Approval", path: "/admin-dashboard/workstation-bid-approval", ready: true },
+  { name: "Printer Bid Approval",     path: "/admin-dashboard/printer-bid-approval", ready: true },
   { name: "Toner Bid Approval",       path: "/toner-bid-approval",                   ready: false },
 ];
 
@@ -44,8 +45,8 @@ const adminItems = [
 const BID_PRODUCTS = [
   { key: "desktop",     label: "Desktop",     icon: <FaDesktop />, color: "#6366f1", ready: true  },
   { key: "aio",         label: "AIO",         icon: <FaLaptop />,  color: "#8b5cf6", ready: false },
-  { key: "workstation", label: "Workstation", icon: <FaServer />,  color: "#0ea5e9", ready: false },
-  { key: "printer",     label: "Printer",     icon: <FaPrint />,   color: "#10b981", ready: false },
+  { key: "workstation", label: "Workstation", icon: <FaServer />,  color: "#0ea5e9", ready: true },
+  { key: "printer",     label: "Printer",     icon: <FaPrint />,   color: "#10b981", ready: true  },
   { key: "toner",       label: "Toner",       icon: <FaBox />,     color: "#f59e0b", ready: false },
 ];
 
@@ -55,6 +56,18 @@ const ADMIN_DASHBOARD_API_MAP = {
     monthly: `${ADMIN_API}/desktop-bids/monthly-performance/`,
     daily:   `${ADMIN_API}/desktop-bids/daily-activity/`,
     stats:   `${ADMIN_API}/desktop-bids/stats/`,
+  },
+  workstation: {
+    years:   `${ADMIN_API}/workstation-bids/dashboard-years/`,
+    monthly: `${ADMIN_API}/workstation-bids/monthly-performance/`,
+    daily:   `${ADMIN_API}/workstation-bids/daily-activity/`,
+    stats:   `${ADMIN_API}/workstation-bids/stats/`,
+  },
+  printer: {
+    years:   `${ADMIN_API}/printer-bids/dashboard-years/`,
+    monthly: `${ADMIN_API}/printer-bids/monthly-performance/`,
+    daily:   `${ADMIN_API}/printer-bids/daily-activity/`,
+    stats:   `${ADMIN_API}/printer-bids/stats/`,
   },
 };
 
@@ -101,13 +114,13 @@ const MetricCard = ({ icon, num, label, gradient, iconBg, loading = false }) => 
 const AdminHome = () => {
   const [selectedProduct, setSelectedProduct] = useState(BID_PRODUCTS[0]);
   const [dropOpen, setDropOpen] = useState(false);
+  const productDropdownRef = useRef(null);
   
-  // --- NEW STATES FOR ANALYSER FILTER ---
-  const [analysers, setAnalysers] = useState([]);
+    const [analysers, setAnalysers] = useState([]);
   const [selectedAnalyser, setSelectedAnalyser] = useState(null);
   const [analyserDropOpen, setAnalyserDropOpen] = useState(false);
-  // --------------------------------------
-
+  const analyserDropdownRef = useRef(null);
+  
   const [stats, setStats] = useState({
     totalBids: null, pending: null, approved: null, reAnalyze: null,
   });
@@ -120,6 +133,9 @@ const AdminHome = () => {
   const [dailyData, setDailyData] = useState([]);
   const [monthlyData, setMonthlyData] = useState([]);
   const [chartsLoading, setChartsLoading] = useState(true);
+
+  useOutsideClick(productDropdownRef, () => setDropOpen(false), dropOpen);
+  useOutsideClick(analyserDropdownRef, () => setAnalyserDropOpen(false), analyserDropOpen);
 
   const fetchAccountCounts = useCallback(async () => {
     setAccountsLoading(true);
@@ -155,8 +171,7 @@ const AdminHome = () => {
       const api = ADMIN_DASHBOARD_API_MAP[selectedProduct.key];
       let url = api.stats;
       
-      // Add analyser filter if selected
-      if (selectedAnalyser) {
+            if (selectedAnalyser) {
         url += `?analyser=${encodeURIComponent(selectedAnalyser)}`;
       }
       
@@ -189,7 +204,7 @@ const AdminHome = () => {
         const currentYear = new Date().getFullYear();
         setSelectedYear(data.includes(currentYear) ? currentYear : data[0]);
       }
-    } catch { /* keep defaults */ }
+    } catch {  }
   }, [selectedProduct]);
 
   const fetchChartData = useCallback(async () => {
@@ -205,8 +220,7 @@ const AdminHome = () => {
       let monthlyUrl = `${api.monthly}?year=${selectedYear}`;
       let dailyUrl = api.daily;
       
-      // Add analyser filter if selected
-      if (selectedAnalyser) {
+            if (selectedAnalyser) {
         monthlyUrl += `&analyser=${encodeURIComponent(selectedAnalyser)}`;
         dailyUrl += `?analyser=${encodeURIComponent(selectedAnalyser)}`;
       }
@@ -248,10 +262,10 @@ const AdminHome = () => {
 
   return (
     <div className="space-y-6">
-      {/* TOP FILTERS BAR */}
+      {}
       <div className="flex flex-wrap justify-start gap-4">
-        {/* PRODUCT DROPDOWN */}
-        <div className="relative">
+        {}
+        <div ref={productDropdownRef} className="relative">
           <button
             onClick={() => setDropOpen(!dropOpen)}
             className="flex items-center gap-3 bg-white border-2 border-slate-200 px-4 py-2.5 rounded-xl font-black text-slate-700 text-sm shadow-sm hover:border-blue-500 min-w-[190px] justify-between transition-all focus:outline-none focus:ring-0"
@@ -282,8 +296,8 @@ const AdminHome = () => {
           )}
         </div>
 
-        {/* ANALYSER DROPDOWN (NEW) */}
-        <div className="relative">
+        {}
+        <div ref={analyserDropdownRef} className="relative">
           <button
             onClick={() => setAnalyserDropOpen(!analyserDropOpen)}
             className="flex items-center gap-3 bg-white border-2 border-slate-200 px-4 py-2.5 rounded-xl font-black text-slate-700 text-sm shadow-sm hover:border-blue-500 min-w-[190px] justify-between transition-all focus:outline-none focus:ring-0"
@@ -322,7 +336,7 @@ const AdminHome = () => {
         </div>
       </div>
 
-      {/* METRIC CARDS */}
+      {}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <MetricCard icon={<FaFileInvoiceDollar className="text-blue-600" />} num={stats.totalBids} label="Total Bids" gradient="bg-gradient-to-br from-blue-500 to-blue-600" iconBg="bg-blue-100" loading={statsLoading} />
         <MetricCard icon={<FaHourglassHalf className="text-amber-500" />} num={stats.pending} label="Pending Review" gradient="bg-gradient-to-br from-amber-400 to-amber-500" iconBg="bg-amber-100" loading={statsLoading} />
@@ -334,7 +348,7 @@ const AdminHome = () => {
         <MetricCard icon={<FaUserTie className="text-cyan-600" />} num={analyserCount} label="Total Analysers Registered" gradient="bg-gradient-to-br from-cyan-500 to-cyan-600" iconBg="bg-cyan-100" loading={accountsLoading} />
       </div>
 
-      {/* CHARTS */}
+      {}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white border-2 border-slate-100 rounded-2xl p-6 shadow-sm">
           <h3 className="text-base font-black text-slate-800 mb-5 flex items-center gap-3 uppercase tracking-tight">
@@ -342,12 +356,12 @@ const AdminHome = () => {
             Daily Activity {selectedAnalyser && <span className="text-xs text-blue-600 normal-case font-bold">({selectedAnalyser})</span>}
           </h3>
           <ResponsiveContainer width="100%" height={230}>
-            <BarChart data={dailyData} barCategoryGap="40%">
+            <BarChart data={dailyData} barCategoryGap="32%">
               <CartesianGrid strokeDasharray="4 4" vertical={false} stroke="#f1f5f9" />
               <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fontWeight: 700, fontSize: 11, fill: "#64748b" }} />
               <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fontWeight: 600, fontSize: 10, fill: "#94a3b8" }} />
               <Tooltip cursor={{ fill: "#f8fafc" }} contentStyle={{ borderRadius: 10, border: "none", boxShadow: "0 4px 12px rgba(0,0,0,0.08)" }} />
-              <Bar dataKey="bids" name="Total Bids" fill="#2563eb" radius={[6, 6, 0, 0]} maxBarSize={40} />
+              <Bar dataKey="bids" name="Total Bids" fill="#2563eb" radius={[6, 6, 0, 0]} maxBarSize={45} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -432,7 +446,7 @@ const AdminNavbar = () => {
   return (
     <div className="h-screen w-full flex bg-gray-100 overflow-hidden">
 
-      {/* Scrollbar hide CSS */}
+      {}
       <style>{`
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
@@ -440,10 +454,10 @@ const AdminNavbar = () => {
         .no-highlight:focus, .no-highlight:active { outline: none !important; box-shadow: none !important; }
       `}</style>
 
-      {/* SIDEBAR */}
+      {}
       <div className="w-64 bg-gradient-to-b from-gray-900 via-gray-800 to-gray-900 text-white flex flex-col shadow-2xl">
 
-        {/* WELCOME HEADER */}
+        {}
         <div className="relative p-6 border-b border-gray-700/50 overflow-hidden">
           <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-blue-500/20 to-purple-600/20 rounded-full blur-3xl transform translate-x-8 -translate-y-8"></div>
           <div className="relative z-10">
@@ -468,10 +482,10 @@ const AdminNavbar = () => {
           </div>
         </div>
 
-        {/* NAVIGATION - scrollbar hidden */}
+        {}
         <div className="flex-1 p-3 overflow-y-auto hide-scrollbar">
 
-          {/* TEAM MANAGEMENT DROPDOWN */}
+          {}
           <button
             onClick={() => setOpenAdmin(!openAdmin)}
             className="flex items-center justify-between w-full px-4 py-3 bg-gray-800/50 rounded-xl hover:bg-gray-700/70 transition border border-gray-700/30 focus:outline-none focus:ring-0 no-highlight select-none"
@@ -504,7 +518,7 @@ const AdminNavbar = () => {
             </div>
           )}
 
-          {/* BID APPROVAL DROPDOWN */}
+          {}
           <div className="mt-3">
             <button
               onClick={() => setOpenBid(!openBid)}
@@ -528,7 +542,9 @@ const AdminNavbar = () => {
                     className={`flex items-center justify-between px-4 py-3 rounded-xl cursor-pointer transition-all duration-200 focus:outline-none focus:ring-0 no-highlight select-none ${
                       !item.ready
                         ? "opacity-50 cursor-not-allowed text-gray-500"
-                        : "hover:bg-gray-700/50 text-gray-200"
+                        : isActive(item.path)
+                          ? "bg-gray-700/70 text-white"
+                          : "hover:bg-gray-700/50 text-gray-200"
                     }`}
                   >
                     <span className="text-sm font-medium">{item.name}</span>
@@ -542,7 +558,7 @@ const AdminNavbar = () => {
           </div>
         </div>
 
-        {/* LOGOUT */}
+        {}
         <div className="p-4 border-t border-gray-700/50">
           <button
             onClick={handleLogout}
@@ -554,7 +570,7 @@ const AdminNavbar = () => {
         </div>
       </div>
 
-      {/* RIGHT SIDE */}
+      {}
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="flex justify-between items-center bg-white shadow-sm px-6 py-4 border-b border-gray-200">
           <h1 className="text-xl font-semibold text-gray-800">Admin Dashboard</h1>

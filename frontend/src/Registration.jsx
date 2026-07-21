@@ -7,7 +7,7 @@ import {
   FaTimes,
 } from "react-icons/fa";
 
-const API_BASE = "https://acxxelbidding.com/api";
+const API_BASE = import.meta.env.VITE_API_URL;
 
 export default function AddUser() {
 
@@ -28,8 +28,7 @@ export default function AddUser() {
     confirmPassword: "",
   });
 
-  // ================= FETCH USERS =================
-
+  
   const fetchUsers = async () => {
 
     try {
@@ -63,8 +62,7 @@ export default function AddUser() {
 
   }, []);
 
-  // ================= HANDLE CHANGE =================
-
+  
   const handleChange = (e) => {
 
     setForm({
@@ -73,8 +71,7 @@ export default function AddUser() {
     });
   };
 
-  // ================= ADD USER =================
-
+  
   const handleSubmit = async (e) => {
 
     e.preventDefault();
@@ -149,8 +146,7 @@ export default function AddUser() {
     }
   };
 
-  // ================= DELETE USER =================
-
+  
   const deleteUser = async (id) => {
 
     const confirmDelete = window.confirm(
@@ -193,7 +189,7 @@ export default function AddUser() {
 
     <div className="min-h-screen bg-gray-100 p-6">
 
-      {/* HEADER */}
+      {}
 
       <div className="flex items-center justify-between mb-6">
 
@@ -211,7 +207,7 @@ export default function AddUser() {
 
       </div>
 
-      {/* TABLE */}
+      {}
 
       <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
 
@@ -301,7 +297,7 @@ export default function AddUser() {
 
       </div>
 
-      {/* MODAL */}
+      {}
 
       {
         showForm && (
@@ -310,7 +306,7 @@ export default function AddUser() {
 
             <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl p-8 relative">
 
-              {/* CLOSE */}
+              {}
 
               <button
                 onClick={() => setShowForm(false)}
@@ -325,7 +321,7 @@ export default function AddUser() {
 
               <form onSubmit={handleSubmit}>
 
-                {/* USERNAME */}
+                {}
 
                 <input
                   type="text"
@@ -337,7 +333,7 @@ export default function AddUser() {
                   className="w-full mb-4 border border-gray-300 rounded-lg px-4 py-3 outline-none focus:ring-2 focus:ring-blue-400"
                 />
 
-                {/* EMAIL */}
+                {}
 
                 <input
                   type="email"
@@ -349,7 +345,7 @@ export default function AddUser() {
                   className="w-full mb-4 border border-gray-300 rounded-lg px-4 py-3 outline-none focus:ring-2 focus:ring-blue-400"
                 />
 
-                {/* PASSWORD */}
+                {}
 
                 <div className="relative mb-4">
 
@@ -382,7 +378,7 @@ export default function AddUser() {
 
                 </div>
 
-                {/* CONFIRM PASSWORD */}
+                {}
 
                 <div className="relative mb-6">
 
@@ -415,7 +411,7 @@ export default function AddUser() {
 
                 </div>
 
-                {/* BUTTON */}
+                {}
 
                 <button
                   type="submit"

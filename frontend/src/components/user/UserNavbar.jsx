@@ -28,15 +28,22 @@ const UserNavbar = () => {
   }, [navigate]);
 
   const handleLogout = () => {
-    localStorage.removeItem("user_username");
+        localStorage.removeItem("user_username");
     localStorage.removeItem("user_role");
     localStorage.removeItem("user_email");
     localStorage.removeItem("user_id");
     localStorage.removeItem("bid_user_id");
-    localStorage.removeItem("desktop_bid_step");
+    
+        localStorage.removeItem("desktop_bid_step");
     localStorage.removeItem("desktop_bid_data");
     
-    localStorage.removeItem("role");
+        localStorage.removeItem("workstation_bid_step");
+    localStorage.removeItem("workstation_bid_data");
+    
+        localStorage.removeItem("printer_bid_step");
+    localStorage.removeItem("printer_bid_data");
+    
+        localStorage.removeItem("role");
     localStorage.removeItem("username");
     localStorage.removeItem("display_username");
     localStorage.removeItem("email");
@@ -52,13 +59,14 @@ const UserNavbar = () => {
     { name: "AIO",         path: "/user/aio",         icon: <FaLaptop />  },
     { name: "Workstation", path: "/user/workstation", icon: <FaServer />  },
     { name: "Printer",     path: "/user/printer",     icon: <FaPrint />   },
+    { name: "Multifunction Printer", path: "/user/multifunction-printer", icon: <FaPrint /> },
     { name: "Toner",       path: "/user/toner",       icon: <FaBox />     },
   ];
 
   return (
     <div className="h-screen w-full flex bg-gray-100 overflow-hidden">
 
-      {/* Scrollbar hide CSS */}
+      {}
       <style>{`
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
@@ -66,16 +74,16 @@ const UserNavbar = () => {
         .no-highlight:focus, .no-highlight:active { outline: none !important; box-shadow: none !important; }
       `}</style>
 
-      {/* SIDEBAR */}
+      {}
       <div className="w-64 bg-gradient-to-b from-gray-900 via-gray-800 to-gray-900 text-white flex flex-col shadow-2xl">
 
-        {/* ✨ ATTRACTIVE WELCOME HEADER */}
+        {}
         <div className="relative p-6 border-b border-gray-700/50 overflow-hidden">
-          {/* Background Gradient Circle */}
+          {}
           <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-blue-500/20 to-purple-600/20 rounded-full blur-3xl transform translate-x-8 -translate-y-8"></div>
           
           <div className="relative z-10">
-            {/* Avatar Circle */}
+            {}
             <div className="flex items-center gap-3 mb-3">
               <div className="relative">
                 <div className="w-14 h-14 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-2xl font-bold shadow-lg ring-4 ring-blue-500/20">
@@ -92,7 +100,7 @@ const UserNavbar = () => {
               </div>
             </div>
             
-            {/* Status Badge */}
+            {}
             <div className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-green-500/10 to-emerald-500/10 rounded-lg border border-green-500/20">
               <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
               <span className="text-xs text-green-400 font-medium">Online • User Panel</span>
@@ -136,7 +144,7 @@ const UserNavbar = () => {
           )}
         </div>
 
-        {/* LOGOUT */}
+        {}
         <div className="p-4 border-t border-gray-700/50">
           <button
             onClick={handleLogout}
@@ -148,7 +156,7 @@ const UserNavbar = () => {
         </div>
       </div>
 
-      {/* RIGHT SIDE */}
+      {}
       <div className="flex-1 flex flex-col overflow-hidden">
 
         <div className="flex justify-between items-center bg-white shadow-sm px-6 py-4 border-b border-gray-200">

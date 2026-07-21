@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
+import useOutsideClick from "../../hooks/useOutsideClick";
 import {
   FaBox,
   FaDesktop,
@@ -20,21 +21,34 @@ import {
   ResponsiveContainer, PieChart, Pie, Cell, Legend,
 } from "recharts";
 
-const API_BASE = "https://acxxelbidding.com/api";
+const API_BASE = "http://127.0.0.1:8000/api";
 const BID_PRODUCTS = [
   { key: "desktop", label: "Desktop", icon: <FaDesktop />, color: "#6366f1", ready: true },
   { key: "aio", label: "AIO", icon: <FaLaptop />, color: "#8b5cf6", ready: false },
-  { key: "workstation", label: "Workstation", icon: <FaServer />, color: "#0ea5e9", ready: false },
-  { key: "printer", label: "Printer", icon: <FaPrint />, color: "#10b981", ready: false },
+  { key: "workstation", label: "Workstation", icon: <FaServer />, color: "#0ea5e9", ready: true },
+  { key: "printer", label: "Printer", icon: <FaPrint />, color: "#10b981", ready: true },
   { key: "toner", label: "Toner", icon: <FaBox />, color: "#f59e0b", ready: false },
 ];
 const PRODUCTS = BID_PRODUCTS;
+const NAV_ENABLED_KEYS = new Set(["desktop", "workstation", "printer"]);
 const DASHBOARD_API_MAP = {
   desktop: {
     years: `${API_BASE}/desktop-bids/dashboard-years/`,
     monthly: `${API_BASE}/desktop-bids/monthly-performance/`,
     daily: `${API_BASE}/desktop-bids/daily-activity/`,
     list: `${API_BASE}/desktop-bids/list/`,
+  },
+  workstation: {
+    years: `${API_BASE}/workstation-bids/dashboard-years/`,
+    monthly: `${API_BASE}/workstation-bids/monthly-performance/`,
+    daily: `${API_BASE}/workstation-bids/daily-activity/`,
+    list: `${API_BASE}/workstation-bids/list/`,
+  },
+  printer: {
+    years: `${API_BASE}/printer-bids/dashboard-years/`,
+    monthly: `${API_BASE}/printer-bids/monthly-performance/`,
+    daily: `${API_BASE}/printer-bids/daily-activity/`,
+    list: `${API_BASE}/printer-bids/list/`,
   },
 };
 const STATUS_COLORS = { approved: "#10b981", pending: "#f59e0b", rejected: "#ef4444" };
@@ -75,12 +89,15 @@ const StatCard = ({ label, value, Icon, gradient, loading }) => (
 const AnalyserHome = () => {
   const [selectedProduct, setSelectedProduct] = useState(PRODUCTS[0]);
   const [dropOpen, setDropOpen] = useState(false);
+  const productDropdownRef = useRef(null);
   const [selectedYear, setSelectedYear] = useState(2026);
   const [yearOptions, setYearOptions] = useState([2026, 2027, 2028]);
   const [stats, setStats] = useState({ pending: 0, reviewed: 0, reAnalyze: 0, total: 0 });
   const [dailyData, setDailyData] = useState([]);
   const [monthlyData, setMonthlyData] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  useOutsideClick(productDropdownRef, () => setDropOpen(false), dropOpen);
 
   const fetchYears = useCallback(async () => {
     if (!selectedProduct.ready) return;
@@ -150,7 +167,7 @@ const AnalyserHome = () => {
   return (
     <div className="space-y-6 pb-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="relative">
+        <div ref={productDropdownRef} className="relative">
           <button
             onClick={() => setDropOpen(!dropOpen)}
             className="flex items-center gap-3 bg-white border-2 border-slate-200 px-4 py-2.5 rounded-xl font-black text-slate-700 text-sm shadow-sm hover:border-blue-500 min-w-[190px] justify-between transition-all focus:outline-none focus:ring-0"
@@ -178,9 +195,9 @@ const AnalyserHome = () => {
         </div>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <StatCard label="Pending Approval" value={stats.pending} Icon={FaClipboardList} gradient="bg-gradient-to-br from-amber-400 to-orange-500" loading={loading} />
+        <StatCard label="Pending Bids" value={stats.pending} Icon={FaClipboardList} gradient="bg-gradient-to-br from-amber-400 to-orange-500" loading={loading} />
         <StatCard label="Approved Bids" value={stats.reviewed} Icon={FaCheckCircle} gradient="bg-gradient-to-br from-emerald-400 to-emerald-600" loading={loading} />
-        <StatCard label="Rejected / Re-Analyze" value={stats.reAnalyze} Icon={FaExclamationTriangle} gradient="bg-gradient-to-br from-rose-500 to-rose-700" loading={loading} />
+        <StatCard label="Rejected / Re-Analyze Bids" value={stats.reAnalyze} Icon={FaExclamationTriangle} gradient="bg-gradient-to-br from-rose-500 to-rose-700" loading={loading} />
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white border-2 border-slate-100 rounded-2xl p-6 shadow-sm">
@@ -274,7 +291,7 @@ const AnalyserNavbar = () => {
   return (
     <div className="h-screen w-full flex bg-gray-100 overflow-hidden">
 
-      {/* Scrollbar hide CSS */}
+      {}
       <style>{`
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
@@ -282,10 +299,10 @@ const AnalyserNavbar = () => {
         .no-highlight:focus, .no-highlight:active { outline: none !important; box-shadow: none !important; }
       `}</style>
 
-      {/* SIDEBAR */}
+      {}
       <div className="w-64 bg-gradient-to-b from-gray-900 via-gray-800 to-gray-900 text-white flex flex-col shadow-2xl">
 
-        {/* WELCOME HEADER */}
+        {}
         <div className="relative p-6 border-b border-gray-700/50 overflow-hidden">
           <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-blue-500/20 to-purple-600/20 rounded-full blur-3xl transform translate-x-8 -translate-y-8"></div>
           <div className="relative z-10">
@@ -310,10 +327,10 @@ const AnalyserNavbar = () => {
           </div>
         </div>
 
-        {/* NAVIGATION - scrollbar hidden */}
+        {}
         <div className="flex-1 p-3 overflow-y-auto hide-scrollbar">
 
-          {/* DASHBOARD */}
+          {}
           <div
             onClick={() => navigate("/analyser-dashboard")}
             className={`flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-all duration-200 mb-2 focus:outline-none focus:ring-0 no-highlight select-none ${
@@ -326,7 +343,7 @@ const AnalyserNavbar = () => {
             <span className="text-sm font-medium">Dashboard</span>
           </div>
 
-          {/* VIEW BIDS DROPDOWN */}
+          {}
           <button
             onClick={() => setBidsOpen(!bidsOpen)}
             className="flex items-center justify-between w-full px-4 py-3 bg-gray-800/50 rounded-xl hover:bg-gray-700/70 transition border border-gray-700/30 focus:outline-none focus:ring-0 no-highlight select-none"
@@ -342,12 +359,14 @@ const AnalyserNavbar = () => {
 
           {bidsOpen && (
             <div className="mt-3 space-y-1.5 ml-2">
-              {BID_PRODUCTS.map((item) => (
+              {BID_PRODUCTS.map((item) => {
+                const isEnabled = NAV_ENABLED_KEYS.has(item.key);
+                return (
                 <div
                   key={item.key}
-                  onClick={() => item.ready && navigate(`/analyser-dashboard/${item.key}`)}
-                  className={`flex items-center justify-between px-4 py-3 rounded-xl cursor-pointer transition-all duration-200 focus:outline-none focus:ring-0 no-highlight select-none ${
-                    !item.ready
+                  onClick={() => isEnabled && navigate(`/analyser-dashboard/${item.key}`)}
+                  className={`flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 focus:outline-none focus:ring-0 no-highlight select-none ${
+                    !isEnabled
                       ? "opacity-50 cursor-not-allowed text-gray-500"
                       : "hover:bg-gray-700/50 text-gray-200"
                   }`}
@@ -356,17 +375,18 @@ const AnalyserNavbar = () => {
                     <span className="text-lg">{item.icon}</span>
                     <span className="text-sm font-medium">{item.label}</span>
                   </span>
-                  {!item.ready && (
+                  {!isEnabled && (
                     <span className="text-[10px] bg-gray-600 px-2 py-0.5 rounded-full text-gray-300">Soon</span>
                   )}
                 </div>
-              ))}
+                );
+              })}
 
               <div className="border-t border-gray-700/50 my-2"></div>
 
-              {/* PRODUCT */}
+              {}
               <div
-                onClick={() => navigate("/analyser-dashboard/product")}
+                onClick={() => navigate(location.pathname.includes("/workstation") ? "/analyser-dashboard/workstation/product" : "/analyser-dashboard/product")}
                 className={`flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-all duration-200 focus:outline-none focus:ring-0 no-highlight select-none hover:bg-gray-700/50 text-gray-200`}
               >
                 <span className="text-lg" style={{ color: "#ec4899" }}><FaBox /></span>
@@ -376,7 +396,7 @@ const AnalyserNavbar = () => {
           )}
         </div>
 
-        {/* LOGOUT */}
+        {}
         <div className="p-4 border-t border-gray-700/50">
           <button
             onClick={handleLogout}
@@ -388,7 +408,7 @@ const AnalyserNavbar = () => {
         </div>
       </div>
 
-      {/* RIGHT SIDE */}
+      {}
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="flex justify-between items-center bg-white shadow-sm px-6 py-4 border-b border-gray-200">
           <h1 className="text-xl font-semibold text-gray-800">Analyser Dashboard</h1>

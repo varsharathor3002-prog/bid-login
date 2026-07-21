@@ -22,8 +22,7 @@ export default function ForgotPassword() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // ✅ Validation
-    if (!form.username || !form.email || !form.new_password || !form.confirmPassword) {
+        if (!form.username || !form.email || !form.new_password || !form.confirmPassword) {
       alert("All fields are required");
       return;
     }
@@ -34,7 +33,7 @@ export default function ForgotPassword() {
     }
 
     try {
-      const res = await fetch("https://acxxelbidding.com/api/forgot-password/", {
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/forgot-password/`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -65,15 +64,15 @@ export default function ForgotPassword() {
 
       <div className="w-[500px] bg-white rounded-2xl shadow-2xl p-10">
 
-        {/* Heading */}
+        {}
         <h2 className="text-3xl font-bold text-center text-gray-700 mb-8">
           Forgot Password
         </h2>
 
-        {/* Form */}
+        {}
         <form onSubmit={handleSubmit} autoComplete="off">
 
-          {/* Username */}
+          {}
           <input
             type="text"
             name="username"
@@ -84,7 +83,7 @@ export default function ForgotPassword() {
             className="w-full mb-5 p-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-400 outline-none"
           />
 
-          {/* Email */}
+          {}
           <input
             type="email"
             name="email"
@@ -95,7 +94,7 @@ export default function ForgotPassword() {
             className="w-full mb-5 p-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-400 outline-none"
           />
 
-          {/* New Password */}
+          {}
           <div className="relative mb-5">
             <input
               type={showPassword ? "text" : "password"}
@@ -114,7 +113,7 @@ export default function ForgotPassword() {
             </span>
           </div>
 
-          {/* Confirm Password */}
+          {}
           <div className="relative mb-6">
             <input
               type={showConfirm ? "text" : "password"}
@@ -133,7 +132,7 @@ export default function ForgotPassword() {
             </span>
           </div>
 
-          {/* Button */}
+          {}
           <button className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-semibold transition">
             Update Password
           </button>

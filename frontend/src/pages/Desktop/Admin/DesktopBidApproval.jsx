@@ -1,6 +1,42 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import {
+  PROCESSORS, RAMS, HDDS, SSDS, OS_OPTIONS, DVDS, WIFIS, MONITORS,
+  CABINETS, KEYBOARDS, WARRANTIES, MOTHERBOARDS, getPriceFromLocalData,
+} from "../User/DesktopConfig";
 
-const API_BASE = "https://acxxelbidding.com/api";
+const API_BASE = import.meta.env.VITE_API_URL;
+
+const SPEC_OPTIONS = {
+  processor: PROCESSORS,
+  ram: RAMS,
+  hdd: HDDS,
+  ssd1: SSDS,
+  ssd2: SSDS,
+  os: OS_OPTIONS,
+  dvd: DVDS,
+  wifi: WIFIS,
+  monitor: MONITORS,
+  cabinet: CABINETS,
+  keyboard: KEYBOARDS,
+  warranty: WARRANTIES,
+  motherboard: MOTHERBOARDS,
+};
+
+const PRICE_FIELDS = [
+  "processor_price", "ram_price", "hdd_price", "ssd1_price", "ssd2_price",
+  "os_price", "dvd_price", "wifi_price", "monitor_price", "cabinet_price",
+  "keyboard_price", "warranty_price", "motherboard_price", "pro_descp_price",
+  "motherboard_descp_price", "software1_price", "gp_price",
+  "freightInstallation_price", "hddreturnable_price",
+];
+
+const toPrice = (value) => {
+  const parsed = Number(String(value ?? "").replace(/,/g, "").trim());
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const calculateTotalPrice = (values) =>
+  PRICE_FIELDS.reduce((total, field) => total + toPrice(values?.[field]), 0);
 
 const TABS = [
   { id: "pending", label: "Pending", icon: "⏳", color: "text-amber-600", border: "border-amber-600" },
@@ -10,6 +46,9 @@ const TABS = [
 
 const GENERAL_DOCS = [
   { id: "manufacturer_auth", label: "MANUFACTURER AUTHORIZATION CERTIFICATE" },
+  { id: "experience_certificate", label: "EXPERIENCE CERTIFICATE" },
+  { id: "past_performance", label: "PAST PERFORMANCE" },
+  { id: "oem_annual_turnover", label: "OEM ANNUAL TURNOVER" },
   { id: "warranty", label: "WARRANTY" },
   { id: "bidder_financial", label: "BIDDER FINANCIAL UNDERSTANDINGS" },
   { id: "non_obsolete", label: "NON OBSOLETE" },
@@ -23,7 +62,7 @@ const GENERAL_DOCS = [
   { id: "preloaded_os", label: "PRELOADED OPERATING SYSTEM" },
 ];
 
-const PriceField = ({ label, name, priceName, form, handleChange, isTextArea = false, optional = false }) => (
+const PriceField = ({ label, name, priceName, form, handleChange, options, isTextArea = false, optional = false }) => (
   <div className="col-span-1">
     <div className="flex items-center gap-2 mb-1">
       <label className="block text-sm font-medium text-gray-700">{label}</label>
@@ -39,6 +78,22 @@ const PriceField = ({ label, name, priceName, form, handleChange, isTextArea = f
           autoComplete="off"
           className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm resize-none outline-none focus:ring-2 focus:ring-blue-500"
         />
+      ) : options ? (
+        <select
+          name={name}
+          value={form?.[name] || ""}
+          onChange={handleChange}
+          className="flex-1 min-w-0 border border-gray-300 rounded-md px-3 py-2 text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="">Select</option>
+          {form?.[name] && !options.some((option) => option.name === form[name]) && (
+            <option value={form[name]}>{form[name]}</option>
+          )}
+          {options.map((option) => (
+            <option key={option.name} value={option.name}>{option.name}</option>
+          ))}
+          <option value="None">None</option>
+        </select>
       ) : (
         <input
           type="text"
@@ -53,7 +108,7 @@ const PriceField = ({ label, name, priceName, form, handleChange, isTextArea = f
         <input
           type="text"
           name={priceName}
-          value={form?.[priceName] || ""}
+          value={form?.[priceName] ?? ""}
           onChange={handleChange}
           autoComplete="off"
           placeholder="Price"
@@ -66,6 +121,7 @@ const PriceField = ({ label, name, priceName, form, handleChange, isTextArea = f
 
 function GeneralDocsViewPopup({ form }) {
   const [open, setOpen] = useState(false);
+  const dropdownRef = useRef(null);
   const [generatingDocs, setGeneratingDocs] = useState({});
   const [downloadingDocs, setDownloadingDocs] = useState({});
   const bidId = form?.id || form?.bid_id;
@@ -83,14 +139,23 @@ function GeneralDocsViewPopup({ form }) {
     : rawSelectedLabels;
 
   const availableDocs = GENERAL_DOCS.filter((doc) => selectedIds.includes(doc.id));
-
   const fallbackDocs =
     availableDocs.length > 0
       ? availableDocs
       : selectedLabels.map((label, index) => ({ id: `label_${index}`, label, viewable: false }));
-
   const displayDocs = [...fallbackDocs];
   const uploadedCount = displayDocs.length;
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const handleOutsideClick = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", handleOutsideClick);
+    return () => document.removeEventListener("pointerdown", handleOutsideClick);
+  }, [open]);
 
   const getGeneratedPdfUrl = async (docId) => {
     if (!bidId) throw new Error("Bid ID not found.");
@@ -142,7 +207,7 @@ function GeneralDocsViewPopup({ form }) {
   };
 
   return (
-    <div className="relative w-full">
+    <div ref={dropdownRef} className="relative w-full">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -157,24 +222,23 @@ function GeneralDocsViewPopup({ form }) {
             📁
           </div>
           <div className="text-left">
-            <div className="text-sm font-bold text-gray-800">General Documents</div>
+            <div className="text-sm font-bold text-gray-800">Bid Documents</div>
             <div className="text-xs text-gray-500">
-              {uploadedCount > 0 ? "Click to view selected documents" : "No documents selected"}
+              {uploadedCount > 0 ? "Separate certificates and indexed ATC bundle" : "No documents selected"}
             </div>
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${uploadedCount === GENERAL_DOCS.length ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"}`}>
-            {uploadedCount}/{GENERAL_DOCS.length} Files
+          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${uploadedCount > 0 ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"}`}>
+            {uploadedCount} Items
           </span>
         </div>
       </button>
       {open && (
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <div className="absolute top-full left-0 right-0 mt-2 z-50 w-full bg-white border border-gray-200 rounded-xl shadow-2xl overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 bg-orange-50 border-b border-orange-100">
-              <span className="text-sm font-semibold text-orange-800">Selected General Documents</span>
+              <span className="text-sm font-semibold text-orange-800">Approved Bid Documents</span>
               <span className="text-xs font-semibold px-2 py-[2px] rounded-full bg-green-100 text-green-700">{uploadedCount} Total</span>
             </div>
             <div className="divide-y divide-gray-100 max-h-[320px] overflow-y-auto">
@@ -303,7 +367,7 @@ function MakeInIndiaView({ form }) {
 function SpecialDocView({ form }) {
   const url = form?.atc_special_document;
   if (!url) return null;
-  const fullUrl = url.startsWith("http") ? url : `https://acxxelbidding.com${url}`;
+  const fullUrl = url.startsWith("http") ? url : `${import.meta.env.VITE_API_URL}${url}`;
   const filename = url.split("/").pop() || "special_document";
   const handleDownload = async () => {
     try {
@@ -356,7 +420,7 @@ export default function DesktopBidApproval() {
   const [msg, setMsg] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [deletingId, setDeletingId] = useState(null);
-  const ROWS_PER_PAGE = 8;
+  const ROWS_PER_PAGE = 10;
   const MAX_PAGE_BTNS = 5;
 
   useEffect(() => {
@@ -364,6 +428,15 @@ export default function DesktopBidApproval() {
     fetchReAnalyzeCount();
     setCurrentPage(1);
   }, [activeTab]);
+
+  useEffect(() => {
+    if (!selected) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [selected]);
 
   const getAnalyserName = (bid) =>
     bid.analyser_name || bid.analyzer_name || bid.analyser || bid.analyzer ||
@@ -448,6 +521,10 @@ export default function DesktopBidApproval() {
       local_content: bid.local_content || "",
       optional_ports: bid.optional_ports || "",
     };
+    formattedBid.total_price =
+      toPrice(bid.total_price) > 0
+        ? bid.total_price
+        : calculateTotalPrice(formattedBid);
     setSelected(formattedBid);
     setForm({ ...formattedBid });
     setAdminNote(formattedBid.admin_note || "");
@@ -463,7 +540,20 @@ export default function DesktopBidApproval() {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
+    setForm((prev) => {
+      if (name === "total_price") return { ...prev, total_price: value };
+
+      const next = { ...prev, [name]: value };
+      const options = SPEC_OPTIONS[name];
+      if (options) {
+        next[`${name}_price`] = value === "None" ? 0 : getPriceFromLocalData(options, value);
+      }
+
+      if (PRICE_FIELDS.includes(name) || options) {
+        next.total_price = calculateTotalPrice(next);
+      }
+      return next;
+    });
   };
 
   const handleAction = async (action) => {
@@ -479,8 +569,7 @@ export default function DesktopBidApproval() {
       formData.set("freightInstallation_price", form.freightInstallation_price || form.freight_price || "");
       formData.set("model_number", form.model_number || form.model || "");
       formData.set("local_content", form.local_content || "");
-      // ✅ Optional Ports (single field)
-      formData.set("optional_ports", form.optional_ports || "");
+            formData.set("optional_ports", form.optional_ports || "");
       formData.set("status", action);
       formData.set("admin_note", adminNote);
       formData.set("admin_username", localStorage.getItem("username") || "");
@@ -548,7 +637,7 @@ export default function DesktopBidApproval() {
         Back
       </button>
 
-      {/* Tabs */}
+      {}
       <div className="flex gap-3 px-6 pt-3 bg-gray-50 border-b border-gray-200 overflow-visible">
         {TABS.map((tab) => (
           <button key={tab.id} onClick={() => setActiveTab(tab.id)}
@@ -568,7 +657,7 @@ export default function DesktopBidApproval() {
         ))}
       </div>
 
-      {/* Table */}
+      {}
       {loading ? (
         <div className="p-20 text-center text-gray-400">Loading...</div>
       ) : bids.length === 0 ? (
@@ -685,10 +774,10 @@ export default function DesktopBidApproval() {
         </>
       )}
 
-      {/* Modal */}
+      {}
       {selected && (
-        <div className="fixed inset-0 bg-black/60 z-50 overflow-y-auto py-8 px-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-7xl mx-auto">
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 overflow-hidden">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-7xl max-h-[calc(100vh-2rem)] overflow-y-auto">
             <div className="flex justify-between items-center px-6 py-4 border-b bg-gray-50 rounded-t-xl">
               <div className="flex items-center gap-4">
                 <button type="button" onClick={closeModal}
@@ -783,19 +872,19 @@ export default function DesktopBidApproval() {
                   </div>
                 </div>
 
-                <PriceField label="Processor" name="processor" priceName="processor_price" form={form} handleChange={handleChange} />
-                <PriceField label="RAM" name="ram" priceName="ram_price" form={form} handleChange={handleChange} />
-                <PriceField label="Hard Disk Drive" name="hdd" priceName="hdd_price" form={form} handleChange={handleChange} />
-                <PriceField label="Solid State Drive 1" name="ssd1" priceName="ssd1_price" form={form} handleChange={handleChange} />
-                <PriceField label="Solid State Drive 2" name="ssd2" priceName="ssd2_price" form={form} handleChange={handleChange} />
-                <PriceField label="OS" name="os" priceName="os_price" form={form} handleChange={handleChange} />
-                <PriceField label="DVD" name="dvd" priceName="dvd_price" form={form} handleChange={handleChange} />
-                <PriceField label="WiFi Bluetooth" name="wifi" priceName="wifi_price" form={form} handleChange={handleChange} />
-                <PriceField label="Monitor" name="monitor" priceName="monitor_price" form={form} handleChange={handleChange} />
-                <PriceField label="Cabinet" name="cabinet" priceName="cabinet_price" form={form} handleChange={handleChange} />
-                <PriceField label="Keyboard & Mouse" name="keyboard" priceName="keyboard_price" form={form} handleChange={handleChange} />
-                <PriceField label="Warranty" name="warranty" priceName="warranty_price" form={form} handleChange={handleChange} />
-                <PriceField label="Motherboard" name="motherboard" priceName="motherboard_price" form={form} handleChange={handleChange} />
+                <PriceField label="Processor" name="processor" priceName="processor_price" options={SPEC_OPTIONS.processor} form={form} handleChange={handleChange} />
+                <PriceField label="RAM" name="ram" priceName="ram_price" options={SPEC_OPTIONS.ram} form={form} handleChange={handleChange} />
+                <PriceField label="Hard Disk Drive" name="hdd" priceName="hdd_price" options={SPEC_OPTIONS.hdd} form={form} handleChange={handleChange} />
+                <PriceField label="Solid State Drive 1" name="ssd1" priceName="ssd1_price" options={SPEC_OPTIONS.ssd1} form={form} handleChange={handleChange} />
+                <PriceField label="Solid State Drive 2" name="ssd2" priceName="ssd2_price" options={SPEC_OPTIONS.ssd2} form={form} handleChange={handleChange} />
+                <PriceField label="OS" name="os" priceName="os_price" options={SPEC_OPTIONS.os} form={form} handleChange={handleChange} />
+                <PriceField label="DVD" name="dvd" priceName="dvd_price" options={SPEC_OPTIONS.dvd} form={form} handleChange={handleChange} />
+                <PriceField label="WiFi Bluetooth" name="wifi" priceName="wifi_price" options={SPEC_OPTIONS.wifi} form={form} handleChange={handleChange} />
+                <PriceField label="Monitor" name="monitor" priceName="monitor_price" options={SPEC_OPTIONS.monitor} form={form} handleChange={handleChange} />
+                <PriceField label="Cabinet" name="cabinet" priceName="cabinet_price" options={SPEC_OPTIONS.cabinet} form={form} handleChange={handleChange} />
+                <PriceField label="Keyboard & Mouse" name="keyboard" priceName="keyboard_price" options={SPEC_OPTIONS.keyboard} form={form} handleChange={handleChange} />
+                <PriceField label="Warranty" name="warranty" priceName="warranty_price" options={SPEC_OPTIONS.warranty} form={form} handleChange={handleChange} />
+                <PriceField label="Motherboard" name="motherboard" priceName="motherboard_price" options={SPEC_OPTIONS.motherboard} form={form} handleChange={handleChange} />
                 <PriceField label="Processor Description" name="pro_descp" priceName="pro_descp_price" isTextArea optional form={form} handleChange={handleChange} />
                 <PriceField label="Motherboard Description" name="motherboard_descp" priceName="motherboard_descp_price" isTextArea optional form={form} handleChange={handleChange} />
                 <PriceField label="Additional Software" name="software1" priceName="software1_price" isTextArea optional form={form} handleChange={handleChange} />
@@ -833,7 +922,26 @@ export default function DesktopBidApproval() {
                   </div>
                 </div>
 
-                {/* Optional Ports (single field) */}
+                <div className="md:col-span-2 lg:col-span-3 rounded-lg border border-slate-300 bg-slate-50 p-4 shadow-sm">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <label className="block text-sm font-semibold text-slate-800">Total Approved Price</label>
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-slate-700">₹</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        name="total_price"
+                        value={form?.total_price ?? ""}
+                        onChange={handleChange}
+                        readOnly={selected?.status === "approved" || selected?.review_status === "approved"}
+                        disabled={selected?.status === "approved" || selected?.review_status === "approved"}
+                        className="w-48 rounded-md border border-slate-300 bg-white px-3 py-2 text-right text-lg font-semibold text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-700"
+                      />
+                    </div>
+                  </div>
+                </div>
+
                 <div className="md:col-span-3">
                   <div className="flex items-center gap-2 mb-2">
                     <div className="h-px flex-1 bg-gray-300"></div>

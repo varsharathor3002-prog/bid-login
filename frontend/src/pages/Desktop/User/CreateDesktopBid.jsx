@@ -3,7 +3,7 @@ import DesktopConfig from "./DesktopConfig";
 import DesktopBidSummary from "./DesktopBidSummary";
 import Document from "./Document";
 
-const API_BASE = "https://acxxelbidding.com/api";
+const API_BASE = import.meta.env.VITE_API_URL;
 
 const Label = ({ children, optional }) => (
   <label className="block text-sm font-normal text-gray-800 mb-1">

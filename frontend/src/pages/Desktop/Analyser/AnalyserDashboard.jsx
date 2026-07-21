@@ -2,10 +2,10 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 const API_MAP = {
-    desktop: "https://acxxelbidding.com/api/desktop-bids/list/",
+   desktop: `${import.meta.env.VITE_API_URL}/desktop-bids/list/`,
 };
 
-const ITEMS_PER_PAGE = 8;
+const ITEMS_PER_PAGE = 10;
 const VISIBLE_PAGES = 5;
 
 export default function AnalyserDashboard({ product = "desktop" }) {
@@ -35,8 +35,7 @@ export default function AnalyserDashboard({ product = "desktop" }) {
             const data = await res.json();
             setReAnalyzeCount(data.length);
         } catch {
-            // ignore
-        }
+                    }
     };
 
     const fetchBids = async () => {
@@ -78,19 +77,16 @@ export default function AnalyserDashboard({ product = "desktop" }) {
         }
     };
 
-    // ─── Pagination logic ───────────────────────────────────────────────────────
-    const totalPages = Math.max(1, Math.ceil(bids.length / ITEMS_PER_PAGE));
+        const totalPages = Math.max(1, Math.ceil(bids.length / ITEMS_PER_PAGE));
 
-    // Clamp page if bids shrink
-    const safePage = Math.min(currentPage, totalPages);
+        const safePage = Math.min(currentPage, totalPages);
 
     const paginatedBids = bids.slice(
         (safePage - 1) * ITEMS_PER_PAGE,
         safePage * ITEMS_PER_PAGE
     );
 
-    // Window of VISIBLE_PAGES page buttons centred on safePage
-    let startPage = Math.max(1, safePage - Math.floor(VISIBLE_PAGES / 2));
+        let startPage = Math.max(1, safePage - Math.floor(VISIBLE_PAGES / 2));
     let endPage = startPage + VISIBLE_PAGES - 1;
     if (endPage > totalPages) {
         endPage = totalPages;
@@ -105,14 +101,13 @@ export default function AnalyserDashboard({ product = "desktop" }) {
         if (page < 1 || page > totalPages) return;
         setCurrentPage(page);
     };
-    // ────────────────────────────────────────────────────────────────────────────
-
+    
     return (
 
         <div className="w-full bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
 
 
-            {/* ===== TABS ===== */}
+            {}
             <div className="flex gap-4 px-6 bg-gray-50 border-b border-gray-200 mt-4">
 
                 <button
@@ -128,15 +123,15 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                 </button>
 
                 <button
-                    onClick={() => setActiveTab("reviewed")}
+                    onClick={() => setActiveTab("approved")}
                     className={`py-4 px-2 text-sm font-semibold transition-all flex items-center gap-2
-                    ${activeTab === "reviewed"
+                    ${activeTab === "approved"
                             ? "text-emerald-600 border-b-2 border-emerald-600"
                             : "text-gray-500 hover:text-gray-700"
                         }`}
                 >
                     <span>✅</span>
-                    Reviewed
+                    Approved
                 </button>
 
                 <button
@@ -158,17 +153,29 @@ export default function AnalyserDashboard({ product = "desktop" }) {
 
             </div>
 
-            {/* ERROR */}
+            {}
             {error && (
                 <div className="mx-6 mt-4 bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">
                     ⚠️ {error}
                 </div>
             )}
 
-            {/* TABLE */}
+            {}
             <div className="w-full overflow-x-auto">
 
-                <table className="w-full text-left border-separate border-spacing-0">
+                <table className="w-full table-fixed text-left border-separate border-spacing-0 [&_th]:!px-2 [&_td]:!px-2">
+
+                    <colgroup>
+                        <col className={activeTab === "approved" ? "w-[5%]" : "w-[6%]"} />
+                        <col className={activeTab === "approved" ? "w-[14%]" : "w-[16%]"} />
+                        <col className={activeTab === "approved" ? "w-[15%]" : "w-[18%]"} />
+                        <col className={activeTab === "approved" ? "w-[5%]" : "w-[6%]"} />
+                        <col className={activeTab === "approved" ? "w-[13%]" : "w-[15%]"} />
+                        <col className={activeTab === "approved" ? "w-[11%]" : "w-[13%]"} />
+                        <col className={activeTab === "approved" ? "w-[11%]" : "w-[13%]"} />
+                        <col className={activeTab === "approved" ? "w-[10%]" : "w-[13%]"} />
+                        {activeTab === "approved" && <col className="w-[16%]" />}
+                    </colgroup>
 
                     <thead>
 
@@ -206,17 +213,23 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                                 Action
                             </th>
 
+                            {activeTab === "approved" && (
+                                <th className="w-[15%] px-5 py-4 text-[11px] tracking-wider font-bold text-white uppercase border-b border-slate-700">
+                                    Download Approved Bid
+                                </th>
+                            )}
+
                         </tr>
 
                     </thead>
 
                     <tbody>
 
-                        {/* LOADING */}
+                        {}
                         {loading && (
                             <tr>
                                 <td
-                                    colSpan="8"
+                                    colSpan={activeTab === "approved" ? 9 : 8}
                                     className="text-center py-16 text-gray-400 font-medium"
                                 >
                                     Loading bids...
@@ -224,11 +237,11 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                             </tr>
                         )}
 
-                        {/* EMPTY */}
+                        {}
                         {!loading && bids.length === 0 && (
                             <tr>
                                 <td
-                                    colSpan="8"
+                                    colSpan={activeTab === "approved" ? 9 : 8}
                                     className="text-center py-16 text-gray-400 font-medium"
                                 >
                                     No bids found.
@@ -236,7 +249,7 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                             </tr>
                         )}
 
-                        {/* DATA — paginated slice */}
+                        {}
                         {!loading &&
                             paginatedBids.length > 0 &&
                             paginatedBids.map((bid, i) => (
@@ -244,7 +257,7 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                                 <tr
                                     key={bid.id}
                                     className={`bg-white hover:bg-gray-50 transition-colors
-                                    ${bid.status === "reviewed"
+                                    ${bid.status === "approved"
                                             ? "border-l-4 border-l-emerald-500"
                                             : bid.status === "re-analyze"
                                                 ? "border-l-4 border-l-rose-500"
@@ -252,40 +265,46 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                                         }`}
                                 >
 
-                                    {/* S.NO — global serial, not just slice index */}
+                                    {}
                                     <td className="px-5 py-4 text-sm font-bold text-gray-700 border-b border-gray-100">
                                         {(safePage - 1) * ITEMS_PER_PAGE + i + 1}
                                     </td>
 
-                                    {/* BID NO */}
-                                    <td className="px-5 py-4 border-b border-gray-100">
-                                        <span className="text-sm font-bold text-blue-600">
+                                    {}
+                                    <td className="overflow-hidden px-5 py-4 border-b border-gray-100">
+                                        <span
+                                            className="block truncate whitespace-nowrap text-sm font-bold text-blue-600"
+                                            title={bid.bid_no}
+                                        >
                                             {bid.bid_no}
                                         </span>
                                     </td>
 
-                                    {/* DEPARTMENT */}
-                                    <td className="px-5 py-4 border-b border-gray-100">
-                                        <span className="text-sm font-bold text-gray-800 truncate max-w-[160px] block">
+                                    {}
+                                    <td className="overflow-hidden px-5 py-4 border-b border-gray-100">
+                                        <span
+                                            className="block truncate whitespace-nowrap text-sm font-bold text-gray-800"
+                                            title={bid.dept_name || ""}
+                                        >
                                             {bid.dept_name || "—"}
                                         </span>
                                     </td>
 
-                                    {/* QTY */}
+                                    {}
                                     <td className="px-5 py-4 border-b border-gray-100">
                                         <span className="text-sm font-bold text-gray-700">
                                             {bid.qty || "—"}
                                         </span>
                                     </td>
 
-                                    {/* SUBMITTED BY */}
+                                    {}
                                     <td className="px-5 py-4 border-b border-gray-100">
                                         <span className="text-sm font-bold text-gray-700">
                                             {bid.submitted_by || bid.user_name || "—"}
                                         </span>
                                     </td>
 
-                                    {/* DATE */}
+                                    {}
                                     <td className="px-5 py-4 border-b border-gray-100">
                                         <span className="text-sm font-bold text-gray-700 whitespace-nowrap">
                                             {bid.date || bid.created_at
@@ -300,7 +319,7 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                                         </span>
                                     </td>
 
-                                    {/* STATUS */}
+                                    {}
                                     <td className="px-5 py-4 border-b border-gray-100">
 
                                         {bid.status === "pending" && (
@@ -309,9 +328,9 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                                             </span>
                                         )}
 
-                                        {bid.status === "reviewed" && (
+                                        {bid.status === "approved" && (
                                             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">
-                                                ✅ Reviewed
+                                                Approved
                                             </span>
                                         )}
 
@@ -323,22 +342,21 @@ export default function AnalyserDashboard({ product = "desktop" }) {
 
                                     </td>
 
-                                    {/* ACTION */}
+                                    {}
                                     <td className="px-5 py-4 border-b border-gray-100">
 
-                                        {bid.status === "reviewed" ? (
-
-                                            <button
-                                                onClick={() =>
-                                                    navigate(
-                                                        `/analyser-dashboard/${product}/bid/${bid.id}`,
-                                                        { state: { bid, readOnly: true } }
-                                                    )
-                                                }
-                                                className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded text-[11px] font-bold uppercase tracking-widest shadow-sm transition-all whitespace-nowrap"
-                                            >
-                                                View
-                                            </button>
+                                        {bid.status === "approved" ? (
+                                                <button
+                                                    onClick={() =>
+                                                        navigate(
+                                                            `/analyser-dashboard/${product}/bid/${bid.id}`,
+                                                            { state: { bid, readOnly: true } }
+                                                        )
+                                                    }
+                                                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded text-[11px] font-bold uppercase tracking-widest shadow-sm transition-all whitespace-nowrap"
+                                                >
+                                                    View
+                                                </button>
 
                                         ) : (
 
@@ -362,6 +380,27 @@ export default function AnalyserDashboard({ product = "desktop" }) {
 
                                     </td>
 
+                                    {activeTab === "approved" && (
+                                    <td className="px-5 py-4 border-b border-gray-100">
+                                        {bid.status === "approved" ? (
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    navigate(
+                                                        `/analyser-dashboard/${product}/bid/${bid.id}/downloads`,
+                                                        { state: { bid } }
+                                                    )
+                                                }
+                                                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-[11px] font-bold uppercase tracking-widest shadow-sm whitespace-nowrap"
+                                            >
+                                                Download
+                                            </button>
+                                        ) : (
+                                            <span className="text-gray-400">—</span>
+                                        )}
+                                    </td>
+                                    )}
+
                                 </tr>
 
                             ))}
@@ -372,11 +411,11 @@ export default function AnalyserDashboard({ product = "desktop" }) {
 
             </div>
 
-            {/* ===== PAGINATION ===== */}
+            {}
             {!loading && totalPages > 1 && (
                 <div className="flex items-center justify-center gap-1.5 py-4 border-t border-gray-100">
 
-                    {/* Prev */}
+                    {}
                     <button
                         onClick={() => goToPage(safePage - 1)}
                         disabled={safePage === 1}
@@ -387,7 +426,7 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                         ‹ Prev
                     </button>
 
-                    {/* Page numbers — window of 5 */}
+                    {}
                     {pageNumbers.map((page) => (
                         <button
                             key={page}
@@ -402,7 +441,7 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                         </button>
                     ))}
 
-                    {/* Next */}
+                    {}
                     <button
                         onClick={() => goToPage(safePage + 1)}
                         disabled={safePage === totalPages}

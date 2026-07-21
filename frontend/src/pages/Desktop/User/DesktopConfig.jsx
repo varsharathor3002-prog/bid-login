@@ -1,11 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 
-const API_BASE = "https://acxxelbidding.com/api";
+const API_BASE = import.meta.env.VITE_API_URL;
 
-// ============================================================
-// PROCESSORS - Only items NOT marked "remove" in Excel
-// ============================================================
-const PROCESSORS = [
+export const PROCESSORS = [
   { name: "Intel Core i3 12100", price: 14000 },
   { name: "Intel Core i3 14100", price: 14000 },
   { name: "Intel Core i5 12400", price: 21000 },
@@ -26,10 +23,7 @@ const PROCESSORS = [
   { name: "Ultra 7 265K", price: 35500 },
 ];
 
-// ============================================================
-// RAMS - Only items NOT marked "remove" in Excel
-// ============================================================
-const RAMS = [
+export const RAMS = [
   { name: "8GB DDR4 3200", price: 5000 },
   { name: "16GB DDR4 3200", price: 9000 },
   { name: "32GB DDR4 3200", price: 18000 },
@@ -40,12 +34,12 @@ const RAMS = [
   { name: "32GB DDR5 4800 2", price: 52000 },
 ];
 
-const HDDS = [
+export const HDDS = [
   { name: "1 TB", price: 5000 },
   { name: "2 TB", price: 7500 },
 ];
 
-const SSDS = [
+export const SSDS = [
   { name: "128 GB SATA", price: 3500 },
   { name: "256 GB SATA", price: 4500 },
   { name: "512 GB SATA", price: 6800 },
@@ -56,23 +50,23 @@ const SSDS = [
   { name: "1TB NVMe", price: 13500 },
 ];
 
-const OS_OPTIONS = [
+export const OS_OPTIONS = [
   { name: "Windows 11 Home", price: 1000 },
   { name: "Windows 11 Professional", price: 1000 },
   { name: "DOS", price: 1000 },
   { name: "Linux", price: 1000 },
 ];
 
-const DVDS = [{ name: "Yes", price: 1200 }];
+export const DVDS = [{ name: "Yes", price: 1200 }];
 
-const WIFIS = [
+export const WIFIS = [
   { name: "PCI Based 4.2 Bluetooth", price: 750 },
   { name: "Wi-fi AC 4.2 Bluetooth", price: 850 },
   { name: "Wi-Fi 6 5.0 Bluetooth", price: 1200 },
   { name: "Wi-Fi AX201 5.2 Bluetooth", price: 1500 },
 ];
 
-const MONITORS = [
+export const MONITORS = [
   { name: "19.5 inch VGA, HDMI", price: 4000 },
   { name: "21.5 inch VGA, HDMI", price: 4400 },
   { name: "21.5 inch with Speaker VGA, HDMI", price: 4600 },
@@ -84,17 +78,17 @@ const MONITORS = [
   { name: "27 inch DP VGA, HDMI", price: 8000 },
 ];
 
-const CABINETS = [
+export const CABINETS = [
   { name: "SFF", price: 1500 },
   { name: "Tower", price: 1500 },
 ];
 
-const KEYBOARDS = [
+export const KEYBOARDS = [
   { name: "Keyboard & Mouse Wired", price: 450 },
   { name: "Keyboard & Mouse Wireless", price: 850 },
 ];
 
-const WARRANTIES = [
+export const WARRANTIES = [
   { name: "1 Year", price: 1200 },
   { name: "2 Year", price: 1500 },
   { name: "3 Year", price: 1800 },
@@ -104,10 +98,7 @@ const WARRANTIES = [
   { name: "7 Year", price: 5000 },
 ];
 
-// ============================================================
-// MOTHERBOARDS - Only items NOT marked "remove" in Excel
-// ============================================================
-const MOTHERBOARDS = [
+export const MOTHERBOARDS = [
   { name: "AMD B650, DDR5, 4 USB 2.0, 2 USB 3.0, PCI16*2, PCI4*2", price: 7500 },
   { name: "AMD A520, 4 USB 2.0, 2 USB 3.0, PCI16*1, PCI4*1", price: 5000 },
   { name: "H810 With DDR5 DP, HDMI, USB 3.1 -2, USB 2.0 -6 PCI16-1 PCI-1, M.2 -1", price: 7500 },
@@ -116,23 +107,11 @@ const MOTHERBOARDS = [
   { name: "Q670 DDR4 4 DIMM, PCI X 16- 1 PCI 4 X2, M.2 2, 4 USB 2.0, 4 USB 3.0 TYPE C 1, VGA, HDMI", price: 10000 },
 ];
 
-// ============================================================
-// HELPER: Get price from local data
-// ============================================================
-const getPriceFromLocalData = (categoryList, value) => {
+export const getPriceFromLocalData = (categoryList, value) => {
   const item = categoryList.find((item) => item.name === value);
   return item ? item.price : "";
 };
 
-// ============================================================
-// PROCESSOR CATEGORIZATION (Based on Excel Remarks)
-// ============================================================
-// Categories:
-// - "intel_old"   : Intel 12th-14th Gen (NOT Ultra) → DDR4 RAM + H610/Q670 DDR4
-// - "intel_ultra" : Intel Ultra (225, 245K, 265K)   → DDR5 RAM + H810 DDR5
-// - "amd_old"     : AMD up to 5000 series           → DDR4 RAM + A520
-// - "amd_new"     : AMD 8500G, 9300G (7000/8000/9000) → DDR5 RAM + B650
-// ============================================================
 const getProcessorCategory = (processorName) => {
   if (!processorName) return null;
   if (processorName.includes("Ultra")) return "intel_ultra";
@@ -142,12 +121,9 @@ const getProcessorCategory = (processorName) => {
   return null;
 };
 
-// ============================================================
-// FILTER RAM based on Processor Category
-// ============================================================
-const getFilteredRams = (processorName) => {
+export const getFilteredRams = (processorName) => {
   const category = getProcessorCategory(processorName);
-  if (!category) return RAMS; // Show all if no processor selected
+  if (!category) return RAMS; 
 
   if (category === "intel_ultra" || category === "amd_new") {
     return RAMS.filter((r) => r.name.includes("DDR5"));
@@ -158,20 +134,15 @@ const getFilteredRams = (processorName) => {
   return RAMS;
 };
 
-// ============================================================
-// FILTER MOTHERBOARDS based on Processor Category
-// ============================================================
 const getFilteredIntelMotherboards = (processorName) => {
   const category = getProcessorCategory(processorName);
   if (!category) return MOTHERBOARDS.filter((m) => !m.name.includes("AMD"));
 
   if (category === "intel_ultra") {
-    // Ultra processors → H810 With DDR5 only
-    return MOTHERBOARDS.filter((m) => m.name.includes("H810"));
+        return MOTHERBOARDS.filter((m) => m.name.includes("H810"));
   }
   if (category === "intel_old") {
-    // 12th-14th Gen → H610 + Q670 DDR4 (both 2 DIMM and 4 DIMM)
-    return MOTHERBOARDS.filter(
+        return MOTHERBOARDS.filter(
       (m) => m.name.includes("H610") || m.name.includes("Q670 DDR4")
     );
   }
@@ -183,20 +154,15 @@ const getFilteredAmdMotherboards = (processorName) => {
   if (!category) return MOTHERBOARDS.filter((m) => m.name.includes("AMD"));
 
   if (category === "amd_new") {
-    // 8500G, 9300G → B650 only
-    return MOTHERBOARDS.filter((m) => m.name.includes("B650"));
+        return MOTHERBOARDS.filter((m) => m.name.includes("B650"));
   }
   if (category === "amd_old") {
-    // Up to 5000 series → A520 only
-    return MOTHERBOARDS.filter((m) => m.name.includes("A520"));
+        return MOTHERBOARDS.filter((m) => m.name.includes("A520"));
   }
   return [];
 };
 
-// ============================================================
-// CHECK if RAM/Motherboard is compatible with processor
-// ============================================================
-const isRamCompatible = (processorName, ramName) => {
+export const isRamCompatible = (processorName, ramName) => {
   const category = getProcessorCategory(processorName);
   if (!category) return true;
 
@@ -208,7 +174,7 @@ const isRamCompatible = (processorName, ramName) => {
   return true;
 };
 
-const isMotherboardCompatible = (processorName, mbName) => {
+export const isMotherboardCompatible = (processorName, mbName) => {
   const category = getProcessorCategory(processorName);
   if (!category) return true;
 
@@ -226,9 +192,6 @@ const isMotherboardCompatible = (processorName, mbName) => {
   return compatibleMbs.some((keyword) => mbName.includes(keyword));
 };
 
-// ============================================================
-// FORM INITIALIZATION
-// ============================================================
 const INITIAL_FORM = {
   processor: "",
   processor_price: "",
@@ -284,9 +247,6 @@ const normalizeInitialForm = (source = {}) => {
   return merged;
 };
 
-// ============================================================
-// MAIN COMPONENT
-// ============================================================
 export default function DesktopConfig({ bidData, onNext, onBack }) {
   const bid_id = bidData?.bid_id;
   const draftKey = useMemo(() => getDraftKey(bid_id), [bid_id]);
@@ -307,6 +267,7 @@ export default function DesktopConfig({ bidData, onNext, onBack }) {
 
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
+  const [processorNoneGroup, setProcessorNoneGroup] = useState(null);
 
   useEffect(() => {
     setForm((prev) => {
@@ -328,10 +289,7 @@ export default function DesktopConfig({ bidData, onNext, onBack }) {
     }
   }, [draftKey, form]);
 
-  // ============================================================
-  // DYNAMIC FILTERED LISTS (based on selected processor)
-  // ============================================================
-  const intelProcessors = PROCESSORS.filter(
+        const intelProcessors = PROCESSORS.filter(
     (p) => p.name.includes("Intel") || p.name.includes("Gen") || p.name.includes("Ultra")
   );
   const amdProcessors = PROCESSORS.filter((p) => p.name.includes("AMD"));
@@ -351,10 +309,7 @@ export default function DesktopConfig({ bidData, onNext, onBack }) {
     [form.processor]
   );
 
-  // ============================================================
-  // BACK HANDLER
-  // ============================================================
-  const handleBackClick = () => {
+        const handleBackClick = () => {
     try {
       localStorage.setItem(draftKey, JSON.stringify(form));
     } catch (error) {
@@ -367,30 +322,34 @@ export default function DesktopConfig({ bidData, onNext, onBack }) {
     }
   };
 
-  // ============================================================
-  // CHANGE HANDLER (with compatibility checks)
-  // ============================================================
-  const handleChange = async (e) => {
+        const handleChange = async (e) => {
     const { name, value } = e.target;
+    const processorGroup = e.target.dataset.processorGroup;
+    const fieldValue = name === "processor" && value === "None" ? "" : value;
     const priceField = `${name}_price`;
+
+    if (name === "processor") {
+      if (value === "None") {
+        setProcessorNoneGroup(processorGroup || null);
+      } else if (value) {
+        setProcessorNoneGroup((current) => current === processorGroup ? null : current);
+      }
+    }
 
     setForm((prev) => {
       const newForm = {
         ...prev,
-        [name]: value,
+        [name]: fieldValue,
         [priceField]: "",
       };
 
-      // When processor changes, check RAM and Motherboard compatibility
-      if (name === "processor") {
-        // Reset RAM if not compatible with new processor
-        if (prev.ram && !isRamCompatible(value, prev.ram)) {
+            if (name === "processor") {
+                if (prev.ram && !isRamCompatible(fieldValue, prev.ram)) {
           newForm.ram = "";
           newForm.ram_price = "";
         }
 
-        // Reset Motherboard if not compatible with new processor
-        if (prev.motherboard && !isMotherboardCompatible(value, prev.motherboard)) {
+                if (prev.motherboard && !isMotherboardCompatible(fieldValue, prev.motherboard)) {
           newForm.motherboard = "";
           newForm.motherboard_price = "";
         }
@@ -399,7 +358,7 @@ export default function DesktopConfig({ bidData, onNext, onBack }) {
       return newForm;
     });
 
-    if (!value || value === "None") return;
+    if (!fieldValue) return;
 
     let localList = null;
     if (name === "processor") localList = PROCESSORS;
@@ -416,16 +375,20 @@ export default function DesktopConfig({ bidData, onNext, onBack }) {
     else if (name === "motherboard") localList = MOTHERBOARDS;
 
     if (localList) {
-      const price = getPriceFromLocalData(localList, value);
+      const price = getPriceFromLocalData(localList, fieldValue);
       setForm((prev) => ({ ...prev, [priceField]: price }));
     }
   };
 
-  // ============================================================
-  // SUBMIT HANDLER
-  // ============================================================
-  const handleSubmit = async (e) => {
+        const handleSubmit = async (e) => {
     e.preventDefault();
+    const hasValidProcessor = PROCESSORS.some((processor) => processor.name === form.processor);
+    if (!hasValidProcessor) {
+      const validationMessage = "Please select an Intel or AMD Ryzen processor before submitting the form.";
+      setMsg(validationMessage);
+      window.alert(validationMessage);
+      return;
+    }
     setSaving(true);
     setMsg("");
     try {
@@ -451,10 +414,7 @@ export default function DesktopConfig({ bidData, onNext, onBack }) {
     }
   };
 
-  // ============================================================
-  // SELECT FIELD COMPONENT
-  // ============================================================
-  const SelectField = ({ label, name, options, required, optional }) => (
+        const SelectField = ({ label, name, options, required, optional }) => (
     <div className="col-span-1">
       <div className="flex items-center gap-2 mb-1">
         <label className="block text-sm font-medium text-gray-700">{label}</label>
@@ -468,7 +428,7 @@ export default function DesktopConfig({ bidData, onNext, onBack }) {
           value={form[name]}
           onChange={handleChange}
           required={required}
-          className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-700"
+          className="min-w-0 flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-700"
         >
           <option value="">Select</option>
           {options.map((opt) => (
@@ -484,26 +444,24 @@ export default function DesktopConfig({ bidData, onNext, onBack }) {
           readOnly
           disabled
           placeholder="Price"
-          className="w-24 border border-gray-200 rounded-md px-2 py-2 text-sm text-gray-500 bg-gray-50 cursor-not-allowed"
+          className="w-24 shrink-0 border border-gray-200 rounded-md px-2 py-2 text-sm text-gray-500 bg-gray-50 cursor-not-allowed"
         />
       </div>
     </div>
   );
 
-  // ============================================================
-  // GET GROUP VALUE (for processor/motherboard dropdowns)
-  // ============================================================
-  const getGroupValue = (currentValue, list) => {
-    if (currentValue === "None") return "None";
+        const getGroupValue = (currentValue, list) => {
     if (!currentValue) return "";
     const exists = list.some((item) => item.name === currentValue);
     return exists ? currentValue : "";
   };
 
-  // ============================================================
-  // COMPATIBILITY BADGE (shows what RAM/MB is required)
-  // ============================================================
-  const processorCategory = getProcessorCategory(form.processor);
+  const getProcessorGroupValue = (group, list) => {
+    if (processorNoneGroup === group) return "None";
+    return getGroupValue(form.processor, list);
+  };
+
+        const processorCategory = getProcessorCategory(form.processor);
   const compatibilityInfo = {
     intel_old: { ram: "DDR4 Only", mb: "H610 / Q670 DDR4" },
     intel_ultra: { ram: "DDR5 Only", mb: "H810 DDR5" },
@@ -533,9 +491,7 @@ export default function DesktopConfig({ bidData, onNext, onBack }) {
 
       <form onSubmit={handleSubmit}>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4">
-          {/* ============================================================
-              PROCESSOR SELECTION
-          ============================================================ */}
+          {}
           <div className="col-span-1 md:col-span-2 lg:col-span-3">
             <label className="block text-sm font-medium text-gray-700 mb-2 underline">
               Processor Selection
@@ -548,11 +504,12 @@ export default function DesktopConfig({ bidData, onNext, onBack }) {
                 <div className="flex gap-2">
                   <select
                     name="processor"
-                    value={getGroupValue(form.processor, intelProcessors)}
+                    data-processor-group="intel"
+                    value={getProcessorGroupValue("intel", intelProcessors)}
                     onChange={handleChange}
                     className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="">Select Intel </option>
+                    <option value="">Select Intel</option>
                     {intelProcessors.map((p) => (
                       <option key={p.name} value={p.name}>
                         {p.name}
@@ -581,11 +538,12 @@ export default function DesktopConfig({ bidData, onNext, onBack }) {
                 <div className="flex gap-2">
                   <select
                     name="processor"
-                    value={getGroupValue(form.processor, amdProcessors)}
+                    data-processor-group="amd"
+                    value={getProcessorGroupValue("amd", amdProcessors)}
                     onChange={handleChange}
                     className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="">Select AMD</option>
+                    <option value="">Select AMD Ryzen</option>
                     {amdProcessors.map((p) => (
                       <option key={p.name} value={p.name}>
                         {p.name}
@@ -610,15 +568,11 @@ export default function DesktopConfig({ bidData, onNext, onBack }) {
             </div>
           </div>
 
-          {/* ============================================================
-              RAM (Filtered based on processor)
-          ============================================================ */}
+          {}
           <SelectField label="Ram" name="ram" options={filteredRams} required />
           <SelectField label="Hard Disk Drive" name="hdd" options={HDDS} required />
 
-          {/* ============================================================
-              DESCRIPTIONS
-          ============================================================ */}
+          {}
           <div className="col-span-1">
             <div className="flex items-center gap-2 mb-1">
               <label className="block text-sm font-medium text-gray-700">
@@ -667,9 +621,7 @@ export default function DesktopConfig({ bidData, onNext, onBack }) {
             />
           </div>
 
-          {/* ============================================================
-              OTHER COMPONENTS
-          ============================================================ */}
+          {}
           <SelectField label="SSD 1" name="ssd" options={SSDS} required />
           <SelectField label="SSD 2" name="ssd2" options={SSDS} required />
           <SelectField label="OS" name="os" options={OS_OPTIONS} required />
@@ -680,9 +632,7 @@ export default function DesktopConfig({ bidData, onNext, onBack }) {
           <SelectField label="Keyboard & Mouse" name="keyboard" options={KEYBOARDS} required />
           <SelectField label="Warranty" name="warranty" options={WARRANTIES} required />
 
-          {/* ============================================================
-              DATE, EPBG, HDD RETURN
-          ============================================================ */}
+          {}
           <div className="col-span-1">
             <label className="block text-sm font-medium text-gray-700 mb-1">Bid End Date</label>
             <input
@@ -732,15 +682,13 @@ export default function DesktopConfig({ bidData, onNext, onBack }) {
             </div>
           </div>
 
-          {/* ============================================================
-              MOTHERBOARD SELECTION (Filtered based on processor)
-          ============================================================ */}
+          {}
           <div className="col-span-1 md:col-span-2 lg:col-span-3">
             <label className="block text-sm font-medium text-gray-700 mb-2 underline">
               Motherboard Selection
             </label>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Intel Motherboard Section */}
+              {}
               <div className="flex flex-col">
                 <span className="text-[11px] text-gray-500 font-medium mb-1 uppercase">
                   Intel Motherboard
@@ -785,7 +733,7 @@ export default function DesktopConfig({ bidData, onNext, onBack }) {
                 </div>
               </div>
 
-              {/* AMD Motherboard Section */}
+              {}
               <div className="flex flex-col">
                 <span className="text-[11px] text-gray-500 font-medium mb-1 uppercase">
                   AMD Motherboard
@@ -832,9 +780,7 @@ export default function DesktopConfig({ bidData, onNext, onBack }) {
             </div>
           </div>
 
-          {/* ============================================================
-              MOTHERBOARD DESCRIPTION
-          ============================================================ */}
+          {}
           <div className="col-span-1 md:col-span-3">
             <div className="flex items-center gap-2 mb-1">
               <label className="block text-sm font-medium text-gray-700">
@@ -853,9 +799,7 @@ export default function DesktopConfig({ bidData, onNext, onBack }) {
           </div>
         </div>
 
-        {/* ============================================================
-              SUBMIT BUTTON
-        ============================================================ */}
+        {}
         <div className="flex justify-start items-center">
           <button
             type="submit"
