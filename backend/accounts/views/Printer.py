@@ -590,6 +590,40 @@ def _post_process_printer_pdf(doc_type, output_path, bid=None):
                 )
             elif doc_type == "make_in_india" and bid is not None:
                 _rewrite_printer_make_in_india(page, bid)
+            elif doc_type in {"approved_atc_documents", "approved_all_documents"}:
+                page_text = page.get_text("text").lower()
+                if bid is not None and "warranty period" in page_text:
+                    _rewrite_printer_warranty_paragraph(page, bid)
+                _rewrite_line_text(
+                    page,
+                    lambda text: (
+                        "desktop and all in one" in text.lower()
+                        or "all in one pc" in text.lower()
+                        or "desktop computer" in text.lower()
+                    ),
+                    lambda text: re.sub(
+                        r"\s+",
+                        " ",
+                        text
+                        .replace("Acxxel Desktop and All in One", "Acxxel A4 and legal size MFP")
+                        .replace("ACXXEL Desktop and All in One", "ACXXEL A4 and legal size MFP")
+                        .replace("Desktop and All in One", "A4 and legal size MFP")
+                        .replace("desktop and all in one", "A4 and legal size MFP")
+                        .replace("All in One PC", "A4 and legal size MFP")
+                        .replace("all in one pc", "A4 and legal size MFP")
+                        .replace("desktop computer", "printer")
+                        .replace("Desktop Computer", "printer"),
+                    ).strip(),
+                )
+                _rewrite_line_text(
+                    page,
+                    lambda text: "desktops" in text.lower(),
+                    lambda text: re.sub(r"desktops", "Printers", text, flags=re.IGNORECASE),
+                    fontsize=10.5,
+                )
+                _rewrite_printer_preloaded_os_paragraph(page)
+                if bid is not None:
+                    _rewrite_printer_make_in_india(page, bid)
         doc.saveIncr()
     finally:
         doc.close()
@@ -850,6 +884,7 @@ class _PrinterDesktopBidAdapter:
         self.epbg = bid.epbg
         self.freightInstallation = bid.freightInstallation
         self.freightInstallation_price = 0
+        self.total_price = bid.final_amount or 0
         self.hddreturnable = "No"
         self.hddreturnable_price = 0
         self.optional_ports = ""
@@ -891,8 +926,12 @@ def generate_printer_certificates(request, bid_id):
             doc_type = ""
 
         if getattr(response, "status_code", 500) == 200 and doc_type:
+            output_filenames = {
+                "approved_price_paper": f"bid_{bid_id}_price_approved.pdf",
+                "approved_all_documents": f"bid_{bid_id}_all_approved_documents.pdf",
+            }
             output_path = os.path.join(
-                "media", "generated", f"bid_{bid_id}_{doc_type}.pdf"
+                "media", "generated", output_filenames.get(doc_type, f"bid_{bid_id}_{doc_type}.pdf")
             )
             _post_process_printer_pdf(doc_type, output_path, bid=bid)
         return response

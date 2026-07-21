@@ -59,12 +59,26 @@ const getPrinterTypeLabel = (value) =>
 
 const Field = ({ item, form, onChange }) => {
   const [name, label, type = "text"] = item;
+  const isFinalPrice = name === "final_amount";
   const classes = "w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100";
   return (
-    <div className={type === "textarea" ? "md:col-span-2 lg:col-span-3" : ""}>
-      <label className="mb-1 block text-sm font-medium text-gray-700">{label}</label>
+    <div className={`${type === "textarea" ? "md:col-span-2 lg:col-span-3" : ""} ${isFinalPrice ? "rounded-md border-2 border-emerald-300 bg-emerald-50 p-4 shadow-sm" : ""}`}>
+      <label className={`mb-1 block text-sm ${isFinalPrice ? "font-bold text-emerald-800" : "font-medium text-gray-700"}`}>{label}</label>
       {type === "textarea" ? (
         <textarea name={name} value={form[name] ?? ""} onChange={onChange} rows={2} className={`${classes} resize-none`} />
+      ) : isFinalPrice ? (
+        <div className="relative">
+          <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-sm font-bold text-emerald-700">Rs.</span>
+          <input
+            name={name}
+            type={type}
+            min="0"
+            step="0.01"
+            value={form[name] ?? ""}
+            onChange={onChange}
+            className="w-full rounded-md border-2 border-emerald-500 bg-white py-2.5 pl-11 pr-3 text-base font-bold text-emerald-900 outline-none focus:border-emerald-700 focus:ring-2 focus:ring-emerald-200"
+          />
+        </div>
       ) : (
         <input name={name} type={type} value={form[name] ?? ""} onChange={onChange} className={classes} />
       )}

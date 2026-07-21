@@ -24,6 +24,7 @@ import CreatePrinterBid from "./pages/Printer/User/CreatePrinterBid";
 import AnalyserPrinterDashboard from "./pages/Printer/Analyser/AnalyserPrinterDashboard";
 import PrinterBidDetailView from "./pages/Printer/Analyser/PrinterBidDetailView";
 import AnalyserPrinterDocument from "./pages/Printer/Analyser/AnalyserPrinterDocument";
+import PrinterApprovedBidDownloads from "./pages/Printer/Analyser/PrinterApprovedBidDownloads";
 import PrinterBidApproval from "./pages/Printer/Admin/PrinterBidApproval";
 
 const ComingSoon = ({ product }) => (
@@ -71,6 +72,7 @@ function App() {
           <Route path="aio" element={<ComingSoon product="AIO" />} />
           <Route path="workstation" element={<WorkstationAnalyserDashboard />} />
           <Route path="printer" element={<AnalyserPrinterDashboard />} />
+          <Route path="printer/bid/:id/downloads" element={<PrinterApprovedBidDownloads />} />
           <Route path="toner" element={<ComingSoon product="Toner" />} />
         </Route>
 

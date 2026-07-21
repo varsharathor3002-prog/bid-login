@@ -18,49 +18,61 @@ export default function AnalyserPrinterDashboard() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    setCurrentPage(1);
-    fetchBids();
+    let cancelled = false;
+
+    const loadBids = async () => {
+      setLoading(true);
+      setError("");
+
+      try {
+        const res = await fetch(`${API_URL}?status=${activeTab}&role=analyser`, {
+          headers: { "Content-Type": "application/json" },
+        });
+        if (!res.ok) throw new Error("Server error");
+
+        const data = await res.json();
+        if (cancelled) return;
+        const nextBids = Array.isArray(data) ? data : [];
+        setBids(nextBids);
+        if (activeTab === "re-analyze") setReAnalyzeCount(nextBids.length);
+      } catch {
+        if (cancelled) return;
+        setError("Backend se printer bids load nahi ho pa rahi hain.");
+        setBids([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    loadBids();
+    return () => {
+      cancelled = true;
+    };
   }, [activeTab]);
 
   useEffect(() => {
-    fetchReAnalyzeCount();
+    let cancelled = false;
+
+    const loadReAnalyzeCount = async () => {
+      try {
+        const res = await fetch(`${API_URL}?status=re-analyze&role=analyser`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled) setReAnalyzeCount(Array.isArray(data) ? data.length : 0);
+      } catch {
+        if (!cancelled) setReAnalyzeCount(0);
+      }
+    };
+
+    loadReAnalyzeCount();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const fetchReAnalyzeCount = async () => {
-    try {
-      const res = await fetch(`${API_URL}?status=re-analyze&role=analyser`);
-      if (!res.ok) return;
-      const data = await res.json();
-      setReAnalyzeCount(Array.isArray(data) ? data.length : 0);
-    } catch {
-          }
-  };
-
-  const fetchBids = async () => {
-    setLoading(true);
-    setError("");
-
-    try {
-      const res = await fetch(`${API_URL}?status=${activeTab}&role=analyser`, {
-        headers: { "Content-Type": "application/json" },
-      });
-
-      if (!res.ok) {
-        throw new Error("Server error");
-      }
-
-      const data = await res.json();
-      setBids(Array.isArray(data) ? data : []);
-
-      if (activeTab === "re-analyze") {
-        setReAnalyzeCount(Array.isArray(data) ? data.length : 0);
-      }
-    } catch {
-      setError("Backend se printer bids load nahi ho pa rahi hain.");
-      setBids([]);
-    } finally {
-      setLoading(false);
-    }
+  const handleTabChange = (tab) => {
+    setCurrentPage(1);
+    setActiveTab(tab);
   };
 
   const totalPages = Math.max(1, Math.ceil(bids.length / ITEMS_PER_PAGE));
@@ -97,7 +109,7 @@ export default function AnalyserPrinterDashboard() {
     <div className="w-full bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
       <div className="flex gap-4 px-6 bg-gray-50 border-b border-gray-200 mt-4">
         <button
-          onClick={() => setActiveTab("pending")}
+          onClick={() => handleTabChange("pending")}
           className={`py-4 px-2 text-sm font-semibold transition-all flex items-center gap-2 ${
             activeTab === "pending" ? "text-amber-600 border-b-2 border-amber-600" : "text-gray-500 hover:text-gray-700"
           }`}
@@ -107,17 +119,17 @@ export default function AnalyserPrinterDashboard() {
         </button>
 
         <button
-          onClick={() => setActiveTab("reviewed")}
+          onClick={() => handleTabChange("approved")}
           className={`py-4 px-2 text-sm font-semibold transition-all flex items-center gap-2 ${
-            activeTab === "reviewed" ? "text-emerald-600 border-b-2 border-emerald-600" : "text-gray-500 hover:text-gray-700"
+            activeTab === "approved" ? "text-emerald-600 border-b-2 border-emerald-600" : "text-gray-500 hover:text-gray-700"
           }`}
         >
           <span>✅</span>
-          Reviewed
+          Approved
         </button>
 
         <button
-          onClick={() => setActiveTab("re-analyze")}
+          onClick={() => handleTabChange("re-analyze")}
           className={`py-4 px-2 text-sm font-semibold transition-all flex items-center gap-2 ${
             activeTab === "re-analyze" ? "text-rose-600 border-b-2 border-rose-600" : "text-gray-500 hover:text-gray-700"
           }`}
@@ -152,13 +164,16 @@ export default function AnalyserPrinterDashboard() {
               <th className="w-[10%] px-2 py-4 text-[10px] font-bold text-white uppercase border-b border-slate-700">Date</th>
               <th className="w-[12%] px-2 py-4 text-[10px] font-bold text-white uppercase border-b border-slate-700">Status</th>
               <th className="w-[8%] px-2 py-4 text-[10px] font-bold text-white uppercase border-b border-slate-700">Action</th>
+              {activeTab === "approved" && (
+                <th className="w-[12%] px-2 py-4 text-[10px] font-bold text-white uppercase border-b border-slate-700">Download Approved Bid</th>
+              )}
             </tr>
           </thead>
 
           <tbody>
             {loading && (
               <tr>
-                <td colSpan="10" className="text-center py-16 text-gray-400 font-medium">
+                <td colSpan={activeTab === "approved" ? 11 : 10} className="text-center py-16 text-gray-400 font-medium">
                   Loading printer bids...
                 </td>
               </tr>
@@ -166,7 +181,7 @@ export default function AnalyserPrinterDashboard() {
 
             {!loading && bids.length === 0 && (
               <tr>
-                <td colSpan="10" className="text-center py-16 text-gray-400 font-medium">
+                <td colSpan={activeTab === "approved" ? 11 : 10} className="text-center py-16 text-gray-400 font-medium">
                   No printer bids found.
                 </td>
               </tr>
@@ -176,7 +191,7 @@ export default function AnalyserPrinterDashboard() {
               <tr
                 key={bid.id}
                 className={`bg-white hover:bg-gray-50 transition-colors ${
-                  bid.status === "reviewed"
+                  bid.status === "approved"
                     ? "border-l-4 border-l-emerald-500"
                     : bid.status === "re-analyze"
                     ? "border-l-4 border-l-rose-500"
@@ -221,9 +236,9 @@ export default function AnalyserPrinterDashboard() {
                       Pending
                     </span>
                   )}
-                  {bid.status === "reviewed" && (
+                  {bid.status === "approved" && (
                     <span className="inline-flex items-center gap-1 whitespace-nowrap px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">
-                      ✅ Reviewed
+                      ✅ Approved
                     </span>
                   )}
                   {bid.status === "re-analyze" && (
@@ -236,20 +251,31 @@ export default function AnalyserPrinterDashboard() {
                   <button
                     onClick={() =>
                       navigate(`/analyser-dashboard/printer/bid/${bid.id}`, {
-                        state: { bid, readOnly: bid.status === "reviewed" },
+                        state: { bid, readOnly: bid.status === "approved" },
                       })
                     }
                     className={`px-4 py-2 rounded text-[11px] font-bold uppercase tracking-widest shadow-sm transition-all whitespace-nowrap text-white ${
-                      bid.status === "reviewed"
+                      bid.status === "approved"
                         ? "bg-emerald-600 hover:bg-emerald-700"
                         : bid.status === "re-analyze"
                         ? "bg-rose-600 hover:bg-rose-700"
                         : "bg-amber-600 hover:bg-amber-700"
                     }`}
                   >
-                    {bid.status === "reviewed" ? "View" : bid.status === "re-analyze" ? "Resolve" : "View"}
+                    {bid.status === "approved" ? "View" : bid.status === "re-analyze" ? "Resolve" : "View"}
                   </button>
                 </td>
+                {activeTab === "approved" && (
+                  <td className="px-2 py-4 border-b border-gray-100">
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/analyser-dashboard/printer/bid/${bid.id}/downloads`, { state: { bid } })}
+                      className="whitespace-nowrap rounded bg-blue-600 px-4 py-2 text-[11px] font-bold uppercase tracking-widest text-white shadow-sm hover:bg-blue-700"
+                    >
+                      Download
+                    </button>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
