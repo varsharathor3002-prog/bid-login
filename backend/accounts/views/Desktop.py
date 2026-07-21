@@ -3220,9 +3220,6 @@ def update_desktop_docs(request, bid_id):
         if "atc_special_document" in request.FILES:
             uploaded_file = request.FILES["atc_special_document"]
 
-            if uploaded_file.size > 5 * 1024 * 1024:
-                return JsonResponse({"error": "File size should be less than 5MB"}, status=400)
-
             bid.atc_special_document = uploaded_file
 
         analyser_username = request.POST.get("analyser_username", "").strip()

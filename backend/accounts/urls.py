@@ -25,6 +25,7 @@ from .views.Printer import (
     list_printer_catalogue_products,
     review_printer_bid,
     admin_review_printer_bid,
+    delete_printer_bid,
     update_printer_docs,
     generate_printer_certificates,
 )
@@ -79,6 +80,7 @@ urlpatterns = [
     path("desktop-bids/<int:bid_id>/", views.get_desktop_bid, name="get_desktop_bid"),
     path("desktop-bids/<int:bid_id>/review/", views.review_desktop_bid, name="review_desktop_bid"),
     path("desktop-bids/<int:bid_id>/admin-review/", views.admin_review_desktop_bid, name="admin_review_desktop_bid"),
+    path("desktop-bids/<int:bid_id>/delete/", views.delete_desktop_bid, name="delete_desktop_bid"),
 
 
     path("desktop-bids/<int:bid_id>/generate-docs/", views.generate_certificates, name="generate-certificates"),
@@ -120,6 +122,7 @@ urlpatterns = [
     path("printer-bids/<int:bid_id>/", get_printer_bid, name="get_printer_bid"),
     path("printer-bids/<int:bid_id>/review/", review_printer_bid, name="review_printer_bid"),
     path("printer-bids/<int:bid_id>/admin-review/", admin_review_printer_bid, name="admin_review_printer_bid"),
+    path("printer-bids/<int:bid_id>/delete/", delete_printer_bid, name="delete_printer_bid"),
     path("printer-bids/<int:bid_id>/generate-docs/", generate_printer_certificates, name="generate_printer_certificates"),
     path("printer-bids/<int:bid_id>/update-docs/", update_printer_docs, name="update_printer_docs"),
     path("printer-catalogue/", list_printer_catalogue_products, name="list_printer_catalogue_products"),

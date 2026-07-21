@@ -1478,14 +1478,25 @@ def admin_review_printer_bid(request, bid_id):
 
 
 @csrf_exempt
+@require_http_methods(["DELETE"])
+def delete_printer_bid(request, bid_id):
+    try:
+        bid = PrinterBid.objects.filter(id=bid_id).first()
+        if not bid:
+            return JsonResponse({"error": "Bid not found"}, status=404)
+        bid.delete()
+        return JsonResponse({"message": "Printer bid deleted successfully"}, status=200)
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=400)
+
+
+@csrf_exempt
 @require_http_methods(["POST"])
 def update_printer_docs(request, bid_id):
     try:
         bid = PrinterBid.objects.get(id=bid_id)
         if "atc_special_document" in request.FILES:
             uploaded_file = request.FILES["atc_special_document"]
-            if uploaded_file.size > 5 * 1024 * 1024:
-                return JsonResponse({"error": "File size should be less than 5MB"}, status=400)
             bid.atc_special_document = uploaded_file
         analyser_username = request.POST.get("analyser_username", "").strip()
         selected_general_docs = _parse_json_list(request.POST.get("selected_general_docs", ""))

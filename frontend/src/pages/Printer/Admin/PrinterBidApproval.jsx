@@ -220,6 +220,7 @@ export default function PrinterBidApproval() {
   const [form, setForm] = useState({});
   const [adminNote, setAdminNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
   const [message, setMessage] = useState("");
   const [reAnalyzeCount, setReAnalyzeCount] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
@@ -295,6 +296,23 @@ export default function PrinterBidApproval() {
     } finally { setSubmitting(false); }
   };
 
+  const handleDelete = async (bid) => {
+    if (!window.confirm("Are you sure you want to delete this printer bid?")) return;
+    setDeletingId(bid.id);
+    try {
+      const response = await fetch(`${API_BASE}/printer-bids/${bid.id}/delete/`, {
+        method: "DELETE",
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Delete failed");
+      setBids((current) => current.filter((item) => item.id !== bid.id));
+    } catch (err) {
+      window.alert(err.message || "Unable to delete printer bid.");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   const formatDate = (value) => value ? new Date(value).toLocaleDateString("en-IN", {
     day: "2-digit", month: "short", year: "numeric",
   }) : "-";
@@ -355,7 +373,28 @@ export default function PrinterBidApproval() {
                 <td className="truncate px-4 py-4 text-center text-sm text-gray-700">{bid.model_number || "-"}</td>
                 <td className="whitespace-nowrap px-4 py-4 text-center text-sm text-gray-700">{formatDate(bid.updated_at || bid.created_at)}</td>
                 <td className="px-4 py-4 text-center"><div className="flex justify-center"><StatusBadge status={activeTab} /></div></td>
-                <td className="px-4 py-4 text-center"><button type="button" onClick={() => openModal(bid)} className="rounded-md bg-blue-600 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-blue-700">View</button></td>
+                <td className="px-4 py-4 text-center">
+                  <div className="flex items-center justify-center gap-2">
+                    <button type="button" onClick={() => openModal(bid)} className="rounded-md bg-blue-600 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-blue-700">View</button>
+                    {activeTab === "approved" && (
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(bid)}
+                        disabled={deletingId === bid.id}
+                        title="Delete bid"
+                        className="flex h-8 w-8 items-center justify-center rounded-md bg-red-50 text-red-600 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {deletingId === bid.id ? (
+                          <span className="h-4 w-4 animate-spin rounded-full border-2 border-red-200 border-t-red-600" />
+                        ) : (
+                          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                </td>
               </tr>
             ))}
           </tbody>

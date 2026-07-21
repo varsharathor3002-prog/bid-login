@@ -49,7 +49,10 @@ export default function WorkstationDocument({ bidData, onSuccess, onBack, submit
   const clearGeneralDocsSelection = () => setSelectedGeneralDocs({});
 
   const handleSpecialFile = (e) => {
-    if (e.target.files?.[0]) setSpecialDoc(e.target.files[0]);
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setError("");
+    setSpecialDoc(file);
   };
 
   // ── View Certificate — workstation endpoint ──────────────────
@@ -435,7 +438,7 @@ export default function WorkstationDocument({ bidData, onSuccess, onBack, submit
                 ) : (
                   <>
                     <div style={{ fontSize: 13, fontWeight: 700, color: "#5b21b6" }}>Click to upload document</div>
-                    <div style={{ fontSize: 11, color: "#8b5cf6" }}>PDF, JPG, PNG — Max 5MB</div>
+                    <div style={{ fontSize: 11, color: "#8b5cf6" }}>PDF, JPG, PNG</div>
                   </>
                 )}
                 <input type="file" style={{ display: "none" }} accept=".pdf,.jpg,.jpeg,.png" onChange={handleSpecialFile} />
