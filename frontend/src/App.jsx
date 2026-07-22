@@ -7,11 +7,11 @@ import AnalyserDocument from "./pages/Desktop/Analyser/Analyserdocument";
 import DesktopBidApproval from "./pages/Desktop/Admin/DesktopBidApproval";
 
 import UserNavbar from "./components/user/UserNavbar";
-import CreateDesktopBid from "./pages/Desktop/user/CreateDesktopBid";
-import CreateWorkstationBid from "./pages/workstation/User/CreateWorkstationBid";
-import WorkstationAnalyserDashboard from "./pages/workstation/Analyser/WorkstationAnalyserDashboard";
-import WorkstationBidDetailView from "./pages/workstation/Analyser/WorkstationBidDetailView";
-import WorkstationBidApproval from "./pages/workstation/Admin/WorkstationBidApproval";
+import CreateDesktopBid from "./pages/Desktop/User/CreateDesktopBid";
+import CreateWorkstationBid from "./pages/Workstation/User/CreateWorkstationBid";
+import WorkstationAnalyserDashboard from "./pages/Workstation/Analyser/WorkstationAnalyserDashboard";
+import WorkstationBidDetailView from "./pages/Workstation/Analyser/WorkstationBidDetailView";
+import WorkstationBidApproval from "./pages/Workstation/Admin/WorkstationBidApproval";
 
 import AnalyserNavbar from "./components/analyser/AnalyserNavbar";
 import AnalyserDashboard from "./pages/Desktop/Analyser/AnalyserDashboard";
