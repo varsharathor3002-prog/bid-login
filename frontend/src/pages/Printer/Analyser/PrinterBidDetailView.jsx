@@ -32,6 +32,10 @@ const PRINTER_MODEL_IMAGES = {
 
 const GENERAL_DOCS = [
   { id: "manufacturer_auth", label: "MANUFACTURER AUTHORIZATION CERTIFICATE" },
+  { id: "experience_certificate", label: "EXPERIENCE CERTIFICATE" },
+  { id: "past_performance", label: "PAST PERFORMANCE" },
+  { id: "oem_annual_turnover", label: "OEM ANNUAL TURNOVER" },
+  { id: "atc_acceptance_letter", label: "ATC ACCEPTANCE LETTER" },
   { id: "bidder_financial", label: "BIDDER FINANCIAL UNDERSTANDINGS" },
   { id: "non_obsolete", label: "NON OBSOLETE" },
   { id: "non_malicious", label: "NON MALICIOUS CODE" },

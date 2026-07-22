@@ -1753,7 +1753,7 @@ def generate_certificates(request, bid_id):
             sections = [
                 ("PRODUCT DETAILS", [
                     ("Model Number", specs["model_number"]),
-                    ("Brand", specs["brand"].upper()),
+                    ("Brand", "acxxel"),
                 ]),
                 ("PROCESSOR", [
                     ("Processor Number", specs["processor"]),
@@ -1938,9 +1938,9 @@ def generate_certificates(request, bid_id):
         normalized_warranty = _normalize_warranty_text(warranty_text) or "standard warranty"
         formatted_model = _format_model_number(model_number) or "quoted model"
         paragraph = (
-            "This is to certify that Laps N Tabs Technology Pvt. Ltd. is the OEM of ACXXEL "
+            "This is to certify that Laps N Tabs Technology Pvt. Ltd. is the OEM of acxxel "
             f"Desktop Brand and will provide comprehensive warranty during entire standard "
-            f"warranty period i.e. {normalized_warranty} for quoted ACXXEL Desktop "
+            f"warranty period i.e. {normalized_warranty} for quoted acxxel Desktop "
             f"{formatted_model}, if the said bid award to us."
         )
 
@@ -2102,7 +2102,7 @@ def generate_certificates(request, bid_id):
 
     def _replace_service_support_heading(page):
         old_text = "ACXXEL SERVICE PARTNERS"
-        new_text = "List Of Acxxel Service Center In Major City"
+        new_text = "List Of acxxel Service Center In Major City"
         areas = page.search_for(old_text)
         if not areas:
             return
@@ -2500,6 +2500,31 @@ def generate_certificates(request, bid_id):
 
         suppress_tender_page_numbers = {3, 26, 27, 28, 29}
 
+        def _lowercase_acxxel(page):
+            matches = []
+            for word in page.get_text("words"):
+                text = word[4]
+                lowered = re.sub(r"acxxel", "acxxel", text, flags=re.IGNORECASE)
+                if lowered != text:
+                    matches.append((fitz.Rect(word[:4]), lowered))
+            if not matches:
+                return
+            for area, _text in matches:
+                page.add_redact_annot(
+                    fitz.Rect(area.x0 - 0.5, area.y0 - 0.5, area.x1 + 0.5, area.y1 + 0.5),
+                    fill=(1, 1, 1),
+                )
+            page.apply_redactions()
+            for area, text in matches:
+                fontsize = max(7, min(12, area.height * 0.82))
+                page.insert_text(
+                    (area.x0, area.y1 - 1),
+                    text,
+                    fontsize=fontsize,
+                    fontname="hebo",
+                    color=(0, 0, 0),
+                )
+
         for page_index, page in enumerate(new_doc):
             original_page_number = page_from + page_index
             # The Trade Mark Certificate (page 4 in the master template) is a
@@ -2521,6 +2546,10 @@ def generate_certificates(request, bid_id):
                 if original_page_number == 30:
                     _replace_service_support_clause_heading(page)
                     _replace_presented_with_represented(page)
+                page_text_raw = page.get_text("text")
+
+            if doc_type in {"manufacturer_auth", "service_support"}:
+                _lowercase_acxxel(page)
                 page_text_raw = page.get_text("text")
 
             if suppress_tender_on_page:
@@ -2698,7 +2727,7 @@ def generate_certificates(request, bid_id):
 
                     para_segments = [
                         ("This is to certify that ", False),
-                        ("ACXXEL DESKTOP ", True),
+                        ("acxxel DESKTOP ", True),
                         (formatted_model + " ", True),
                         ("Quoted under ", False),
                         ("GeM Bid No. – ", True),

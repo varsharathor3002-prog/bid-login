@@ -425,6 +425,32 @@ def _rewrite_line_text(page, predicate, transform, fontsize=10.5):
     return True
 
 
+def _lowercase_printer_acxxel(page):
+    matches = []
+    for word in page.get_text("words"):
+        text = word[4]
+        lowered = re.sub(r"acxxel", "acxxel", text, flags=re.IGNORECASE)
+        if lowered != text:
+            matches.append((fitz.Rect(word[:4]), lowered))
+    if not matches:
+        return
+    for area, _text in matches:
+        page.add_redact_annot(
+            fitz.Rect(area.x0 - 0.5, area.y0 - 0.5, area.x1 + 0.5, area.y1 + 0.5),
+            fill=(1, 1, 1),
+        )
+    page.apply_redactions()
+    for area, text in matches:
+        fontsize = max(7, min(12, area.height * 0.82))
+        page.insert_text(
+            (area.x0, area.y1 - 1),
+            text,
+            fontsize=fontsize,
+            fontname="hebo",
+            color=(0, 0, 0),
+        )
+
+
 def _regex_replace_line_text(page, predicate, pattern, replacement, fontsize=10.5):
     return _rewrite_line_text(
         page,
@@ -449,9 +475,9 @@ def _rewrite_printer_warranty_paragraph(page, bid):
     )
     model_number = str(bid.model_number or "quoted model").strip()
     paragraph = (
-        "This is to certify that Laps N Tabs Technology Pvt. Ltd. is the OEM of ACXXEL "
+        "This is to certify that Laps N Tabs Technology Pvt. Ltd. is the OEM of acxxel "
         "Printer Brand and will provide comprehensive warranty during entire standard "
-        f"warranty period i.e. {warranty} for quoted ACXXEL Printer "
+        f"warranty period i.e. {warranty} for quoted acxxel Printer "
         f"{model_number}, if the said bid award to us."
     )
     para_rect = fitz.Rect(82, 314, page.rect.width - 42, 374)
@@ -496,7 +522,7 @@ def _rewrite_printer_make_in_india(page, bid):
 
     model_number = str(bid.model_number or "quoted model").strip()
     x = anchor.x0
-    page.insert_text((x, anchor.y0 + 10), f"ACXXEL PRINTER MODEL  {model_number}", fontsize=10.5, fontname="hebo", color=(0, 0, 0))
+    page.insert_text((x, anchor.y0 + 10), f"acxxel PRINTER MODEL  {model_number}", fontsize=10.5, fontname="hebo", color=(0, 0, 0))
     page.insert_text((x, anchor.y0 + 25), "Manufacturing plant: Laps N Tabs Technology Private Limited C-187, Nirala Nagar", fontsize=9.5, fontname="helv", color=(0, 0, 0))
     page.insert_text((x, anchor.y0 + 40), "Lucknow-226020.", fontsize=10.5, fontname="hebo", color=(0, 0, 0))
 
@@ -534,7 +560,7 @@ def _rewrite_printer_preloaded_os_paragraph(page):
 
     paragraph = (
         "You may kindly take reference of the above bid for procurement of A4 and legal size MFP. "
-        "We hereby confirm that ACXXEL make of printer quoted by the above bid is offered with "
+        "We hereby confirm that acxxel make of printer quoted by the above bid is offered with "
         "factory preloaded Microsoft Windows 11 Professional license."
     )
     page.insert_textbox(
@@ -569,8 +595,8 @@ def _post_process_printer_pdf(doc_type, output_path, bid=None):
                         r"\s+",
                         " ",
                         text
-                        .replace("Acxxel Desktop and All in One", "Acxxel A4 and legal size MFP")
-                        .replace("ACXXEL Desktop and All in One", "ACXXEL A4 and legal size MFP")
+                        .replace("Acxxel Desktop and All in One", "acxxel A4 and legal size MFP")
+                        .replace("ACXXEL Desktop and All in One", "acxxel A4 and legal size MFP")
                         .replace("Desktop and All in One", "A4 and legal size MFP")
                         .replace("desktop and all in one", "A4 and legal size MFP")
                         .replace("All in One PC", "A4 and legal size MFP")
@@ -605,8 +631,8 @@ def _post_process_printer_pdf(doc_type, output_path, bid=None):
                         r"\s+",
                         " ",
                         text
-                        .replace("Acxxel Desktop and All in One", "Acxxel A4 and legal size MFP")
-                        .replace("ACXXEL Desktop and All in One", "ACXXEL A4 and legal size MFP")
+                        .replace("Acxxel Desktop and All in One", "acxxel A4 and legal size MFP")
+                        .replace("ACXXEL Desktop and All in One", "acxxel A4 and legal size MFP")
                         .replace("Desktop and All in One", "A4 and legal size MFP")
                         .replace("desktop and all in one", "A4 and legal size MFP")
                         .replace("All in One PC", "A4 and legal size MFP")
@@ -624,6 +650,10 @@ def _post_process_printer_pdf(doc_type, output_path, bid=None):
                 _rewrite_printer_preloaded_os_paragraph(page)
                 if bid is not None:
                     _rewrite_printer_make_in_india(page, bid)
+
+            if doc_type in {"manufacturer_auth", "service_support"}:
+                _lowercase_printer_acxxel(page)
+
         doc.saveIncr()
     finally:
         doc.close()
@@ -758,7 +788,7 @@ def _generate_printer_spec_pdf(request, bid, doc_type):
     title = (
         f"SUBJECT: COMPLIANCE OF BOQ SPECIFICATION ({model})"
         if is_compliance
-        else f"SUBJECT: DATA SHEET OF ACXXEL PRINTER ({model})"
+        else f"SUBJECT: DATA SHEET OF acxxel PRINTER ({model})"
     )
     widths = [105, 145, 145, 92] if is_compliance else [135, 235, 117]
 

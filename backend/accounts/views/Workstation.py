@@ -1083,7 +1083,7 @@ def generate_workstation_certificates(request, bid_id):
             for area in areas:
                 page.insert_textbox(
                     fitz.Rect(92, area.y0 - 1, page.rect.width - 92, area.y1 + 6),
-                    "List Of Acxxel Service Center In Major City",
+                    "List Of acxxel Service Center In Major City",
                     fontsize=11,
                     fontname="hebo",
                     color=(0, 0, 0),
@@ -1168,7 +1168,7 @@ def generate_workstation_certificates(request, bid_id):
                         y += 15
                 page.insert_textbox(
                     fitz.Rect(72, 203, page.rect.width - 52, 232),
-                    "This is certifying that ACXXEL Workstation offers on-site comprehensive warranty as said in bid document.",
+                    "This is certifying that acxxel Workstation offers on-site comprehensive warranty as said in bid document.",
                     fontsize=9.5,
                     fontname="helv",
                     color=(0, 0, 0),
@@ -1230,8 +1230,8 @@ def generate_workstation_certificates(request, bid_id):
             page.insert_textbox(
                 fitz.Rect(72, 375, page.rect.width - 52, 450),
                 "This is to inform you that we M/S LAPS N TABS TECHNOLOGY PRIVATE LIMITED manufacturer "
-                "of ACXXEL Workstation having registered office at C-187, Nirala Nagar, Lucknow-226020 "
-                "Uttar Pradesh are directly participating as OEM in the above mentioned bid \"ACXXEL\". "
+                "of acxxel Workstation having registered office at C-187, Nirala Nagar, Lucknow-226020 "
+                "Uttar Pradesh are directly participating as OEM in the above mentioned bid \"acxxel\". "
                 "It is also a registered OEM on GeM by the same name. Trade Mark Certificate is attached below.",
                 fontsize=9.5,
                 fontname="hebo",
@@ -1267,7 +1267,7 @@ def generate_workstation_certificates(request, bid_id):
             page.apply_redactions()
             paragraph = (
                 "You may kindly take reference of the above bid for procurement of Workstation. "
-                "We hereby confirm that ACXXEL make of Workstation quoted by the above bid is "
+                "We hereby confirm that acxxel make of Workstation quoted by the above bid is "
                 f"offered with factory preloaded Microsoft {os_text} license."
             )
             page.insert_textbox(
@@ -1407,7 +1407,7 @@ def generate_workstation_certificates(request, bid_id):
                 max_width=page.rect.width - 150,
                 segments=[
                     ("This is to certify that ", False),
-                    ("ACXXEL WORKSTATION ", True),
+                    ("acxxel WORKSTATION ", True),
                     (f"{product_model} ", True),
                     ("Quoted under ", False),
                     ("GeM Bid No. - ", True),
@@ -1431,7 +1431,7 @@ def generate_workstation_certificates(request, bid_id):
             page.insert_textbox(fitz.Rect(col1, table_y0 + row_h + 7, col2, table_y0 + row_h * 2 - 5), product_model, fontsize=10, fontname="hebo", color=(0, 0, 0), align=1)
             page.insert_textbox(fitz.Rect(col2, table_y0 + row_h + 7, table_x1, table_y0 + row_h * 2 - 5), content_value, fontsize=10, fontname="hebo", color=(0, 0, 0), align=1)
 
-            page.insert_text((86, 502), f"ACXXEL WORKSTATION MODEL {product_model}", fontsize=9, fontname="hebo", color=(0, 0, 0))
+            page.insert_text((86, 502), f"acxxel WORKSTATION MODEL {product_model}", fontsize=9, fontname="hebo", color=(0, 0, 0))
             page.insert_text((86, 518), "Manufacturing plant: Laps N Tabs Technology Private Limited", fontsize=9, fontname="hebo", color=(0, 0, 0))
             page.insert_text((86, 532), "C-187, Nirala Nagar Lucknow-226020.", fontsize=9, fontname="hebo", color=(0, 0, 0))
 
@@ -1461,6 +1461,9 @@ def generate_workstation_certificates(request, bid_id):
 
         def fill_data_sheet_page(page, page_index):
             if page_index == 0:
+                brand_area = fitz.Rect(253, 258, 550, 281)
+                page.draw_rect(brand_area, color=None, fill=(1, 1, 1), overlay=True)
+                insert_data_sheet_value(page, brand_area, "acxxel")
                 value_cells = {
                     "model_number": (253, 235, 550, 258),
                     "processor": (253, 319, 550, 343),
@@ -1600,10 +1603,10 @@ def generate_workstation_certificates(request, bid_id):
         def rewrite_warranty(page):
             formatted_model = model_number or "quoted model"
             paragraph = (
-                "This is to certify that Laps N Tabs Technology Pvt. Ltd. is the OEM of ACXXEL "
+                "This is to certify that Laps N Tabs Technology Pvt. Ltd. is the OEM of acxxel "
                 f"Workstation Brand and will provide comprehensive warranty during entire standard "
                 f"warranty period i.e. {specs['warranty_text'] or 'standard warranty'} for quoted "
-                f"ACXXEL Workstation {formatted_model}, if the said bid award to us."
+                f"acxxel Workstation {formatted_model}, if the said bid award to us."
             )
             redact_and_write(page, (82, 314, page.rect.width - 42, 374), paragraph, fontsize=10.5)
             page.add_redact_annot(fitz.Rect(58, 392, page.rect.width - 60, 452), fill=(1, 1, 1))
@@ -1665,6 +1668,31 @@ def generate_workstation_certificates(request, bid_id):
                     break
             full_doc.close()
 
+        def lowercase_acxxel(page):
+            matches = []
+            for word in page.get_text("words"):
+                text = word[4]
+                lowered = re.sub(r"acxxel", "acxxel", text, flags=re.IGNORECASE)
+                if lowered != text:
+                    matches.append((fitz.Rect(word[:4]), lowered))
+            if not matches:
+                return
+            for area, _text in matches:
+                page.add_redact_annot(
+                    fitz.Rect(area.x0 - 0.5, area.y0 - 0.5, area.x1 + 0.5, area.y1 + 0.5),
+                    fill=(1, 1, 1),
+                )
+            page.apply_redactions()
+            for area, text in matches:
+                fontsize = max(7, min(12, area.height * 0.82))
+                page.insert_text(
+                    (area.x0, area.y1 - 1),
+                    text,
+                    fontsize=fontsize,
+                    fontname="hebo",
+                    color=(0, 0, 0),
+                )
+
         suppress_tender_pages = {3, 26, 27, 28, 29}
         suppress_tender_docs = {"data_sheet", "technical_compliance"}
         for page_index, page in enumerate(doc):
@@ -1674,6 +1702,7 @@ def generate_workstation_certificates(request, bid_id):
                 if original_page == 30:
                     fix_service_support_page_30(page)
                 remove_urls_and_config_links(page)
+                lowercase_acxxel(page)
                 continue
 
             if original_page in suppress_tender_pages or doc_type in suppress_tender_docs:
@@ -1686,8 +1715,8 @@ def generate_workstation_certificates(request, bid_id):
                 for old, new in [
                     ("Desktop Computer", "Workstation"),
                     ("Desktop Brand", "Workstation Brand"),
-                    ("ACXXEL Desktop", "ACXXEL Workstation"),
-                    ("ACXXEL DESKTOP", "ACXXEL WORKSTATION"),
+                    ("ACXXEL Desktop", "acxxel Workstation"),
+                    ("ACXXEL DESKTOP", "acxxel WORKSTATION"),
                 ]:
                     replace_exact(page, old, new, fontsize=10)
             if model_number and doc_type not in {"non_return_hdd", "warranty", "technical_compliance", "data_sheet"}:
@@ -1696,6 +1725,8 @@ def generate_workstation_certificates(request, bid_id):
                         replace_exact(page, match, model_number, fontsize=10)
             if doc_type == "manufacturer_auth" and original_page == 2:
                 fix_manufacturer_auth_page(page)
+            if doc_type == "manufacturer_auth":
+                lowercase_acxxel(page)
             if doc_type == "data_sheet":
                 fill_data_sheet_page(page, page_index)
                 if page_index == len(doc) - 1:
