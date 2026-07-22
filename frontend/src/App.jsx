@@ -26,6 +26,7 @@ import PrinterBidDetailView from "./pages/Printer/Analyser/PrinterBidDetailView"
 import AnalyserPrinterDocument from "./pages/Printer/Analyser/AnalyserPrinterDocument";
 import PrinterApprovedBidDownloads from "./pages/Printer/Analyser/PrinterApprovedBidDownloads";
 import PrinterBidApproval from "./pages/Printer/Admin/PrinterBidApproval";
+import DocumentPrintView from "./pages/Documents/DocumentPrintView";
 
 const ComingSoon = ({ product }) => (
   <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
@@ -105,6 +106,7 @@ function App() {
         <Route path="/desktop-bid-approval" element={<Navigate to="/admin-dashboard/desktop-bid-approval" replace />} />
         <Route path="/workstation-bid-approval" element={<Navigate to="/admin-dashboard/workstation-bid-approval" replace />} />
         <Route path="/printer-bid-approval" element={<Navigate to="/admin-dashboard/printer-bid-approval" replace />} />
+        <Route path="/print-doc/:product/:bidId/:docType" element={<DocumentPrintView />} />
 
         <Route
           path="*"

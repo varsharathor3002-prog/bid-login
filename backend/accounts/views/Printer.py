@@ -493,6 +493,61 @@ def _rewrite_printer_warranty_paragraph(page, bid):
     )
 
 
+def _rewrite_printer_oem_declaration(page):
+    if "decleration of oem status on gem" not in page.get_text("text").lower():
+        return
+
+    body_rect = fitz.Rect(68, 252, page.rect.width - 62, 430)
+    page.add_redact_annot(body_rect, fill=(1, 1, 1))
+    page.apply_redactions()
+    declaration = (
+        "This is to certify and declare that M/S LAPS N TABS TECHNOLOGY PVT. LTD. is an MSME\n"
+        "start-up engaged in manufacturing of A4 and Legal Size MFP under its own brand name\n"
+        "\"acxxel\". It is also a registered OEM on GeM for the same name\n\n"
+        "UdyogAadhar No./Udyam - UP50A0005900/UDYAM-UP-50-0003804\n\n"
+        "DIPP No. - DIPP28252\n\n"
+        "acxxel Brand Trademark No. - 1535583\n\n"
+        "acxxel brand name is owned and trademarked by M/S LAPS N TABS TECHNOLOGY PRIVATE\n"
+        "LIMITED."
+    )
+    page.insert_textbox(
+        fitz.Rect(72, 257, page.rect.width - 72, 428),
+        declaration,
+        fontsize=10.5,
+        fontname="hebo",
+        color=(0, 0, 0),
+        lineheight=1.15,
+        align=0,
+    )
+
+
+def _rewrite_printer_service_intro(page):
+    page_text = page.get_text("text").lower()
+    if "escalation matrix below reference" not in page_text or "certifying that" not in page_text:
+        return
+
+    intro_rect = fitz.Rect(68, 190, page.rect.width - 36, 275)
+    page.add_redact_annot(intro_rect, fill=(1, 1, 1))
+    page.apply_redactions()
+    page.insert_textbox(
+        fitz.Rect(72, 204, page.rect.width - 50, 238),
+        "This is certifying that acxxel Printers offers on-site comprehensive warranty "
+        "as said in bid document.",
+        fontsize=10.5,
+        fontname="hebo",
+        color=(0, 0, 0),
+        lineheight=1.25,
+        align=0,
+    )
+    page.insert_text(
+        (72, 260),
+        "Escalation matrix below reference:",
+        fontsize=10.5,
+        fontname="helv",
+        color=(0, 0, 0),
+    )
+
+
 def _rewrite_printer_make_in_india(page, bid):
     # Replace the certificate introduction without constraining the longer printer text
     # to the narrow bounding box of the original desktop wording.
@@ -605,6 +660,7 @@ def _post_process_printer_pdf(doc_type, output_path, bid=None):
                         .replace("Desktop Computer", "printer"),
                     ).strip(),
                 )
+                _rewrite_printer_oem_declaration(page)
             elif doc_type == "preloaded_os":
                 _rewrite_printer_preloaded_os_paragraph(page)
             elif doc_type == "service_support":
@@ -614,6 +670,7 @@ def _post_process_printer_pdf(doc_type, output_path, bid=None):
                     lambda text: re.sub(r"desktops", "Printers", text, flags=re.IGNORECASE),
                     fontsize=10.5,
                 )
+                _rewrite_printer_service_intro(page)
             elif doc_type == "make_in_india" and bid is not None:
                 _rewrite_printer_make_in_india(page, bid)
             elif doc_type in {"approved_atc_documents", "approved_all_documents"}:
@@ -641,12 +698,14 @@ def _post_process_printer_pdf(doc_type, output_path, bid=None):
                         .replace("Desktop Computer", "printer"),
                     ).strip(),
                 )
+                _rewrite_printer_oem_declaration(page)
                 _rewrite_line_text(
                     page,
                     lambda text: "desktops" in text.lower(),
                     lambda text: re.sub(r"desktops", "Printers", text, flags=re.IGNORECASE),
                     fontsize=10.5,
                 )
+                _rewrite_printer_service_intro(page)
                 _rewrite_printer_preloaded_os_paragraph(page)
                 if bid is not None:
                     _rewrite_printer_make_in_india(page, bid)
