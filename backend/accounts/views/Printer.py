@@ -1375,12 +1375,20 @@ def match_printer_catalogue_models(request, bid_id):
         "extended_warranty": _value_from_body_or_bid(body, bid, "extended_warranty"),
     }
 
+    # Capacity is not applicable when the bid has no bypass tray. Older bids
+    # could save a capacity range alongside "No", which incorrectly prevented
+    # an otherwise exact catalogue match.
+    if _printer_semantic_value(
+        "bypass_tray_facility", bid_specs["bypass_tray_facility"]
+    ) == "no":
+        bid_specs["bypass_tray_capacity"] = "NA"
+
     printer_field_map = {
         "printing_technology": "printing_technology",
         "cartridge_technology": "cartridge_technology",
         "type_of_printing": "type_of_printing",
         "fax_availability": "fax_availability",
-        "operating_system_compatibility": "operating_system_compatibility",
+        # OS compatibility is informational and must not affect catalogue matching.
         "mono_print_speed_ppm": "mono_print_speed_ppm",
         "colour_print_speed_ppm": "colour_print_speed_ppm",
         "auto_duplexing": "auto_duplexing",

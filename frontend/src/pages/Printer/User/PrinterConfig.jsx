@@ -298,6 +298,18 @@ export default function PrinterConfig({ bidData, onNext, onBack, productMode = "
   const handleChange = (e) => {
     const { name, value } = e.target;
     setForm((prev) => {
+      if (name === "bypass_tray_facility") {
+        return {
+          ...prev,
+          bypass_tray_facility: value,
+          bypass_tray_capacity:
+            value === "No"
+              ? "NA"
+              : prev.bypass_tray_capacity === "NA"
+                ? ""
+                : prev.bypass_tray_capacity,
+        };
+      }
       if (name !== "type_of_printing") return { ...prev, [name]: value };
       if (value === "Monochrome") {
         return {
@@ -617,6 +629,7 @@ export default function PrinterConfig({ bidData, onNext, onBack, productMode = "
             label="Bypass Tray Capacity (75 GSM)"
             name="bypass_tray_capacity"
             options={BYPASS_TRAY_CAPACITY}
+            disabled={form.bypass_tray_facility === "No"}
             required
           />
 
