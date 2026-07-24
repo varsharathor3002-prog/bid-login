@@ -3,7 +3,7 @@ from django.http.multipartparser import MultiPartParser
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.hashers import make_password, check_password
 from django.conf import settings
-from django.db import transaction
+from django.db import IntegrityError, transaction
 import json
 from django.utils import timezone
 from datetime import timedelta
@@ -2232,6 +2232,27 @@ def generate_certificates(request, bid_id):
                 color=(0, 0, 0),
             )
 
+    def _replace_service_support_confirmation(page):
+        # Keep the original template intact and replace only the undertaking
+        # paragraph in its existing location.
+        page.add_redact_annot(
+            fitz.Rect(68, 404, page.rect.width - 42, 526),
+            fill=(1, 1, 1),
+        )
+        page.apply_redactions()
+        page.insert_textbox(
+            fitz.Rect(72, 407, page.rect.width - 52, 522),
+            "The product offered in the bid will be serviced on-site at the location of the buyer. "
+            "The above clause is not applicable to this bid. We also undertake that once the order "
+            "is released, we shall appoint a service center within the prescribed time, in case the "
+            "location of the buyer is not already covered by an existing service center.",
+            fontsize=12,
+            fontname="hebo",
+            color=(0, 0, 0),
+            align=0,
+            lineheight=1.2,
+        )
+
     def _render_service_support_clause_page(page):
         page.add_redact_annot(
             fitz.Rect(38, 112, page.rect.width - 38, page.rect.height - 24),
@@ -2246,6 +2267,8 @@ def generate_certificates(request, bid_id):
             recipient_lines.append(organization)
         if full_address:
             recipient_lines.append(full_address)
+        if bid_no:
+            recipient_lines.append(f"Bid No: {bid_no}")
         page.insert_textbox(
             fitz.Rect(62, 138, page.rect.width - 62, 215),
             "\n".join(recipient_lines),
@@ -2305,7 +2328,7 @@ def generate_certificates(request, bid_id):
             lineheight=1.25,
         )
 
-        confirmation_rect = fitz.Rect(62, 466, page.rect.width - 62, 546)
+        confirmation_rect = fitz.Rect(62, 466, page.rect.width - 62, 570)
         page.draw_rect(
             confirmation_rect,
             color=(0.35, 0.55, 0.42),
@@ -2320,19 +2343,20 @@ def generate_certificates(request, bid_id):
             color=(0.12, 0.32, 0.18),
         )
         page.insert_textbox(
-            fitz.Rect(74, 498, page.rect.width - 74, 538),
-            "Since the desktop includes on-site warranty, the carry-in service centre clause is "
-            "not applicable. If required, we will establish service support in the consignee's "
-            "area where it is not already represented.",
-            fontsize=8.7,
-            fontname="helv",
+            fitz.Rect(74, 498, page.rect.width - 74, 562),
+            "The product offered in the bid will be serviced on-site at the location of the buyer. "
+            "The above clause is not applicable to this bid. We also undertake that once the order "
+            "is released, we shall appoint a service center within the prescribed time, in case the "
+            "location of the buyer is not already covered by an existing service center.",
+            fontsize=12,
+            fontname="hebo",
             color=(0.08, 0.08, 0.08),
             lineheight=1.2,
         )
 
-        _add_authorized_signatory(page, y=570, compact=True)
+        _add_authorized_signatory(page, y=594, compact=True)
 
-    def _remove_to_whomsoever_line(page):
+    def _remove_to_whomsoever_line(page, include_bid_no=False):
         blocks = page.get_text("dict").get("blocks", [])
 
         heading_bbox = None
@@ -2371,6 +2395,39 @@ def generate_certificates(request, bid_id):
         page.add_redact_annot(erase_rect, fill=(1, 1, 1))
         page.apply_redactions()
 
+        if page_already_has_to_block:
+            if include_bid_no and bid_no:
+                address_tokens = [
+                    str(value or "").strip().lower()
+                    for value in [dept_name, organization, full_address]
+                    if str(value or "").strip()
+                ]
+                address_lines = [
+                    bbox
+                    for bbox, line_text in all_lines
+                    if any(
+                        token == line_text.strip().lower()
+                        or token.startswith(line_text.strip().lower())
+                        or line_text.strip().lower() in token
+                        for token in address_tokens
+                        if line_text.strip()
+                    )
+                ]
+                if address_lines:
+                    last_line = max(address_lines, key=lambda rect: rect.y1)
+                    insert_x = last_line.x0
+                    insert_y = last_line.y1 + 13
+                else:
+                    insert_x, insert_y = 72, 226
+                page.insert_text(
+                    (insert_x, insert_y),
+                    f"Bid No: {bid_no}",
+                    fontsize=11,
+                    fontname="hebo",
+                    color=(0, 0, 0),
+                )
+            return
+
         if not page_already_has_to_block:
 
             if next_line_bbox is not None:
@@ -2387,6 +2444,8 @@ def generate_certificates(request, bid_id):
                 block_lines.append(organization)
             if full_address:
                 block_lines.append(full_address)
+            if include_bid_no and bid_no:
+                block_lines.append(f"Bid No: {bid_no}")
 
             line_height = 14
             gap_before_content = 24
@@ -2535,7 +2594,10 @@ def generate_certificates(request, bid_id):
             suppress_tender_on_page = original_page_number in suppress_tender_page_numbers
             page_text_raw = page.get_text("text")
             if doc_type == "service_support":
-                _remove_to_whomsoever_line(page)
+                _remove_to_whomsoever_line(
+                    page,
+                    include_bid_no=original_page_number == 30,
+                )
                 _remove_commas_from_service_contact_numbers(page)
                 if original_page_number == 26:
                     _replace_service_support_heading(page)
@@ -2546,6 +2608,7 @@ def generate_certificates(request, bid_id):
                 if original_page_number == 30:
                     _replace_service_support_clause_heading(page)
                     _replace_presented_with_represented(page)
+                    _replace_service_support_confirmation(page)
                 page_text_raw = page.get_text("text")
 
             if doc_type in {"manufacturer_auth", "service_support"}:
@@ -3330,7 +3393,7 @@ def update_desktop_docs(request, bid_id):
 
 GEM_SECTIONS = [
     {"title": "PROCESSOR", "fields": ["Description of Stores", "Computer Type", "Processor Number"]},
-    {"title": "MOTHERBOARD", "fields": ["Expansion Slots (PCIe x 1)", "Expansion Slots (PCIe x 4)", "Expansion Slots (PCIe x 16)", "Expansion Slots (M Dot 2) for SSD", "Expansion Slots (M Dot 2) for WiFi", "Trusted Platform Module"]},
+    {"title": "MOTHERBOARD", "fields": ["Motherboard / Chipset", "Expansion Slots (PCIe x 1)", "Expansion Slots (PCIe x 4)", "Expansion Slots (PCIe x 16)", "Expansion Slots (M Dot 2) for SSD", "Expansion Slots (M Dot 2) for WiFi", "Trusted Platform Module"]},
     {"title": "GRAPHICS", "fields": ["Graphics Type", "Graphic Card Make and Model - Must declare", "Size of Memory in Case of Dedicated Graphic Card(GB)"]},
     {"title": "OPERATING SYSTEM", "fields": ["Factory Pre-loaded Operating System by DesktopOEM", "Recovery Media for OS"]},
     {"title": "MEMORY (RAM)", "fields": ["Type of RAM", "RAM Size (Memory Card/Module) (in GB) (Capacity tobe installed in the System)", "Memory Expandable Up To (in GB)", "Total Numbers of DIMM Slots Available", "Number of DIMM Slots Populated with MemoryCard/Module"]},
@@ -3351,6 +3414,7 @@ FIELD_ALIASES = {
     "Description of Stores": ["Description of Stores"],
     "Computer Type": ["Computer Type"],
     "Processor Number": ["Processor Number"],
+    "Motherboard / Chipset": ["Motherboard / Chipset", "Motherboard", "Chipset"],
     "Expansion Slots (PCIe x 1)": ["Expansion Slots (PCIe x 1)"],
     "Expansion Slots (PCIe x 4)": ["Expansion Slots (PCIe x 4)"],
     "Expansion Slots (PCIe x 16)": ["Expansion Slots (PCIe x 16)"],
@@ -3637,6 +3701,44 @@ def _catalogue_product_data(product, request):
     if isinstance(extra_specs, str):
         try: extra_specs = json.loads(extra_specs)
         except Exception: extra_specs = {}
+    if isinstance(extra_specs, dict) and extra_specs.get("Motherboard"):
+        motherboard_text = str(extra_specs.get("Motherboard") or "")
+        features = _extract_motherboard_features_from_text(motherboard_text)
+        dimm_match = re.search(
+            r"\b(\d+)\s*DIMM\b", motherboard_text, re.IGNORECASE
+        )
+        chipset_match = re.search(
+            r"\b([A-Z]\d{3,4}[A-Z]?)\b", motherboard_text, re.IGNORECASE
+        )
+
+        def feature_text(key):
+            value = features.get(key, 0)
+            return str(value) if value else ""
+
+        # Bid-created products keep the selected motherboard as raw text.
+        # Expand it into the same standard fields used by imported catalogues.
+        extra_specs = dict(extra_specs)
+        extra_specs.update({
+            "Motherboard / Chipset": (
+                chipset_match.group(1).upper() if chipset_match else motherboard_text
+            ),
+            "Expansion Slots (PCIe x 1)": feature_text("pcie_x1"),
+            "Expansion Slots (PCIe x 4)": feature_text("pcie_x4"),
+            "Expansion Slots (PCIe x 16)": feature_text("pcie_x16"),
+            "Expansion Slots (M Dot 2) for SSD": feature_text("m2_ssd"),
+            "Expansion Slots (M Dot 2) for WiFi": feature_text("m2_wifi"),
+            "Trusted Platform Module": "Yes" if features.get("tpm") else "",
+            "Number of USB Type A Port (Version 2 Point 0)": feature_text("usb2"),
+            "Number of USB Type A Port (Version 3 point 2 Gen 1)": feature_text("usb3"),
+            "Number of USB Ports Type C": feature_text("type_c"),
+            "Number of VGA Ports": feature_text("vga"),
+            "Number of HDMI Ports": feature_text("hdmi"),
+            "Number of DP Ports": feature_text("dp"),
+            "Number of Ethernet Ports": feature_text("ethernet"),
+            "Total Numbers of DIMM Slots Available": (
+                dimm_match.group(1) if dimm_match else ""
+            ),
+        })
     extra_specs = _normalize_extra_specs(extra_specs)
     return {
         "id": product.id, "model_no": product.model_no or "",
@@ -4025,34 +4127,162 @@ def update_desktop_bid(request, bid_id):
 @require_http_methods(["POST"])
 def save_model_number(request, bid_id):
     try:
-        bid = DesktopBid.objects.get(id=bid_id)
         data = json.loads(request.body)
         model_number = _get_model_number_from_data(data)
 
         if not model_number:
             return JsonResponse({"error": "Model number required"}, status=400)
 
-        model_number = model_number.strip()
+        model_number = model_number.strip().upper()
 
-        catalogue_product = CatalogueProduct.objects.filter(
-            model_no__iexact=model_number
-        ).first()
+        with transaction.atomic():
+            bid = DesktopBid.objects.select_for_update().get(id=bid_id)
+            catalogue_product = CatalogueProduct.objects.filter(
+                model_no__iexact=model_number
+            ).first()
+            catalogue_created = False
 
-        bid.model_number = model_number
+            storage_parts = [
+                value
+                for value in [bid.ssd1, bid.ssd2, bid.hdd]
+                if str(value or "").strip()
+            ]
+            storage = " + ".join(str(value).strip() for value in storage_parts)
 
-        if bid.status not in ["complete", "approved"]:
-            bid.status = "configured"
-            bid.review_status = "pending"
+            ram_text = str(bid.ram or "").strip()
+            ram_type_match = re.search(
+                r"\bDDR\s*([345])\b(?:\s*\d+)?", ram_text, re.IGNORECASE
+            )
+            ram_size_match = re.search(r"\b(\d+)\s*GB\b", ram_text, re.IGNORECASE)
+            ram_type = (
+                re.sub(r"\s+", " ", ram_type_match.group(0)).replace("DDR ", "DDR")
+                if ram_type_match
+                else ""
+            )
+            ram_size = ram_size_match.group(1) if ram_size_match else ram_text
 
-        bid.save()
+            hdd_capacity = _storage_to_gb(bid.hdd)
+            ssd_capacity = _storage_to_gb(bid.ssd1 or bid.ssd2)
+            motherboard_features = _extract_motherboard_features_from_text(
+                bid.motherboard or ""
+            )
+            dimm_match = re.search(
+                r"\b(\d+)\s*DIMM\b", str(bid.motherboard or ""), re.IGNORECASE
+            )
+            chipset_match = re.search(
+                r"\b([A-Z]\d{3,4}[A-Z]?)\b",
+                str(bid.motherboard or ""),
+                re.IGNORECASE,
+            )
+            monitor_text = str(bid.monitor or "")
+            monitor_ports = []
+            if re.search(r"\bDP\b|display\s*port", monitor_text, re.IGNORECASE):
+                monitor_ports.append("DP")
+            if re.search(r"\bVGA\b", monitor_text, re.IGNORECASE):
+                monitor_ports.append("VGA")
+            if re.search(r"\bHDMI\b", monitor_text, re.IGNORECASE):
+                monitor_ports.append("HDMI")
+
+            def feature_value(key):
+                value = motherboard_features.get(key, 0)
+                return str(value) if value else ""
+
+            extra_specs = {
+                "_source": "desktop_bid",
+                "Computer Type": "Desktop",
+                "Processor Number": bid.processor or "",
+                "Motherboard / Chipset": (
+                    chipset_match.group(1).upper()
+                    if chipset_match
+                    else str(bid.motherboard or "")
+                ),
+                "RAM Size (Memory Card/Module) (in GB) (Capacity tobe installed in the System)": ram_size,
+                "Type of RAM": ram_type,
+                "Total Numbers of DIMM Slots Available": dimm_match.group(1) if dimm_match else "",
+                "HDD - Storage Capacity (in GB)": str(hdd_capacity) if hdd_capacity is not None else "",
+                "SSD - Storage Capacity (in GB)": str(ssd_capacity) if ssd_capacity is not None else "",
+                "Type of Storage Installed with the System": storage,
+                "Factory Pre-loaded Operating System by DesktopOEM": bid.os or "",
+                "Optical Drive": bid.dvd or "",
+                "Motherboard": bid.motherboard or "",
+                "Expansion Slots (PCIe x 1)": feature_value("pcie_x1"),
+                "Expansion Slots (PCIe x 4)": feature_value("pcie_x4"),
+                "Expansion Slots (PCIe x 16)": feature_value("pcie_x16"),
+                "Expansion Slots (M Dot 2) for SSD": feature_value("m2_ssd"),
+                "Expansion Slots (M Dot 2) for WiFi": feature_value("m2_wifi"),
+                "Trusted Platform Module": "Yes" if motherboard_features.get("tpm") else "",
+                "Number of USB Type A Port (Version 2 Point 0)": feature_value("usb2"),
+                "Number of USB Type A Port (Version 3 point 2 Gen 1)": feature_value("usb3"),
+                "Number of USB Ports Type C": feature_value("type_c"),
+                "Number of VGA Ports": feature_value("vga"),
+                "Number of HDMI Ports": feature_value("hdmi"),
+                "Number of DP Ports": feature_value("dp"),
+                "Number of Ethernet Ports": feature_value("ethernet"),
+                "Availibility of Monitor": "Yes" if monitor_text.strip() else "No",
+                "Screen Size (in CMs)": monitor_text,
+                "Monitor Port": ", ".join(monitor_ports),
+                "Cabinet Form Factor": bid.cabinet or "",
+                "Keyboard Connectivity": bid.keyboard or "",
+                "Mouse Connectivity": bid.keyboard or "",
+                "Type of Keyboard": bid.keyboard or "",
+                "On Site OEM Warranty (in Year)": bid.warranty or "",
+            }
+
+            if catalogue_product is None:
+                try:
+                    # The nested atomic block is a savepoint. If two requests
+                    # create the same canonical model simultaneously, the
+                    # unique constraint wins and we reuse that single row.
+                    with transaction.atomic():
+                        catalogue_product = CatalogueProduct.objects.create(
+                            model_no=model_number,
+                            processor=bid.processor or "",
+                            ram=bid.ram or "",
+                            storage=storage,
+                            os=bid.os or "",
+                            category="Desktop",
+                            description=bid.pro_descp or "Desktop Computer",
+                            extra_specs=extra_specs,
+                        )
+                    catalogue_created = True
+                except IntegrityError:
+                    catalogue_product = CatalogueProduct.objects.get(
+                        model_no__iexact=model_number
+                    )
+            else:
+                existing_specs = _catalogue_extra_specs(catalogue_product)
+                if (
+                    existing_specs.get("_source") == "desktop_bid"
+                    or "Motherboard" in existing_specs
+                ):
+                    existing_specs.update(extra_specs)
+                    catalogue_product.processor = bid.processor or ""
+                    catalogue_product.ram = ram_text
+                    catalogue_product.storage = storage
+                    catalogue_product.os = bid.os or ""
+                    catalogue_product.category = "Desktop"
+                    catalogue_product.extra_specs = existing_specs
+                    catalogue_product.save(update_fields=[
+                        "processor", "ram", "storage", "os", "category",
+                        "extra_specs", "updated_at",
+                    ])
+
+            bid.model_number = catalogue_product.model_no
+
+            if bid.status not in ["complete", "approved"]:
+                bid.status = "configured"
+                bid.review_status = "pending"
+
+            bid.save()
 
         return JsonResponse({
             "success": True,
             "bid_id": bid.id,
             "model_number": bid.model_number,
             "model": bid.model_number,
-            "product_id": catalogue_product.id if catalogue_product else None,
-            "source": "catalogue" if catalogue_product else "bid",
+            "product_id": catalogue_product.id,
+            "source": "catalogue",
+            "catalogue_created": catalogue_created,
             "status": bid.status,
             "review_status": bid.review_status,
         }, status=200)
@@ -4746,6 +4976,12 @@ def _extract_motherboard_features_from_catalogue(product, catalogue_keys):
         extracted = _extract_feature_from_label_value(label, value)
         for k, v in extracted.items():
             features[k] = v
+    motherboard_text = _catalogue_extra_specs(product).get("Motherboard", "")
+    if motherboard_text:
+        for key, value in _extract_motherboard_features_from_text(
+            motherboard_text
+        ).items():
+            features[key] = max(features[key], value)
     return features
 
 def _motherboard_match_50_percent(bid_value, product, catalogue_keys):

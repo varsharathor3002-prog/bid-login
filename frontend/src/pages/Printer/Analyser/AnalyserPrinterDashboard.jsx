@@ -150,22 +150,25 @@ export default function AnalyserPrinterDashboard() {
         </div>
       )}
 
-      <div className="w-full overflow-x-hidden">
+      <div className="w-full overflow-hidden">
         <table className="w-full table-fixed text-left border-separate border-spacing-0">
           <thead>
             <tr className="bg-slate-800">
-              <th className="w-[5%] px-2 py-4 text-[10px] font-bold text-white uppercase border-b border-slate-700">S.No.</th>
-              <th className="w-[12%] px-2 py-4 text-[10px] font-bold text-white uppercase border-b border-slate-700">Bid No</th>
-              <th className="w-[14%] px-2 py-4 text-[10px] font-bold text-white uppercase border-b border-slate-700">Department</th>
-              <th className="w-[12%] px-2 py-4 text-[10px] font-bold text-white uppercase border-b border-slate-700">Printer Type</th>
-              <th className="w-[10%] px-2 py-4 text-[10px] font-bold text-white uppercase border-b border-slate-700">Type Of Printing</th>
-              <th className="w-[5%] px-2 py-4 text-[10px] font-bold text-white uppercase border-b border-slate-700">Qty</th>
-              <th className="w-[12%] px-2 py-4 text-[10px] font-bold text-white uppercase border-b border-slate-700">Submitted By</th>
-              <th className="w-[10%] px-2 py-4 text-[10px] font-bold text-white uppercase border-b border-slate-700">Date</th>
-              <th className="w-[12%] px-2 py-4 text-[10px] font-bold text-white uppercase border-b border-slate-700">Status</th>
-              <th className="w-[8%] px-2 py-4 text-[10px] font-bold text-white uppercase border-b border-slate-700">Action</th>
+              <th className="w-[3%] px-1 py-4 text-[10px] font-bold text-white uppercase border-b border-slate-700">S.No.</th>
+              <th className="w-[10%] px-1 py-4 text-[10px] font-bold text-white uppercase border-b border-slate-700">Bid No</th>
+              <th className="w-[12%] px-1 py-4 text-[10px] font-bold text-white uppercase border-b border-slate-700">Department</th>
+              <th className="w-[10%] px-1 py-4 text-[10px] font-bold text-white uppercase border-b border-slate-700">Printer Type</th>
+              <th className="w-[9%] px-1 py-4 text-[10px] font-bold text-white uppercase border-b border-slate-700">Type Of Printing</th>
+              <th className="w-[4%] px-1 py-4 text-[10px] font-bold text-white uppercase border-b border-slate-700">Qty</th>
+              <th className="w-[9%] px-1 py-4 text-[10px] font-bold text-white uppercase border-b border-slate-700">Submitted By</th>
+              <th className="w-[9%] px-1 py-4 text-[10px] font-bold text-white uppercase border-b border-slate-700">Date</th>
+              <th className="w-[8%] px-1 py-4 text-[10px] font-bold text-white uppercase border-b border-slate-700">Status</th>
+              <th className="w-[7%] px-1 py-4 text-[10px] font-bold text-white uppercase border-b border-slate-700">Action</th>
               {activeTab === "approved" && (
-                <th className="w-[12%] px-2 py-4 text-[10px] font-bold text-white uppercase border-b border-slate-700">Download Approved Bid</th>
+                <th className="w-[9%] px-1 py-4 text-[10px] font-bold text-white uppercase border-b border-slate-700">Price Approved</th>
+              )}
+              {activeTab === "approved" && (
+                <th className="w-[10%] px-2 py-4 text-[10px] font-bold text-white uppercase border-b border-l border-slate-700">Download Docs for the bid</th>
               )}
             </tr>
           </thead>
@@ -173,7 +176,7 @@ export default function AnalyserPrinterDashboard() {
           <tbody>
             {loading && (
               <tr>
-                <td colSpan={activeTab === "approved" ? 11 : 10} className="text-center py-16 text-gray-400 font-medium">
+                <td colSpan={activeTab === "approved" ? 12 : 10} className="text-center py-16 text-gray-400 font-medium">
                   Loading printer bids...
                 </td>
               </tr>
@@ -181,7 +184,7 @@ export default function AnalyserPrinterDashboard() {
 
             {!loading && bids.length === 0 && (
               <tr>
-                <td colSpan={activeTab === "approved" ? 11 : 10} className="text-center py-16 text-gray-400 font-medium">
+                <td colSpan={activeTab === "approved" ? 12 : 10} className="text-center py-16 text-gray-400 font-medium">
                   No printer bids found.
                 </td>
               </tr>
@@ -238,7 +241,7 @@ export default function AnalyserPrinterDashboard() {
                   )}
                   {bid.status === "approved" && (
                     <span className="inline-flex items-center gap-1 whitespace-nowrap px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">
-                      ✅ Approved
+                      Approved
                     </span>
                   )}
                   {bid.status === "re-analyze" && (
@@ -254,7 +257,7 @@ export default function AnalyserPrinterDashboard() {
                         state: { bid, readOnly: bid.status === "approved" },
                       })
                     }
-                    className={`px-4 py-2 rounded text-[11px] font-bold uppercase tracking-widest shadow-sm transition-all whitespace-nowrap text-white ${
+                    className={`px-3 py-2 rounded text-[11px] font-bold uppercase tracking-wide shadow-sm transition-all whitespace-nowrap text-white ${
                       bid.status === "approved"
                         ? "bg-emerald-600 hover:bg-emerald-700"
                         : bid.status === "re-analyze"
@@ -266,11 +269,21 @@ export default function AnalyserPrinterDashboard() {
                   </button>
                 </td>
                 {activeTab === "approved" && (
-                  <td className="px-2 py-4 border-b border-gray-100">
+                  <td className="px-1 py-4 border-b border-gray-100">
+                    <span className="whitespace-nowrap text-[11px] font-bold text-emerald-700">
+                      ₹{Number(bid.final_amount || 0).toLocaleString("en-IN", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </span>
+                  </td>
+                )}
+                {activeTab === "approved" && (
+                  <td className="px-2 py-4 border-b border-l border-gray-100">
                     <button
                       type="button"
                       onClick={() => navigate(`/analyser-dashboard/printer/bid/${bid.id}/downloads`, { state: { bid } })}
-                      className="whitespace-nowrap rounded bg-blue-600 px-4 py-2 text-[11px] font-bold uppercase tracking-widest text-white shadow-sm hover:bg-blue-700"
+                      className="whitespace-nowrap rounded bg-blue-600 px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-white shadow-sm hover:bg-blue-700"
                     >
                       Download
                     </button>

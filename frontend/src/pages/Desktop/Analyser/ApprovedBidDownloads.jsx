@@ -11,7 +11,6 @@ const APPROVED_DOWNLOADS = [
   ["make_in_india", "Make in India"],
   ["atc_acceptance_letter", "ATC Acceptance Letter"],
   ["approved_atc_documents", "ATC Documents"],
-  ["approved_price_paper", "Price Approved"],
   ["approved_all_documents", "All Documents"],
 ];
 
@@ -62,7 +61,7 @@ export default function ApprovedBidDownloads() {
     <div className="mx-auto max-w-4xl">
       <div className="mb-5 flex items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-black text-slate-800">Download Approved Bid</h2>
+          <h2 className="text-2xl font-black text-slate-800">Download Docs for the bid</h2>
           <p className="mt-1 text-sm text-slate-500">
             Bid No: <span className="font-bold text-slate-700">{bid?.bid_no || id}</span>
           </p>

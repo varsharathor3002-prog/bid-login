@@ -1,25 +1,32 @@
 import { useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
-const API_BASE = `${import.meta.env.VITE_API_URL}/printer-bids`;
+const API_BASE = `${import.meta.env.VITE_API_URL}/workstation-bids`;
 
-const APPROVED_DOWNLOADS = [
-  ["manufacturer_auth", "MAF Certificate"],
-  ["experience_certificate", "Experience Certificate"],
-  ["past_performance", "Past Performance"],
-  ["oem_annual_turnover", "OEM Annual Turnover"],
-  ["make_in_india", "Make in India"],
-  ["atc_acceptance_letter", "ATC Acceptance Letter"],
-  ["approved_atc_documents", "ATC Documents"],
-  ["approved_all_documents", "All Documents"],
-];
+const DOCUMENT_LABELS = {
+  manufacturer_auth: "MAF Certificate",
+  bidder_financial: "Bidder Financial Undertaking",
+  non_obsolete: "Non Obsolete Certificate",
+  non_malicious: "Non Malicious Code Certificate",
+  non_return_hdd: "Non Return of Hard Disk",
+  non_blacklisting: "Non Blacklisting Certificate",
+  service_support: "Service Support",
+  ipv6: "IPv6 Certificate",
+  preloaded_os: "Preloaded Operating System",
+  make_in_india: "Make in India",
+};
 
-export default function PrinterApprovedBidDownloads() {
+export default function WorkstationApprovedBidDownloads() {
   const { id } = useParams();
   const { state } = useLocation();
   const navigate = useNavigate();
   const bid = state?.bid;
   const [downloading, setDownloading] = useState("");
+
+  const selectedDocs = Array.isArray(bid?.selected_general_docs)
+    ? bid.selected_general_docs.filter((docId) => DOCUMENT_LABELS[docId])
+    : [];
+  const downloads = [...new Set([...selectedDocs, "make_in_india"])];
 
   const downloadDocument = async (docId) => {
     setDownloading(docId);
@@ -39,13 +46,8 @@ export default function PrinterApprovedBidDownloads() {
 
       const blobUrl = URL.createObjectURL(await fileResponse.blob());
       const link = document.createElement("a");
-      const fileLabel = docId === "approved_price_paper"
-        ? "Price_Approved"
-        : docId === "approved_all_documents"
-          ? "All_Approved_Documents"
-          : docId;
       link.href = blobUrl;
-      link.download = `${bid?.bid_no || `printer_bid_${id}`}_${fileLabel}.pdf`;
+      link.download = `${bid?.bid_no || `workstation_bid_${id}`}_${docId}.pdf`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -66,7 +68,11 @@ export default function PrinterApprovedBidDownloads() {
             Bid No: <span className="font-bold text-slate-700">{bid?.bid_no || id}</span>
           </p>
         </div>
-        <button type="button" onClick={() => navigate(-1)} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50">
+        <button
+          type="button"
+          onClick={() => navigate(-1)}
+          className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50"
+        >
           Back
         </button>
       </div>
@@ -76,9 +82,9 @@ export default function PrinterApprovedBidDownloads() {
           <span>Document</span>
           <span>Action</span>
         </div>
-        {APPROVED_DOWNLOADS.map(([docId, label]) => (
+        {downloads.map((docId) => (
           <div key={docId} className="grid grid-cols-[1fr_auto] items-center gap-4 border-b border-slate-100 px-5 py-4 last:border-0">
-            <span className="text-sm font-semibold text-slate-700">{label}</span>
+            <span className="text-sm font-semibold text-slate-700">{DOCUMENT_LABELS[docId]}</span>
             <button
               type="button"
               disabled={!!downloading}

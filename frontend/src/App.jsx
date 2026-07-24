@@ -11,6 +11,7 @@ import CreateDesktopBid from "./pages/Desktop/User/CreateDesktopBid";
 import CreateWorkstationBid from "./pages/Workstation/User/CreateWorkstationBid";
 import WorkstationAnalyserDashboard from "./pages/Workstation/Analyser/WorkstationAnalyserDashboard";
 import WorkstationBidDetailView from "./pages/Workstation/Analyser/WorkstationBidDetailView";
+import WorkstationApprovedBidDownloads from "./pages/Workstation/Analyser/WorkstationApprovedBidDownloads";
 import WorkstationBidApproval from "./pages/Workstation/Admin/WorkstationBidApproval";
 
 import AnalyserNavbar from "./components/analyser/AnalyserNavbar";
@@ -72,6 +73,7 @@ function App() {
           <Route path="desktop/bid/:id/downloads" element={<ApprovedBidDownloads />} />
           <Route path="aio" element={<ComingSoon product="AIO" />} />
           <Route path="workstation" element={<WorkstationAnalyserDashboard />} />
+          <Route path="workstation/bid/:id/downloads" element={<WorkstationApprovedBidDownloads />} />
           <Route path="printer" element={<AnalyserPrinterDashboard />} />
           <Route path="printer/bid/:id/downloads" element={<PrinterApprovedBidDownloads />} />
           <Route path="toner" element={<ComingSoon product="Toner" />} />

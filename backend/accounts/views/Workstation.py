@@ -283,6 +283,16 @@ def update_workstation_bid(request, bid_id):
         return JsonResponse({"error": str(e)}, status=400)
 def _workstation_bid_data(bid, request, status_label=None):
     user_name = bid.user.username if bid.user else ""
+    price_fields = (
+        "processor_price", "pro_descp_price", "motherboard_price",
+        "motherboard_descp_price", "ram_price", "ssd1_price", "ssd2_price",
+        "hdd_price", "graphic_card_price", "cabinet_price", "keyboard_price",
+        "power_supply_price", "monitor_price", "os_price", "wifi_price",
+        "dvd_price", "warranty_price", "freightInstallation_price",
+        "hdd_non_return_price", "extra_requirements_price",
+    )
+    calculated_price = sum(float(getattr(bid, field, 0) or 0) for field in price_fields)
+    approved_price = bid.final_amount or bid.total_price or calculated_price
     return {
         "id": bid.id,
         "bid_id": bid.id,
@@ -361,6 +371,8 @@ def _workstation_bid_data(bid, request, status_label=None):
         "analyser_display_name": bid.analyser_username or user_name,
         "admin_note": bid.admin_note or "",
         "admin_username": bid.admin_username or "",
+        "total_price": bid.total_price or calculated_price,
+        "final_amount": approved_price,
     }
 
 
@@ -725,6 +737,19 @@ def admin_review_workstation_bid(request, bid_id):
         if action not in ("approved", "re-analyze"):
             return JsonResponse({"error": "Invalid status."}, status=400)
         _apply_workstation_payload(bid, data)
+        price_fields = (
+            "processor_price", "pro_descp_price", "motherboard_price",
+            "motherboard_descp_price", "ram_price", "ssd1_price", "ssd2_price",
+            "hdd_price", "graphic_card_price", "cabinet_price", "keyboard_price",
+            "power_supply_price", "monitor_price", "os_price", "wifi_price",
+            "dvd_price", "warranty_price", "freightInstallation_price",
+            "hdd_non_return_price", "extra_requirements_price",
+        )
+        calculated_price = sum(float(getattr(bid, field, 0) or 0) for field in price_fields)
+        requested_total = safe_float(data.get("total_price"), 0)
+        requested_final = safe_float(data.get("final_amount"), 0)
+        bid.total_price = requested_total if requested_total > 0 else calculated_price
+        bid.final_amount = requested_final if requested_final > 0 else bid.total_price
         bid.review_status = action
         bid.admin_note = data.get("admin_note", "").strip()
         bid.admin_username = data.get("admin_username", "").strip()
@@ -1207,21 +1232,30 @@ def generate_workstation_certificates(request, bid_id):
             page.add_redact_annot(fitz.Rect(68, 150, 360, 220), fill=(1, 1, 1))
             page.apply_redactions()
             y = 166
-            for value in ["To,", dept_name, organization, full_address]:
+            for value in [
+                "To,",
+                dept_name,
+                organization,
+                full_address,
+                f"Bid No: {bid_no}" if bid_no else "",
+            ]:
                 if value:
                     page.insert_text((72, y), value, fontsize=11.5, fontname="hebo", color=(0, 0, 0))
                     y += 15
 
-            page.add_redact_annot(fitz.Rect(68, 404, page.rect.width - 42, 443), fill=(1, 1, 1))
+            page.add_redact_annot(fitz.Rect(68, 404, page.rect.width - 42, 526), fill=(1, 1, 1))
             page.apply_redactions()
             page.insert_textbox(
-                fitz.Rect(72, 407, page.rect.width - 52, 448),
-                "Since Workstation has onsite warranty so this clause is not applicable as per our own policy "
-                "we will set up a service centre in your area if not already presented.",
-                fontsize=10.5,
+                fitz.Rect(72, 407, page.rect.width - 52, 522),
+                "The product offered in the bid will be serviced on-site at the location of the buyer. "
+                "The above clause is not applicable to this bid. We also undertake that once the order "
+                "is released, we shall appoint a service center within the prescribed time, in case the "
+                "location of the buyer is not already covered by an existing service center.",
+                fontsize=12,
                 fontname="hebo",
                 color=(0, 0, 0),
                 align=0,
+                lineheight=1.2,
             )
 
         def fix_manufacturer_auth_page(page):

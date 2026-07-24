@@ -36,6 +36,7 @@ const GEM_SECTIONS = [
   {
     title: "MOTHERBOARD",
     fields: [
+      "Motherboard / Chipset",
       "Expansion Slots (PCIe x 1)",
       "Expansion Slots (PCIe x 4)",
       "Expansion Slots (PCIe x 16)",
@@ -406,6 +407,55 @@ function extractFromSpecValue(specs, contains, pattern) {
   return match ? String(match[1] || "").trim() : "";
 }
 
+function deriveMotherboardCatalogueValue(field, motherboardValue) {
+  const text = String(motherboardValue || "").trim();
+  if (!text) return "";
+
+  const firstMatch = (...patterns) => {
+    for (const pattern of patterns) {
+      const match = text.match(pattern);
+      if (match) return match.slice(1).find(Boolean) || "";
+    }
+    return "";
+  };
+
+  switch (field) {
+    case "Expansion Slots (PCIe x 1)":
+      return firstMatch(/\bPCI(?:e)?\s*X\s*1(?!\d)\s*[-:]?\s*(\d+)/i);
+    case "Expansion Slots (PCIe x 4)":
+      return firstMatch(
+        /\bPCI(?:e)?\s*X\s*4\s*[-:]?\s*(\d+)/i,
+        /\bPCI(?:e)?\s*4\s*X\s*(\d+)/i
+      );
+    case "Expansion Slots (PCIe x 16)":
+      return firstMatch(/\bPCI(?:e)?\s*X\s*16\s*[-:]?\s*(\d+)/i);
+    case "Expansion Slots (M Dot 2) for SSD":
+      return firstMatch(/\bM\s*[.\-]?\s*2\s*[-:]?\s*(\d+)/i);
+    case "Expansion Slots (M Dot 2) for WiFi":
+      return /\bM\s*[.\-]?\s*2\b[^,;]*\bWi-?Fi\b/i.test(text) ? "1" : "";
+    case "Trusted Platform Module":
+      return /\bTPM(?:\s*2(?:\.0)?)?\b/i.test(text) ? "Yes" : "";
+    case "Number of USB Type A Port (Version 2 Point 0)":
+      return firstMatch(/(\d+)\s*USB\s*2(?:\.0)?\b/i);
+    case "Number of USB Type A Port (Version 3 point 2 Gen 1)":
+      return firstMatch(/(\d+)\s*USB\s*3(?:\.\d+)?\b/i);
+    case "Number of USB Ports Type C":
+      return firstMatch(/\bTYPE\s*-?\s*C\s*[-:]?\s*(\d+)/i);
+    case "Number of VGA Ports":
+      return /\bVGA\b/i.test(text) ? "1" : "";
+    case "Number of HDMI Ports":
+      return /\bHDMI\b/i.test(text) ? "1" : "";
+    case "Number of DP Ports":
+      return /\bDP\b|Display\s*Port/i.test(text) ? "1" : "";
+    case "Number of Ethernet Ports":
+      return /\bEthernet\b|\bLAN\b|\bRJ-?45\b/i.test(text) ? "1" : "";
+    case "Total Numbers of DIMM Slots Available":
+      return firstMatch(/\b(\d+)\s*DIMM\b/i);
+    default:
+      return "";
+  }
+}
+
 function deriveSpecValue(field, product) {
   const storage = deriveStorageParts(product?.storage);
 
@@ -446,6 +496,16 @@ function shouldReplaceSpecValue(field, value) {
 function cleanSpecFieldValue(field, value, specs, product) {
   const text = cleanDisplayValue(value);
   const storage = deriveStorageParts(product?.storage);
+  const motherboardDerived = deriveMotherboardCatalogueValue(
+    field,
+    specs?.Motherboard
+  );
+  const useMotherboardDerived =
+    motherboardDerived && (!text || /^(?:NA|N\/A|Not Applicable)$/i.test(text));
+
+  if (useMotherboardDerived) {
+    return motherboardDerived;
+  }
 
   switch (field) {
     case "Computer Type":
@@ -460,8 +520,17 @@ function cleanSpecFieldValue(field, value, specs, product) {
       return shouldReplaceSpecValue(field, text) ? storage.type || text : text;
     case "SSD - Storage Capacity (in GB)":
       return firstNumber(text) || storage.ssd || "";
-    case "HDD - Storage Capacity (in GB)":
-      return firstNumber(text) || storage.hdd || "";
+    case "HDD - Storage Capacity (in GB)": {
+      const capacity = firstNumber(text) || storage.hdd || "";
+      const rawStorage = String(product?.storage || "");
+      if (
+        capacity &&
+        new RegExp(`\\b${capacity}\\s*TB\\b`, "i").test(rawStorage)
+      ) {
+        return String(Number(capacity) * 1000);
+      }
+      return capacity;
+    }
     case "Factory Pre-loaded Operating System by DesktopOEM":
       return (
         text ||
@@ -525,6 +594,11 @@ function displayBasicStorage(product, specs) {
   const type = cleanDisplayValue(specs["Type of Storage Installed with the System"]);
   const ssd = cleanDisplayValue(specs["SSD - Storage Capacity (in GB)"]);
   const hdd = cleanDisplayValue(specs["HDD - Storage Capacity (in GB)"]);
+  // Auto-created bid products already preserve the complete selected storage
+  // configuration here. Do not append the capacities a second time.
+  if (/\b\d+(?:\.\d+)?\s*(?:GB|TB)\b/i.test(type)) {
+    return displaySpecValue(type);
+  }
   const parts = [];
   if (type) parts.push(type);
   if (ssd) parts.push(`SSD ${ssd} GB`);
@@ -590,7 +664,10 @@ function getExtraSpecs(product) {
     }
   });
 
-  const specsBeforeCleanup = { ...normalizedSpecs };
+  const specsBeforeCleanup = {
+    ...normalizedSpecs,
+    Motherboard: specs?.Motherboard || specs?.motherboard || "",
+  };
 
   ALL_SPEC_FIELDS.forEach((specField) => {
     normalizedSpecs[specField] = cleanSpecFieldValue(

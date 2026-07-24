@@ -164,13 +164,14 @@ export default function AnalyserDashboard({ product = "desktop" }) {
 
                     <colgroup>
                         <col className={activeTab === "approved" ? "w-[5%]" : "w-[6%]"} />
-                        <col className={activeTab === "approved" ? "w-[14%]" : "w-[16%]"} />
-                        <col className={activeTab === "approved" ? "w-[15%]" : "w-[18%]"} />
+                        <col className={activeTab === "approved" ? "w-[11%]" : "w-[16%]"} />
+                        <col className={activeTab === "approved" ? "w-[13%]" : "w-[18%]"} />
                         <col className={activeTab === "approved" ? "w-[5%]" : "w-[6%]"} />
-                        <col className={activeTab === "approved" ? "w-[13%]" : "w-[15%]"} />
-                        <col className={activeTab === "approved" ? "w-[11%]" : "w-[13%]"} />
-                        <col className={activeTab === "approved" ? "w-[11%]" : "w-[13%]"} />
+                        <col className={activeTab === "approved" ? "w-[10%]" : "w-[15%]"} />
                         <col className={activeTab === "approved" ? "w-[10%]" : "w-[13%]"} />
+                        <col className={activeTab === "approved" ? "w-[10%]" : "w-[13%]"} />
+                        <col className={activeTab === "approved" ? "w-[9%]" : "w-[13%]"} />
+                        {activeTab === "approved" && <col className="w-[11%]" />}
                         {activeTab === "approved" && <col className="w-[16%]" />}
                     </colgroup>
 
@@ -211,8 +212,14 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                             </th>
 
                             {activeTab === "approved" && (
-                                <th className="w-[15%] px-5 py-4 text-[11px] tracking-wider font-bold text-white uppercase border-b border-slate-700">
-                                    Download Approved Bid
+                                <th className="!pr-5 py-4 text-[11px] tracking-wider font-bold text-white uppercase border-b border-slate-700 whitespace-nowrap">
+                                    Price Approved
+                                </th>
+                            )}
+
+                            {activeTab === "approved" && (
+                                <th className="w-[15%] !pl-5 py-4 text-[11px] tracking-wider font-bold text-white uppercase border-b border-l border-slate-700">
+                                    Download Docs for the bid
                                 </th>
                             )}
 
@@ -225,7 +232,7 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                         {loading && (
                             <tr>
                                 <td
-                                    colSpan={activeTab === "approved" ? 9 : 8}
+                                    colSpan={activeTab === "approved" ? 10 : 8}
                                     className="text-center py-16 text-gray-400 font-medium"
                                 >
                                     Loading bids...
@@ -236,7 +243,7 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                         {!loading && bids.length === 0 && (
                             <tr>
                                 <td
-                                    colSpan={activeTab === "approved" ? 9 : 8}
+                                    colSpan={activeTab === "approved" ? 10 : 8}
                                     className="text-center py-16 text-gray-400 font-medium"
                                 >
                                     No bids found.
@@ -367,7 +374,18 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                                     </td>
 
                                     {activeTab === "approved" && (
-                                    <td className="px-5 py-4 border-b border-gray-100">
+                                    <td className="!pr-5 py-4 border-b border-gray-100">
+                                        <span className="whitespace-nowrap text-sm font-semibold text-emerald-700">
+                                            ₹{Number(bid.total_price || 0).toLocaleString("en-IN", {
+                                                minimumFractionDigits: 2,
+                                                maximumFractionDigits: 2,
+                                            })}
+                                        </span>
+                                    </td>
+                                    )}
+
+                                    {activeTab === "approved" && (
+                                    <td className="!pl-5 py-4 border-b border-l border-gray-100">
                                         {bid.status === "approved" ? (
                                             <button
                                                 type="button"

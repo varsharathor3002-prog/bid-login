@@ -86,7 +86,7 @@ const DOCUMENT_FEEDER = [
   { name: "Platen" },
   { name: "Automatic Document Feeder (ADF)" },
   { name: "Reverse/Duplex Automatic Document Feeder (RADF/DADF)" },
-  { name: "Single-Pass Document Feeder (SDF)" },
+  { name: "Single-Pass Document Feeder (SPDF)" },
 ];
 
 const FEEDER_CAPACITY = [
@@ -160,6 +160,10 @@ const DUTY_CYCLE = [
 
 const ONSITE_WARRANTY = [
   { name: "1" },
+  { name: "2" },
+  { name: "3" },
+  { name: "4" },
+  { name: "5" },
 ];
 
 const EXTENDED_WARRANTY = [

@@ -1404,7 +1404,7 @@ def match_printer_catalogue_models(request, bid_id):
         "bypass_tray_capacity": "bypass_tray_capacity",
         "connectivity": "connectivity",
         "duty_cycle": "duty_cycle",
-        "onsite_warranty": "onsite_warranty",
+        # On-site warranty is informational and must not affect catalogue matching.
         "extended_warranty": "extended_warranty",
     }
 

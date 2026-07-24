@@ -91,12 +91,12 @@ export default function WorkstationAnalyserDashboard() {
         </button>
 
         <button
-          onClick={() => setActiveTab("reviewed")}
+          onClick={() => setActiveTab("approved")}
           className={`py-4 px-2 text-sm font-semibold transition-all flex items-center gap-2 ${
-            activeTab === "reviewed" ? "text-emerald-600 border-b-2 border-emerald-600" : "text-gray-500 hover:text-gray-700"
+            activeTab === "approved" ? "text-emerald-600 border-b-2 border-emerald-600" : "text-gray-500 hover:text-gray-700"
           }`}
         >
-          <span>Reviewed</span>
+          <span>Approved</span>
         </button>
 
         <button
@@ -129,12 +129,22 @@ export default function WorkstationAnalyserDashboard() {
                   {head}
                 </th>
               ))}
+              {activeTab === "approved" && (
+                <th className="pr-5 py-4 text-[11px] tracking-wider font-bold text-white uppercase border-b border-slate-700 whitespace-nowrap">
+                  Price Approved
+                </th>
+              )}
+              {activeTab === "approved" && (
+                <th className="pl-5 py-4 text-[11px] tracking-wider font-bold text-white uppercase border-b border-l border-slate-700">
+                  Download Docs for the bid
+                </th>
+              )}
             </tr>
           </thead>
           <tbody>
             {loading && (
               <tr>
-                <td colSpan="8" className="text-center py-16 text-gray-400 font-medium">
+                <td colSpan={activeTab === "approved" ? 10 : 8} className="text-center py-16 text-gray-400 font-medium">
                   Loading bids...
                 </td>
               </tr>
@@ -142,7 +152,7 @@ export default function WorkstationAnalyserDashboard() {
 
             {!loading && bids.length === 0 && (
               <tr>
-                <td colSpan="8" className="text-center py-16 text-gray-400 font-medium">
+                <td colSpan={activeTab === "approved" ? 10 : 8} className="text-center py-16 text-gray-400 font-medium">
                   No bids found.
                 </td>
               </tr>
@@ -152,7 +162,7 @@ export default function WorkstationAnalyserDashboard() {
               paginatedBids.map((bid, i) => {
                 const status = normalizedStatus(bid);
                 const rowColor =
-                  status === "reviewed"
+                  status === "approved"
                     ? "border-l-4 border-l-emerald-500"
                     : status === "re-analyze"
                       ? "border-l-4 border-l-rose-500"
@@ -192,9 +202,9 @@ export default function WorkstationAnalyserDashboard() {
                           Pending
                         </span>
                       )}
-                      {status === "reviewed" && (
+                      {status === "approved" && (
                         <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">
-                          Reviewed
+                          Approved
                         </span>
                       )}
                       {status === "re-analyze" && (
@@ -204,7 +214,7 @@ export default function WorkstationAnalyserDashboard() {
                       )}
                     </td>
                     <td className="px-5 py-4 border-b border-gray-100">
-                      {status === "reviewed" ? (
+                      {status === "approved" ? (
                         <button
                           onClick={() => navigate(`/analyser-dashboard/workstation/bid/${bid.id}`, { state: { bid, readOnly: true } })}
                           className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded text-[11px] font-bold uppercase tracking-widest shadow-sm transition-all whitespace-nowrap"
@@ -222,6 +232,27 @@ export default function WorkstationAnalyserDashboard() {
                         </button>
                       )}
                     </td>
+                    {activeTab === "approved" && (
+                      <td className="pr-5 py-4 border-b border-gray-100">
+                        <span className="whitespace-nowrap text-sm font-semibold text-emerald-700">
+                          ₹{Number(bid.final_amount || bid.total_price || 0).toLocaleString("en-IN", {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
+                        </span>
+                      </td>
+                    )}
+                    {activeTab === "approved" && (
+                      <td className="pl-5 py-4 border-b border-l border-gray-100">
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/analyser-dashboard/workstation/bid/${bid.id}/downloads`, { state: { bid } })}
+                          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-[11px] font-bold uppercase tracking-widest shadow-sm whitespace-nowrap"
+                        >
+                          Download
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 );
               })}
