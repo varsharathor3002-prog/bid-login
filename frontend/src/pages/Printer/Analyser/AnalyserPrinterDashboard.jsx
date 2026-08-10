@@ -8,7 +8,10 @@ const ITEMS_PER_PAGE = 10;
 const VISIBLE_PAGES = 5;
 
 export default function AnalyserPrinterDashboard() {
-  const [activeTab, setActiveTab] = useState("pending");
+  const [activeTab, setActiveTab] = useState(() => {
+    const status = new URLSearchParams(window.location.search).get("status");
+    return ["pending", "approved", "re-analyze"].includes(status) ? status : "pending";
+  });
   const [bids, setBids] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -37,7 +40,7 @@ export default function AnalyserPrinterDashboard() {
         if (activeTab === "re-analyze") setReAnalyzeCount(nextBids.length);
       } catch {
         if (cancelled) return;
-        setError("Backend se printer bids load nahi ho pa rahi hain.");
+        setError("Unable to load printer bids from the backend.");
         setBids([]);
       } finally {
         if (!cancelled) setLoading(false);

@@ -4,3 +4,6 @@ backend/media/generated/
 backend/media/generated_docs/
 frontend/.env
 venv/
+backend/.gem_encryption_key
+backend/media/gem_captcha/
+backend/media/gem_job_artifacts/

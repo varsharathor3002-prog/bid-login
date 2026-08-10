@@ -409,7 +409,10 @@ function SpecialDocView({ form }) {
 }
 
 export default function DesktopBidApproval() {
-  const [activeTab, setActiveTab] = useState("pending");
+  const [activeTab, setActiveTab] = useState(() => {
+    const status = new URLSearchParams(window.location.search).get("status");
+    return ["pending", "approved", "re-analyze"].includes(status) ? status : "pending";
+  });
   const [bids, setBids] = useState([]);
   const [reAnalyzeCount, setReAnalyzeCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -521,10 +524,11 @@ export default function DesktopBidApproval() {
       local_content: bid.local_content || "",
       optional_ports: bid.optional_ports || "",
     };
+    formattedBid.component_total_price = calculateTotalPrice(formattedBid);
     formattedBid.total_price =
-      toPrice(bid.total_price) > 0
+      bid.status === "approved" || bid.review_status === "approved"
         ? bid.total_price
-        : calculateTotalPrice(formattedBid);
+        : "";
     setSelected(formattedBid);
     setForm({ ...formattedBid });
     setAdminNote(formattedBid.admin_note || "");
@@ -550,15 +554,49 @@ export default function DesktopBidApproval() {
       }
 
       if (PRICE_FIELDS.includes(name) || options) {
-        next.total_price = calculateTotalPrice(next);
+        next.component_total_price = calculateTotalPrice(next);
       }
       return next;
     });
   };
 
+  const focusInvalidField = (fieldName) => {
+    const field = document.querySelector(`[name="${fieldName}"]`);
+    if (!field) return;
+    field.scrollIntoView({ behavior: "smooth", block: "center" });
+    field.focus({ preventScroll: true });
+    field.classList.add("ring-2", "ring-red-500", "border-red-500", "bg-red-50");
+    const previousBackground = field.style.backgroundColor;
+    field.style.backgroundColor = "#fef2f2";
+    const clearHighlight = () => {
+      field.classList.remove("ring-2", "ring-red-500", "border-red-500", "bg-red-50");
+      field.style.backgroundColor = previousBackground;
+      field.removeEventListener("input", clearHighlight);
+      field.removeEventListener("change", clearHighlight);
+    };
+    field.addEventListener("input", clearHighlight, { once: true });
+    field.addEventListener("change", clearHighlight, { once: true });
+  };
+
   const handleAction = async (action) => {
-    setSubmitting(true);
     setMsg("");
+    if (action === "approved") {
+      const localContent = String(form.local_content || "").trim().replace(/%$/, "");
+      const localContentNumber = Number(localContent);
+      if (!localContent || !Number.isFinite(localContentNumber) || localContentNumber < 0 || localContentNumber > 100) {
+        focusInvalidField("local_content");
+        return;
+      }
+      if (form.hddreturnable === "Yes" && toPrice(form.hddreturnable_price) <= 0) {
+        focusInvalidField("hddreturnable_price");
+        return;
+      }
+      if (!String(form.total_price ?? "").trim() || toPrice(form.total_price) <= 0) {
+        focusInvalidField("total_price");
+        return;
+      }
+    }
+    setSubmitting(true);
     try {
       const formData = new FormData();
       Object.keys(form).forEach((key) => {
@@ -803,7 +841,13 @@ export default function DesktopBidApproval() {
             )}
 
             <div className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4">
+              {form?.is_new_product && (
+                <div className="mb-5 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  <span className="font-bold">New Product:</span>{" "}
+                  This is a new product approved for adding Gem portal.
+                </div>
+              )}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4 [&_label]:font-semibold [&_label]:text-slate-800 [&_input]:border-slate-500 [&_input]:bg-slate-50 [&_input]:text-slate-950 [&_select]:border-slate-500 [&_select]:bg-slate-50 [&_select]:text-slate-950 [&_textarea]:border-slate-500 [&_textarea]:bg-slate-50 [&_textarea]:text-slate-950 [&_input::placeholder]:text-slate-600 [&_textarea::placeholder]:text-slate-600">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Bid Number</label>
                   <input type="text" name="bid_no" value={form?.bid_no || ""} onChange={handleChange}
@@ -845,8 +889,10 @@ export default function DesktopBidApproval() {
                     className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Local Content (%)</label>
-                  <input type="text" name="local_content" value={form?.local_content || ""} onChange={handleChange}
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Local Content (%) <span className="text-red-600">*</span>
+                  </label>
+                  <input type="number" min="0" max="100" step="0.01" required name="local_content" value={form?.local_content || ""} onChange={handleChange}
                     placeholder="Enter %" className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
                 <div className="md:col-span-2 lg:col-span-3">
@@ -907,37 +953,62 @@ export default function DesktopBidApproval() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">HDD Return Option</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    HDD Return Option
+                    {form?.hddreturnable === "Yes" && <span className="ml-1 text-red-600">*</span>}
+                  </label>
                   <div className="flex gap-2">
                     <select name="hddreturnable" value={form?.hddreturnable || ""} onChange={handleChange}
                       className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500">
                       <option value="Yes">Yes</option>
                       <option value="None">None</option>
                     </select>
-                    <input type="text" name="hddreturnable_price" value={form?.hddreturnable_price || ""} onChange={handleChange}
+                    <input type="number" min="0" step="0.01" required={form?.hddreturnable === "Yes"} name="hddreturnable_price" value={form?.hddreturnable_price || ""} onChange={handleChange}
                       placeholder="Price" className="w-28 border border-blue-300 rounded-md px-2 py-2 text-sm text-center outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                 </div>
 
-                <div className="md:col-span-2 lg:col-span-3 rounded-lg border border-slate-300 bg-slate-50 p-4 shadow-sm">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <label className="block text-sm font-semibold text-slate-800">Total Approved Price</label>
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-slate-700">₹</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        name="total_price"
-                        value={form?.total_price ?? ""}
-                        onChange={handleChange}
-                        readOnly={selected?.status === "approved" || selected?.review_status === "approved"}
-                        disabled={selected?.status === "approved" || selected?.review_status === "approved"}
-                        className="w-48 rounded-md border border-slate-300 bg-white px-3 py-2 text-right text-lg font-semibold text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-700"
-                      />
+                <div className="md:col-span-2 lg:col-span-3 grid grid-cols-1 gap-4 lg:grid-cols-2">
+                  <div className="rounded-lg border border-slate-300 bg-slate-50 p-4 shadow-sm">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <label className="block text-sm font-semibold text-slate-800">Total Value of Components</label>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-slate-700">₹</span>
+                        <input
+                          type="number"
+                          value={form?.component_total_price ?? calculateTotalPrice(form)}
+                          readOnly
+                          className="w-48 rounded-md border border-slate-300 bg-slate-100 px-3 py-2 text-right text-lg font-semibold text-slate-700 outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-emerald-300 bg-emerald-50 p-4 shadow-sm">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <label className="block text-sm font-semibold text-emerald-900">
+                        Bid Approved Price <span className="text-red-600">*</span>
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-emerald-800">₹</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          name="total_price"
+                          value={form?.total_price ?? ""}
+                          onChange={handleChange}
+                          required
+                          placeholder="Enter approved price"
+                          readOnly={selected?.status === "approved" || selected?.review_status === "approved"}
+                          disabled={selected?.status === "approved" || selected?.review_status === "approved"}
+                          className="w-48 rounded-md border border-emerald-300 bg-white px-3 py-2 text-right text-lg font-semibold text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-700"
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
+
 
                 <div className="md:col-span-3">
                   <div className="flex items-center gap-2 mb-2">

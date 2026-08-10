@@ -18,6 +18,7 @@ import AnalyserNavbar from "./components/analyser/AnalyserNavbar";
 import AnalyserDashboard from "./pages/Desktop/Analyser/AnalyserDashboard";
 import BidDetailView from "./pages/Desktop/Analyser/BidDetailView";
 import ApprovedBidDownloads from "./pages/Desktop/Analyser/ApprovedBidDownloads";
+import ApprovedBiddingDetails from "./pages/Desktop/Analyser/ApprovedBiddingDetails";
 import AnalyserProductsPage from "./pages/Desktop/Analyser/AnalyserProductsPage";
 import AdminNavbar from "./components/Admin/AdminNavbar";
 
@@ -28,6 +29,8 @@ import AnalyserPrinterDocument from "./pages/Printer/Analyser/AnalyserPrinterDoc
 import PrinterApprovedBidDownloads from "./pages/Printer/Analyser/PrinterApprovedBidDownloads";
 import PrinterBidApproval from "./pages/Printer/Admin/PrinterBidApproval";
 import DocumentPrintView from "./pages/Documents/DocumentPrintView";
+import DisqualifiedBidsPanel from "./pages/Desktop/Analyser/DisqualifiedBidsPanel";
+import ComponentRates from "./pages/Admin/ComponentRates.jsx";
 
 const ComingSoon = ({ product }) => (
   <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
@@ -71,11 +74,13 @@ function App() {
           <Route index element={null} />
           <Route path="desktop" element={<AnalyserDashboard product="desktop" />} />
           <Route path="desktop/bid/:id/downloads" element={<ApprovedBidDownloads />} />
+          <Route path="desktop/bid/:id/approved-details" element={<ApprovedBiddingDetails />} />
           <Route path="aio" element={<ComingSoon product="AIO" />} />
           <Route path="workstation" element={<WorkstationAnalyserDashboard />} />
           <Route path="workstation/bid/:id/downloads" element={<WorkstationApprovedBidDownloads />} />
           <Route path="printer" element={<AnalyserPrinterDashboard />} />
           <Route path="printer/bid/:id/downloads" element={<PrinterApprovedBidDownloads />} />
+          <Route path="disqualified-bids" element={<DisqualifiedBidsPanel showProductFilter />} />
           <Route path="toner" element={<ComingSoon product="Toner" />} />
         </Route>
 
@@ -92,6 +97,9 @@ function App() {
           <Route index element={<AdminWelcome />} />
           <Route path="add-user" element={<Registration />} />
           <Route path="add-analyser" element={<AddAnalyser />} />
+          <Route path="add-admin" element={<AddAnalyser accountType="admin" />} />
+          <Route path="disqualified-bids" element={<DisqualifiedBidsPanel showProductFilter />} />
+          <Route path="component-rates/:product" element={<ComponentRates />} />
           <Route
             path="add-product"
             element={

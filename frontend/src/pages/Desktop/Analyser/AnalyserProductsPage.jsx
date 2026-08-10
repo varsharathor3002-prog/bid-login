@@ -795,7 +795,7 @@ async function parseJsonResponse(res) {
   const text = await res.text();
 
   if (!contentType.includes("application/json")) {
-    throw new Error(`Backend JSON nahi de raha. Status: ${res.status}`);
+    throw new Error(`The backend did not return JSON. Status: ${res.status}`);
   }
 
   const data = text ? JSON.parse(text) : {};

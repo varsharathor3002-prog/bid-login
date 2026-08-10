@@ -119,6 +119,7 @@ class DesktopBid(models.Model):
 
     date = models.DateField()
     epbg = models.FloatField(default=0)
+    local_content = models.CharField(max_length=20, blank=True, null=True)
 
     freightInstallation = models.CharField(max_length=50, default="Yes")
     freightInstallation_price = models.FloatField(default=1000)
@@ -139,11 +140,212 @@ class DesktopBid(models.Model):
     admin_note = models.TextField(blank=True, null=True)
     admin_username = models.CharField(max_length=100, blank=True, null=True)
 
+    gem_status = models.CharField(max_length=30, default="not_started")
+    gem_account = models.CharField(max_length=100, blank=True, null=True)
+    gem_product_id = models.CharField(max_length=255, blank=True, null=True)
+    gem_product_url = models.URLField(max_length=1000, blank=True, null=True)
+    gem_error = models.TextField(blank=True, null=True)
+    gem_uploaded_at = models.DateTimeField(blank=True, null=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return f"{self.bid_no} - {self.dept_name}"
+
+
+class GemAccount(models.Model):
+    label = models.CharField(max_length=150, unique=True)
+    username_encrypted = models.TextField()
+    password_encrypted = models.TextField()
+    category_mapping = models.JSONField(default=list, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="created_gem_accounts",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["label"]
+
+    def set_username(self, value):
+        from .gem_crypto import encrypt_text
+        self.username_encrypted = encrypt_text(value)
+
+    def get_username(self):
+        from .gem_crypto import decrypt_text
+        return decrypt_text(self.username_encrypted)
+
+    def set_password(self, value):
+        from .gem_crypto import encrypt_text
+        self.password_encrypted = encrypt_text(value)
+
+    def get_password(self):
+        from .gem_crypto import decrypt_text
+        return decrypt_text(self.password_encrypted)
+
+    def __str__(self):
+        return self.label
+
+
+class GemSession(models.Model):
+    account = models.OneToOneField(
+        GemAccount, on_delete=models.CASCADE, related_name="session"
+    )
+    storage_state_encrypted = models.TextField(blank=True, default="")
+    expires_at = models.DateTimeField(blank=True, null=True)
+    verified_at = models.DateTimeField(blank=True, null=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def set_storage_state(self, value):
+        from .gem_crypto import encrypt_json
+        self.storage_state_encrypted = encrypt_json(value)
+
+    def get_storage_state(self):
+        from .gem_crypto import decrypt_json
+        return decrypt_json(self.storage_state_encrypted)
+
+    def __str__(self):
+        return f"GeM session: {self.account.label}"
+
+
+class GemUploadJob(models.Model):
+    STATUS_CHOICES = [
+        ("queued", "Queued"),
+        ("ready_for_fill", "Ready for extension fill"),
+        ("filled", "Filled in GeM"),
+        ("retrying", "Retrying"),
+        ("submitted", "Submitted"),
+        ("published", "Published"),
+        ("rejected", "Rejected"),
+        ("failed", "Failed"),
+        ("cancelled", "Cancelled"),
+    ]
+
+    bid = models.ForeignKey(
+        DesktopBid, on_delete=models.CASCADE, related_name="gem_upload_jobs"
+    )
+    account = models.ForeignKey(
+        GemAccount, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="upload_jobs"
+    )
+    triggered_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="triggered_gem_upload_jobs",
+    )
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default="queued")
+    progress = models.CharField(max_length=255, default="Waiting for worker")
+    error = models.TextField(blank=True, default="")
+    rejection_reason = models.TextField(blank=True, default="")
+    attempts = models.PositiveIntegerField(default=0)
+    max_attempts = models.PositiveIntegerField(default=3)
+    next_attempt_at = models.DateTimeField(blank=True, null=True)
+    captcha_image = models.TextField(blank=True, default="")
+    captcha_response_encrypted = models.TextField(blank=True, default="")
+    captcha_attempts = models.PositiveIntegerField(default=0)
+    gem_product_id = models.CharField(max_length=255, blank=True, default="")
+    gem_product_url = models.URLField(max_length=1000, blank=True, default="")
+    payload_snapshot = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(blank=True, null=True)
+    submitted_at = models.DateTimeField(blank=True, null=True)
+    completed_at = models.DateTimeField(blank=True, null=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(
+                fields=["status", "next_attempt_at"],
+                name="accounts_ge_status_804a8e_idx",
+            ),
+            models.Index(
+                fields=["account", "status"],
+                name="accounts_ge_account_276803_idx",
+            ),
+        ]
+
+    def __str__(self):
+        return f"GeM job {self.id}: {self.bid.bid_no}"
+
+
+class GemAuditLog(models.Model):
+    job = models.ForeignKey(
+        GemUploadJob, on_delete=models.CASCADE, related_name="audit_logs"
+    )
+    actor = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    event = models.CharField(max_length=100)
+    message = models.TextField(blank=True, default="")
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.job_id}: {self.event}"
+
+
+class GemBidResult(models.Model):
+    PRODUCT_CHOICES = [
+        ("desktop", "Desktop"),
+        ("aio", "AIO"),
+        ("workstation", "Workstation"),
+        ("printer", "Printer"),
+        ("other", "Other"),
+    ]
+    bid_no = models.CharField(max_length=100, unique=True)
+    product_type = models.CharField(max_length=20, choices=PRODUCT_CHOICES, default="desktop")
+    item_name = models.CharField(max_length=500, blank=True, default="")
+    quantity = models.PositiveIntegerField(blank=True, null=True)
+    department = models.TextField(blank=True, default="")
+    start_date = models.DateTimeField(blank=True, null=True)
+    end_date = models.DateTimeField(blank=True, null=True)
+    status = models.CharField(max_length=150, blank=True, default="")
+    technical_status = models.CharField(max_length=150, blank=True, default="")
+    is_disqualified = models.BooleanField(default=False)
+    is_final = models.BooleanField(default=False)
+    newly_disqualified = models.BooleanField(default=False)
+    disqualified_at = models.DateTimeField(blank=True, null=True)
+    linked_bid = models.ForeignKey(
+        DesktopBid,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="gem_results",
+    )
+    last_synced_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-disqualified_at", "-last_synced_at"]
+        indexes = [
+            models.Index(fields=["product_type", "is_disqualified"], name="accounts_ge_product_disq_idx"),
+            models.Index(fields=["is_disqualified", "disqualified_at"], name="accounts_ge_is_disq_idx"),
+            models.Index(fields=["is_final", "last_synced_at"], name="accounts_ge_is_final_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.bid_no}: {self.technical_status or self.status}"
+
+
+class GemBidEvaluationHistory(models.Model):
+    bid_result = models.ForeignKey(
+        GemBidResult, on_delete=models.CASCADE, related_name="evaluation_history"
+    )
+    date_time = models.DateTimeField(blank=True, null=True)
+    status = models.CharField(max_length=150, blank=True, default="")
+    reason = models.TextField(blank=True, default="")
+    comment = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-date_time", "-id"]
+
+    def __str__(self):
+        return f"{self.bid_result.bid_no}: {self.status}"
 
 
 
@@ -425,3 +627,41 @@ class PrinterBid(models.Model):
 
     def __str__(self):
         return f"{self.bid_no} - {self.dept_name} (Printer)"
+
+
+class ComponentRate(models.Model):
+    """Admin-managed price override for a product configuration option."""
+
+    product = models.CharField(max_length=30)
+    category = models.CharField(max_length=60)
+    component_name = models.CharField(max_length=500)
+    price = models.DecimalField(max_digits=14, decimal_places=2)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["product", "category", "component_name"],
+                name="unique_component_rate",
+            )
+        ]
+        ordering = ["product", "category", "component_name"]
+
+    def __str__(self):
+        return f"{self.product}/{self.category}: {self.component_name}"
+
+
+class ComponentRateHistory(models.Model):
+    """Immutable audit entry created whenever a component price is changed."""
+
+    product = models.CharField(max_length=30)
+    category = models.CharField(max_length=60)
+    component_name = models.CharField(max_length=500)
+    price = models.DecimalField(max_digits=14, decimal_places=2)
+    changed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["changed_at", "id"]
+
+    def __str__(self):
+        return f"{self.product}/{self.category}: {self.component_name} @ {self.price}"

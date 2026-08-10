@@ -87,7 +87,7 @@ export default function CreateWorkstationBid() {
   // Step 1 complete → Step 2 (WorkstationConfig opens here)
   const handleStep1Submit = (data) => {
     setAllData((prev) => ({ ...prev, ...data }));
-    setSessionStarted(true); // ab session shuru hua, back pe data preserve hoga
+    setSessionStarted(true); // Preserve the session data when the user navigates back.
     setStep(2);
   };
 
@@ -211,7 +211,7 @@ function Step1Form({ onNext, savedData }) {
         "";
 
       if (!userId) {
-        setError("Session expire ho gayi. Please logout karke dobara login karo.");
+        setError("Your session has expired. Please log out and sign in again.");
         return;
       }
 
@@ -235,14 +235,14 @@ function Step1Form({ onNext, savedData }) {
       console.log("CREATE BID RESPONSE =>", data);
 
       if (!response.ok) {
-        throw new Error(data.error || "Bid create nahi ho paya.");
+        throw new Error(data.error || "The bid could not be created.");
       }
 
       onNext({ ...form, bid_id: data.bid_id });
 
     } catch (err) {
       console.error(err);
-      setError(err.message || "Bid create nahi ho pa raha.");
+      setError(err.message || "Unable to create the bid.");
     } finally {
       setLoading(false);
     }

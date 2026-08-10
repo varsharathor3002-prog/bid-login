@@ -3,18 +3,16 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 const API_BASE = `${import.meta.env.VITE_API_URL}/workstation-bids`;
 
-const DOCUMENT_LABELS = {
-  manufacturer_auth: "MAF Certificate",
-  bidder_financial: "Bidder Financial Undertaking",
-  non_obsolete: "Non Obsolete Certificate",
-  non_malicious: "Non Malicious Code Certificate",
-  non_return_hdd: "Non Return of Hard Disk",
-  non_blacklisting: "Non Blacklisting Certificate",
-  service_support: "Service Support",
-  ipv6: "IPv6 Certificate",
-  preloaded_os: "Preloaded Operating System",
-  make_in_india: "Make in India",
-};
+const APPROVED_DOWNLOADS = [
+  ["manufacturer_auth", "MAF Certificate"],
+  ["experience_certificate", "Experience Certificate"],
+  ["past_performance", "Past Performance"],
+  ["oem_annual_turnover", "OEM Annual Turnover"],
+  ["make_in_india", "Make in India"],
+  ["atc_acceptance_letter", "ATC Acceptance Letter"],
+  ["approved_atc_documents", "ATC Documents"],
+  ["approved_all_documents", "All Documents"],
+];
 
 export default function WorkstationApprovedBidDownloads() {
   const { id } = useParams();
@@ -22,11 +20,6 @@ export default function WorkstationApprovedBidDownloads() {
   const navigate = useNavigate();
   const bid = state?.bid;
   const [downloading, setDownloading] = useState("");
-
-  const selectedDocs = Array.isArray(bid?.selected_general_docs)
-    ? bid.selected_general_docs.filter((docId) => DOCUMENT_LABELS[docId])
-    : [];
-  const downloads = [...new Set([...selectedDocs, "make_in_india"])];
 
   const downloadDocument = async (docId) => {
     setDownloading(docId);
@@ -38,11 +31,11 @@ export default function WorkstationApprovedBidDownloads() {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.pdf_url) {
-        throw new Error(data.error || "Document generate nahi hua.");
+        throw new Error(data.error || "The document could not be generated.");
       }
 
       const fileResponse = await fetch(data.pdf_url);
-      if (!fileResponse.ok) throw new Error("Document download nahi hua.");
+      if (!fileResponse.ok) throw new Error("The document could not be downloaded.");
 
       const blobUrl = URL.createObjectURL(await fileResponse.blob());
       const link = document.createElement("a");
@@ -82,9 +75,9 @@ export default function WorkstationApprovedBidDownloads() {
           <span>Document</span>
           <span>Action</span>
         </div>
-        {downloads.map((docId) => (
+        {APPROVED_DOWNLOADS.map(([docId, label]) => (
           <div key={docId} className="grid grid-cols-[1fr_auto] items-center gap-4 border-b border-slate-100 px-5 py-4 last:border-0">
-            <span className="text-sm font-semibold text-slate-700">{DOCUMENT_LABELS[docId]}</span>
+            <span className="text-sm font-semibold text-slate-700">{label}</span>
             <button
               type="button"
               disabled={!!downloading}

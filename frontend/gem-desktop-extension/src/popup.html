@@ -1,0 +1,14 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="popup.css"></head>
+<body><header><strong>Acxxel GeM <small id="version"></small></strong><span id="state">Checking...</span></header>
+<main>
+  <section class="sync-section">
+    <strong>Disqualified Bid Tracking</strong>
+    <p class="hint">Keep the filtered Technical Evaluated Bid List visible, then start sync for this active tab.</p>
+    <button id="sync-bids" type="button">Sync Current GeM Tab</button>
+    <button id="stop-sync" type="button" class="danger" hidden>Stop Sync</button>
+    <button id="copy-sync-status" type="button" class="secondary">Copy status</button>
+    <p id="sync-state" class="sync-state"></p>
+  </section>
+  <p id="message"></p><div id="jobs"></div>
+</main><script src="popup.js"></script></body></html>

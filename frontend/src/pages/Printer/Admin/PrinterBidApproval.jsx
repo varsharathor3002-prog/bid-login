@@ -212,7 +212,10 @@ const PrinterDocumentsView = ({ form, documentUrl }) => {
 };
 
 export default function PrinterBidApproval() {
-  const [activeTab, setActiveTab] = useState("pending");
+  const [activeTab, setActiveTab] = useState(() => {
+    const status = new URLSearchParams(window.location.search).get("status");
+    return ["pending", "approved", "re-analyze"].includes(status) ? status : "pending";
+  });
   const [bids, setBids] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");

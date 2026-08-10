@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
+import { fetchComponentRates } from "../../../utils/componentRates";
 
 const API_BASE = "http://127.0.0.1:8000/api";
 
-const INTEL_PROCESSORS = [
+export const INTEL_PROCESSORS = [
   { name: "Intel Core i5 12400", price: "" },
   { name: "Intel Core i5 12500", price: "" },
   { name: "Intel Core i5 13400", price: "" },
@@ -25,7 +26,7 @@ const INTEL_PROCESSORS = [
   { name: "Intel Core Ultra 9 285K", price: "" },
 ];
 
-const INTEL_XEON_PROCESSORS = [
+export const INTEL_XEON_PROCESSORS = [
   { name: "Intel Xeon Gold 6342", price: "" },
   { name: "Intel Xeon W-2225", price: "" },
   { name: "Intel Xeon W3-2423", price: 290000 },
@@ -48,7 +49,7 @@ const INTEL_XEON_PROCESSORS = [
   { name: "Intel Xeon W9-3595X", price: "" },
 ];
 
-const AMD_THREADRIPPER_PROCESSORS = [
+export const AMD_THREADRIPPER_PROCESSORS = [
   { name: "AMD Threadripper 3355WX", price: "" },
   { name: "AMD Threadripper 5945WX", price: "" },
   { name: "AMD Threadripper 5955WX", price: "" },
@@ -70,7 +71,7 @@ const AMD_THREADRIPPER_PROCESSORS = [
 // ============================================================
 // MOTHERBOARDS
 // ============================================================
-const INTEL_MOTHERBOARDS = [
+export const INTEL_MOTHERBOARDS = [
   { name: "B660/B760 Biostar DDR4 Support i9 Processor", price: 9000 },
   { name: "B660/B760 Biostar with DDR5", price: "" },
   { name: "Q670 DDR4", price: 12000 },
@@ -78,13 +79,13 @@ const INTEL_MOTHERBOARDS = [
   { name: "Asus Pro W680 Ace (i5 to i9 Processor Support)", price: 50000 },
 ];
 
-const INTEL_XEON_MOTHERBOARDS = [
+export const INTEL_XEON_MOTHERBOARDS = [
   { name: "W790 Ace Asus (Supports Xeon W-3400/W-2400 Series, Single Socket ECC RAM)", price: 90000 },
   { name: "C621 Asus E Sage", price: 63720 },
   { name: "C622", price: "" },
 ];
 
-const AMD_MOTHERBOARDS = [
+export const AMD_MOTHERBOARDS = [
   { name: "ASrock WRX80 (Supports 12th, 13th & 14th Gen i5/i7/i9)", price: "" },
   { name: "Asus WRX80 (Graphic Card Required for Display)", price: 50000 },
   { name: "MSI WRX80 (Graphic Card Required for Display)", price: "" },
@@ -94,7 +95,7 @@ const AMD_MOTHERBOARDS = [
 // ============================================================
 // RAM - Standard (Intel/AMD desktop-class CPUs)
 // ============================================================
-const RAMS = [
+export const RAMS = [
   { name: "8GB DDR4", price: 1200 },
   { name: "16GB DDR4", price: 2800 },
   { name: "16GB DDR4 3200MHz", price: 3000 },
@@ -111,13 +112,13 @@ const RAMS = [
 // ============================================================
 // RAM - Registered/ECC (Required for Xeon & Threadripper)
 // ============================================================
-const REGISTERED_RAMS = [
+export const REGISTERED_RAMS = [
   { name: "16GB Registered ECC", price: 3200 },
   { name: "32GB Registered ECC", price: 6000 },
   { name: "64GB Registered ECC", price: 13000 },
 ];
 
-const SSDS = [
+export const SSDS = [
   { name: "256 GB Sata SSD", price: 2000 },
   { name: "512 GB Sata SSD", price: 5000 },
   { name: "1000 GB Sata SSD", price: "" },
@@ -125,7 +126,7 @@ const SSDS = [
   { name: "M.2 SSD NVME 1024GB", price: 14000 },
 ];
 
-const HDDS = [
+export const HDDS = [
   { name: "512GB", price: 4000 },
   { name: "1 TB", price: 4000 },
   { name: "2 TB", price: 8000 },
@@ -133,7 +134,7 @@ const HDDS = [
 ];
 
 
-const GRAPHICS_CARDS = [
+export const GRAPHICS_CARDS = [
   { name: "NVIDIA Quadro P620 2GB", price: 10000 },
   { name: "NVIDIA Quadro P4000 8GB", price: 23000 },
   { name: "NVIDIA T400 2GB +", price: 6500 },
@@ -164,15 +165,15 @@ const GRAPHICS_CARDS = [
   { name: "NVIDIA RTX 6000 Ada Generation 48GB", price: 650000 },
 ];
 
-const CABINETS = [{ name: "Tower", price: "" }];
+export const CABINETS = [{ name: "Tower", price: "" }];
 
-const KEYBOARDS = [
+export const KEYBOARDS = [
   { name: "Wired Keyboard & Mouse", price: 600 },
   { name: "Wireless Keyboard & Mouse", price: 1200 },
 ];
 
 
-const POWER_SUPPLIES = [
+export const POWER_SUPPLIES = [
   { name: "400W", price: 2200 },
   { name: "450W", price: 2600 },
   { name: "500W", price: 3000 },
@@ -190,21 +191,21 @@ const POWER_SUPPLIES = [
   { name: "2250W", price: "" },
 ];
 
-const OS_OPTIONS = [
+export const OS_OPTIONS = [
   { name: "Windows 11 Pro", price: 1000 },
   { name: "DOS", price: "" },
   { name: "Linux", price: 1000 },
 ];
 
-const DVDS = [{ name: "DVD R/W", price: 1800 }];
+export const DVDS = [{ name: "DVD R/W", price: 1800 }];
 
-const WIFIS = [
+export const WIFIS = [
   { name: "Wi-Fi 6 + Bluetooth 5.2", price: 1900 },
   { name: "Wi-Fi 6 + Bluetooth 5.3", price: 2400 },
   { name: "Wi-Fi 7 (802.11be) + Bluetooth 5.4", price: 2500 },
 ];
 
-const MONITORS = [
+export const MONITORS = [
   { name: "21.5 inch", price: 5250 },
   { name: "23.8 inch 58-61 cm (23 inch)", price: 9400 },
   { name: "68-71 cm (27 inch)", price: 12800 },
@@ -212,15 +213,17 @@ const MONITORS = [
   { name: "32 inch (78.1-83 cm)", price: 18500 },
 ];
 
-const WARRANTIES = [
+export const WARRANTIES = [
   { name: "1 Year", price: 2000 },
   { name: "3 Year", price: 4500 },
   { name: "5 Year", price: 6500 },
 ];
 
-const getPriceFromLocalData = (categoryList, value) => {
+let liveRateByName = {};
+
+export const getPriceFromLocalData = (categoryList, value) => {
   const item = categoryList.find((item) => item.name === value);
-  return item ? item.price : "";
+  return item ? (liveRateByName[item.name] ?? item.price) : "";
 };
 
 
@@ -232,7 +235,7 @@ const getProcessorCategory = (processorName) => {
   return null;
 };
 
-const getFilteredRams = (processorName) => {
+export const getFilteredRams = (processorName) => {
   const category = getProcessorCategory(processorName);
   if (category === "amd_threadripper" || category === "intel_xeon") {
     return REGISTERED_RAMS;
@@ -240,14 +243,14 @@ const getFilteredRams = (processorName) => {
   return RAMS;
 };
 
-const getFilteredIntelMotherboards = (processorName) => {
+export const getFilteredIntelMotherboards = (processorName) => {
   const category = getProcessorCategory(processorName);
   if (category === "intel_xeon") return INTEL_XEON_MOTHERBOARDS;
   if (category === "intel_standard" || !category) return INTEL_MOTHERBOARDS;
   return [];
 };
 
-const getFilteredAmdMotherboards = (processorName) => {
+export const getFilteredAmdMotherboards = (processorName) => {
   const category = getProcessorCategory(processorName);
   if (category === "amd_threadripper" || !category) return AMD_MOTHERBOARDS;
   return [];
@@ -317,6 +320,11 @@ const normalizeInitialForm = (source = {}) => {
 
 export default function WorkstationConfig({ bidData, onNext, onBack }) {
   const bid_id = bidData?.bid_id;
+  useEffect(() => {
+    fetchComponentRates("workstation").then((rates) => {
+      liveRateByName = Object.fromEntries(rates.map((rate) => [rate.name, Number(rate.price)]));
+    }).catch((error) => console.error("Component rates:", error));
+  }, []);
   const draftKey = useMemo(() => getDraftKey(bid_id), [bid_id]);
 
   const [form, setForm] = useState(() => {

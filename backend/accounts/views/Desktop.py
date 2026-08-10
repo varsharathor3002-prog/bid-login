@@ -3,6 +3,7 @@ from django.http.multipartparser import MultiPartParser
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.hashers import make_password, check_password
 from django.conf import settings
+from django.core import signing
 from django.db import IntegrityError, transaction
 import json
 from django.utils import timezone
@@ -15,6 +16,7 @@ import os
 import shutil
 from collections import OrderedDict
 import tempfile
+from pathlib import Path
 
 try:
     import fitz
@@ -127,6 +129,50 @@ def delete_analyser(request, id):
             return JsonResponse({"error": str(e)}, status=500)
     return JsonResponse({"error": "Use DELETE method"}, status=405)
 
+
+@csrf_exempt
+def admin_list(request):
+    if request.method == "GET":
+        admins = User.objects.filter(role="admin")
+        data = [{"id": admin.id, "username": admin.username, "email": admin.email} for admin in admins]
+        return JsonResponse(data, safe=False)
+    return JsonResponse({"error": "Use GET method"}, status=405)
+
+
+@csrf_exempt
+def register_admin(request):
+    if request.method == "POST":
+        try:
+            data = json.loads(request.body)
+            username = (data.get("username") or "").strip()
+            email = (data.get("email") or "").strip().lower()
+            password = data.get("password")
+            if not username or not email or not password:
+                return JsonResponse({"error": "All fields are required."}, status=400)
+            if User.objects.filter(email__iexact=email).exists():
+                return JsonResponse({"error": "Email already exists."}, status=400)
+            User.objects.create(
+                username=username,
+                email=email,
+                password=make_password(password),
+                role="admin",
+            )
+            return JsonResponse({"message": "Admin registered successfully."})
+        except (json.JSONDecodeError, TypeError):
+            return JsonResponse({"error": "Invalid request data."}, status=400)
+    return JsonResponse({"error": "Use POST method"}, status=405)
+
+
+@csrf_exempt
+def delete_admin(request, id):
+    if request.method == "DELETE":
+        admin = User.objects.filter(id=id, role="admin").first()
+        if not admin:
+            return JsonResponse({"error": "Admin not found."}, status=404)
+        admin.delete()
+        return JsonResponse({"message": "Admin deleted successfully."})
+    return JsonResponse({"error": "Use DELETE method"}, status=405)
+
 @csrf_exempt
 def login(request):
     if request.method == "POST":
@@ -153,6 +199,11 @@ def login(request):
                     "email": user.email,
                     "role": user.role,
                     "user_id": user.id,
+                    "token": signing.dumps(
+                        {"user_id": user.id, "role": user.role},
+                        salt="gem-api-auth",
+                        compress=True,
+                    ),
                 })
             else:
                 return JsonResponse({"error": "Invalid password"}, status=400)
@@ -313,13 +364,29 @@ def _extract_motherboard_features_from_text(text):
     if "ethernet" in t or "gigabit" in t or "lan" in t:
         features["ethernet"] = 1
 
+    # These are the exact motherboard options offered by the Desktop
+    # configurator. Keep slot counts deterministic even when punctuation in
+    # the saved option (PCI16*2, PCI X 16-1, M.2 -1, etc.) varies.
+    known_slot_profiles = {
+        "b650": {"pcie_x1": 0, "pcie_x4": 2, "pcie_x16": 2, "m2_ssd": 0, "m2_wifi": 0},
+        "a520": {"pcie_x1": 0, "pcie_x4": 1, "pcie_x16": 1, "m2_ssd": 0, "m2_wifi": 0},
+        "h810": {"pcie_x1": 1, "pcie_x4": 0, "pcie_x16": 1, "m2_ssd": 1, "m2_wifi": 0},
+        "h610": {"pcie_x1": 0, "pcie_x4": 1, "pcie_x16": 1, "m2_ssd": 1, "m2_wifi": 0},
+        "q670": {"pcie_x1": 0, "pcie_x4": 2, "pcie_x16": 1, "m2_ssd": 2, "m2_wifi": 0},
+    }
+    for chipset, profile in known_slot_profiles.items():
+        if re.search(rf"\b{chipset}\b", t):
+            features.update(profile)
+            features["tpm"] = 1
+            break
+
     return features
 
 @csrf_exempt
 @require_http_methods(["POST"])
 def generate_certificates(request, bid_id):
     if not fitz:
-        return JsonResponse({"error": "PyMuPDF installed nahi hai."}, status=500)
+        return JsonResponse({"error": "PyMuPDF is not installed."}, status=500)
     try:
         bid = DesktopBid.objects.get(id=bid_id)
     except DesktopBid.DoesNotExist:
@@ -456,21 +523,44 @@ def generate_certificates(request, bid_id):
                 signature_image = template_doc.extract_image(signature_images[1][0]).get("image")
             template_doc.close()
 
-        page.insert_textbox(fitz.Rect(45, 135, 550, 165), "PRICE APPROVED", fontsize=14, fontname="hebo", align=1)
-        page.insert_text((48, 190), f"Bid Number: {bid.bid_no}", fontsize=11, fontname="hebo")
+        page.insert_textbox(
+            fitz.Rect(45, 135, 550, 165),
+            "APPROVED DETAILS FOR BIDDING",
+            fontsize=14,
+            fontname="hebo",
+            align=1,
+        )
         x_positions = [48, 390, 547]
-        y, row_height = 215, 26
-        for column, heading in enumerate(("PRICE SUMMARY", "AMOUNT")):
+        y, row_height = 190, 28
+        for column, heading in enumerate(("APPROVED BID DETAIL", "VALUE")):
             rect = fitz.Rect(x_positions[column], y, x_positions[column + 1], y + row_height)
             page.draw_rect(rect, color=(0.3, 0.3, 0.3), fill=(0.9, 0.93, 0.96), width=0.7)
             page.insert_textbox(rect + (4, 6, -4, -3), heading, fontsize=9, fontname="hebo", align=column)
         y += row_height
-        for column, text in enumerate(("FINAL APPROVED PRICE", f"Rs. {final_price:,.2f}")):
-            rect = fitz.Rect(x_positions[column], y, x_positions[column + 1], y + row_height)
-            page.draw_rect(rect, color=(0.55, 0.55, 0.55), width=0.5)
-            page.insert_textbox(rect + (4, 6, -4, -3), text, fontsize=9, fontname="hebo", align=2 if column else 0)
+        for label, value in (
+            ("Bid No.", str(bid.bid_no or "")),
+            ("Model No.", str(bid.model_number or "")),
+            ("Final Price", f"Rs. {final_price:,.2f}"),
+        ):
+            for column, text in enumerate((label, value)):
+                rect = fitz.Rect(x_positions[column], y, x_positions[column + 1], y + row_height)
+                page.draw_rect(rect, color=(0.55, 0.55, 0.55), width=0.5)
+                page.insert_textbox(
+                    rect + (4, 7, -4, -3),
+                    text,
+                    fontsize=9.5,
+                    fontname="hebo" if column == 0 else "helv",
+                    align=2 if column else 0,
+                )
+            y += row_height
 
-        sign_x, sign_y = 72, 570
+        sign_x, sign_y = 72, 430
+        page.draw_line(
+            fitz.Point(sign_x, sign_y - 12),
+            fitz.Point(345, sign_y - 12),
+            color=(0.75, 0.79, 0.84),
+            width=0.8,
+        )
         page.insert_textbox(
             fitz.Rect(sign_x, sign_y, 550, sign_y + 28),
             "Auth. Signatory\nFor Laps N Tabs Technology Pvt. Ltd.",
@@ -3773,7 +3863,7 @@ def extract_catalogue_pdf(request):
         ssd = extra_specs.get("SSD - Storage Capacity (in GB)", "")
         storage = " ".join(x for x in [ssd, storage_type] if x).strip()
         os_value = extra_specs.get("Factory Pre-loaded Operating System by DesktopOEM", "")
-        if not model_no: return JsonResponse({"error": "Model No. PDF se extract nahi hua."}, status=400)
+        if not model_no: return JsonResponse({"error": "The model number could not be extracted from the PDF."}, status=400)
         return JsonResponse({
             "model_no": model_no, "category": category, "description": description,
             "processor": processor, "ram": ram, "storage": storage,
@@ -3881,6 +3971,11 @@ def delete_all_catalogue_products(request):
         return JsonResponse({"error": str(e)}, status=500)
 
 def _bid_data(bid, request, status_label=None):
+    catalogue_product = CatalogueProduct.objects.filter(
+        model_no__iexact=bid.model_number or ""
+    ).first()
+    catalogue_specs = _catalogue_extra_specs(catalogue_product) if catalogue_product else {}
+    is_new_product = catalogue_specs.get("_source") == "desktop_bid"
     return {
         "id": bid.id, "user_name": bid.user.username if bid.user else "Unknown",
         "submitted_by": bid.user.username if bid.user else "Unknown",
@@ -3898,7 +3993,14 @@ def _bid_data(bid, request, status_label=None):
         "analyser_note": bid.analyser_note or "",
         "analyser_name": bid.analyser_username or "", "analyser_username": bid.analyser_username or "",
         "admin_note": bid.admin_note or "", "admin_username": bid.admin_username or "",
+        "gem_status": bid.gem_status or "not_started",
+        "gem_account": bid.gem_account or "",
+        "gem_product_id": bid.gem_product_id or "",
+        "gem_product_url": bid.gem_product_url or "",
+        "gem_error": bid.gem_error or "",
+        "gem_uploaded_at": bid.gem_uploaded_at.isoformat() if bid.gem_uploaded_at else "",
         "model": bid.model_number or "", "model_number": bid.model_number or "",
+        "is_new_product": is_new_product,
         "processor_type": bid.processor_type or "", "processor": bid.processor or "",
         "processor_price": bid.processor_price or 0, "pro_descp": bid.pro_descp or "",
         "pro_descp_price": bid.pro_descp_price or 0, "ram": bid.ram or "",
@@ -3916,6 +4018,7 @@ def _bid_data(bid, request, status_label=None):
         "motherboard_descp_price": bid.motherboard_descp_price or 0, "software1": bid.software1 or "",
         "software1_price": bid.software1_price or 0, "gp": bid.gp or "", "gp_price": bid.gp_price or 0,
         "epbg": bid.epbg or 0, "freightInstallation": bid.freightInstallation or "",
+        "local_content": bid.local_content or "",
         "freightInstallation_price": bid.freightInstallation_price or 0, "freight_price": bid.freightInstallation_price or 0,
         "hddreturnable": bid.hddreturnable or "", "hddreturnable_price": bid.hddreturnable_price or 0,
         "total_price": bid.total_price or 0,
@@ -4585,6 +4688,31 @@ def admin_review_desktop_bid(request, bid_id):
         if action not in ("approved", "re-analyze"):
             return JsonResponse({"error": "Invalid status."}, status=400)
 
+        if action == "approved":
+            local_content = str(data.get("local_content") or "").strip().rstrip("%")
+            if not local_content:
+                return JsonResponse({"error": "Local Content (%) is mandatory."}, status=400)
+            try:
+                local_content_number = float(local_content)
+            except (TypeError, ValueError):
+                return JsonResponse({"error": "Local Content must be a valid number."}, status=400)
+            if local_content_number < 0 or local_content_number > 100:
+                return JsonResponse({"error": "Local Content must be between 0 and 100."}, status=400)
+
+            if (
+                str(data.get("hddreturnable") or bid.hddreturnable or "").strip().lower() == "yes"
+                and safe_float(data.get("hddreturnable_price"), 0) <= 0
+            ):
+                return JsonResponse({
+                    "error": "HDD Return Option price is mandatory when the option is Yes."
+                }, status=400)
+
+            approved_price = safe_float(data.get("total_price"), 0)
+            if approved_price <= 0:
+                return JsonResponse({
+                    "error": "Bid Approved Price is mandatory and must be greater than 0."
+                }, status=400)
+
         bid.bid_no = data.get("bid_no", bid.bid_no)
         bid.dept_name = data.get("dept_name", bid.dept_name)
         bid.organization = data.get("organization", bid.organization)
@@ -4638,6 +4766,8 @@ def admin_review_desktop_bid(request, bid_id):
             bid.date = data.get("date")
 
         bid.epbg = safe_float(data.get("epbg"), bid.epbg)
+        if "local_content" in data:
+            bid.local_content = str(data.get("local_content") or "").strip().rstrip("%")
         bid.freightInstallation = data.get("freightInstallation", bid.freightInstallation)
         if bid.freightInstallation == "No":
             bid.freightInstallation_price = 0
@@ -4669,6 +4799,344 @@ def admin_review_desktop_bid(request, bid_id):
         return JsonResponse({"error": "Bid not found"}, status=404)
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=400)
+
+
+GEM_UPLOAD_STATUSES = {
+    "not_started", "queued", "login_required", "filling", "submitted",
+    "published", "rejected", "failed",
+}
+
+def _gem_accounts():
+    account_file = Path(settings.BASE_DIR) / "gem_accounts.json"
+    try:
+        data = json.loads(account_file.read_text(encoding="utf-8"))
+        accounts = data.get("accounts", [])
+        return accounts if isinstance(accounts, list) else []
+    except (OSError, ValueError, TypeError):
+        return []
+
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def list_desktop_gem_accounts(request):
+    return JsonResponse([
+        {
+            "id": str(account.get("id") or ""),
+            "label": str(account.get("label") or account.get("username") or ""),
+            "username": str(account.get("username") or ""),
+        }
+        for account in _gem_accounts()
+        if account.get("id") and account.get("username")
+    ], safe=False)
+
+
+def _desktop_gem_payload(bid, request, account):
+    model_number = str(bid.model_number or "").upper()
+    local_content = str(bid.local_content or "").strip().rstrip("%")
+    processor_text = str(bid.processor or "")
+    keyboard_mouse_text = str(bid.keyboard or "").strip()
+    if re.search(r"\bwireless\b", keyboard_mouse_text, re.IGNORECASE):
+        gem_keyboard_mouse_connectivity = "Wireless"
+    elif re.search(r"\bwired\b|\busb\b", keyboard_mouse_text, re.IGNORECASE):
+        gem_keyboard_mouse_connectivity = "USB Wired"
+    else:
+        gem_keyboard_mouse_connectivity = ""
+    cabinet_text = str(bid.cabinet or "").strip()
+    is_tower_cabinet = bool(re.search(r"\btower\b", cabinet_text, re.IGNORECASE))
+    is_sff_cabinet = bool(re.search(
+        r"\b(?:sff|ssf|small\s+form\s+factor)\b",
+        cabinet_text,
+        re.IGNORECASE,
+    ))
+    gem_cabinet = (
+        "Tower (More than 13 to 26 Liters)"
+        if is_tower_cabinet
+        else "SMALL FORM FACTOR (7 to 13 Liters)" if is_sff_cabinet else ""
+    )
+    cabinet_bays = (
+        ("1", "0", "2", "1")
+        if is_tower_cabinet
+        else ("1", "0", "1", "0") if is_sff_cabinet else ("", "", "", "")
+    )
+    graphics_model = (
+        "Intel AMD"
+        if re.search(r"\b(?:amd|ryzen)\b", processor_text, re.IGNORECASE)
+        else "Intel HD 60"
+    )
+    if model_number.startswith("ACL-1060DS-25DE-"):
+        gem_computer_type = "Entry Level"
+        gem_category = {
+            "key": "entry_level",
+            "label": "Entry and Mid Level Desktop Computer",
+            "slug": "computers-entry-level-computer-cpu",
+        }
+    elif model_number.startswith("ACL-1077DS-25DE-"):
+        gem_computer_type = "Mid Level"
+        gem_category = {
+            "key": "mid_level",
+            "label": "Entry and Mid Level Desktop Computer",
+            "slug": "computers-mid-level-computer-cpu",
+        }
+    elif model_number.startswith("ACL-1082DS-25DE-"):
+        gem_computer_type = "High End"
+        gem_category = {
+            "key": "high_end",
+            "label": "High End Desktop Computer",
+            "slug": "computers-high-end-computer-cpu",
+        }
+    else:
+        gem_computer_type = None
+        gem_category = {
+            "key": "entry_level",
+            "label": "Entry and Mid Level Desktop Computer",
+            "slug": "computers-entry-level-computer-cpu",
+        }
+
+    catalogue_product = CatalogueProduct.objects.filter(
+        model_no__iexact=bid.model_number or ""
+    ).first()
+    catalogue_specs = (
+        _catalogue_extra_specs(catalogue_product)
+        if catalogue_product
+        else {}
+    )
+    exact_gem_specs = {
+        "Description of Stores": (
+            catalogue_specs.get("Description of Stores") or "Desktop Computer"
+        ),
+        "Computer Type": (
+            gem_computer_type
+            or catalogue_specs.get("Computer Type")
+            or "Desktop"
+        ),
+        "Processor Number": (
+            catalogue_specs.get("Processor Number") or bid.processor or ""
+        ),
+        "Factory Pre-loaded Operating System by Desktop OEM": (
+            catalogue_specs.get("Factory Pre-loaded Operating System by Desktop OEM")
+            or catalogue_specs.get("Factory Pre-loaded Operating System by DesktopOEM")
+            or bid.os
+            or ""
+        ),
+        "RAM Size (Memory Card/Module) (in GB) (Capacity to be installed in the System)": (
+            catalogue_specs.get(
+                "RAM Size (Memory Card/Module) (in GB) (Capacity to be installed in the System)"
+            )
+            or catalogue_specs.get(
+                "RAM Size (Memory Card/Module) (in GB) (Capacity tobe installed in the System)"
+            )
+            or bid.ram
+            or ""
+        ),
+        "Type of Storage Installed with the System": (
+            catalogue_specs.get("Type of Storage Installed with the System")
+            or " + ".join(filter(None, [bid.ssd1, bid.ssd2, bid.hdd]))
+        ),
+        "SSD - Storage Capacity (in GB)": (
+            catalogue_specs.get("SSD - Storage Capacity (in GB)")
+            or str(_storage_to_gb(bid.ssd1 or bid.ssd2) or "")
+        ),
+        "HDD - Storage Capacity (in GB)": (
+            catalogue_specs.get("HDD - Storage Capacity (in GB)")
+            or str(_storage_to_gb(bid.hdd) or "")
+        ),
+        "Availibility of Monitor": (
+            catalogue_specs.get("Availibility of Monitor")
+            or ("Yes" if str(bid.monitor or "").strip() else "No")
+        ),
+        "Screen Size (in CMs)": (
+            catalogue_specs.get("Screen Size (in CMs)") or bid.monitor or ""
+        ),
+        "On Site OEM Warranty (in Year)": (
+            catalogue_specs.get("On Site OEM Warranty (in Year)")
+            or bid.warranty
+            or ""
+        ),
+    }
+    motherboard_text = bid.motherboard or catalogue_specs.get("Motherboard") or ""
+    motherboard_features = _extract_motherboard_features_from_text(motherboard_text)
+    motherboard_field_map = {
+        "Expansion Slots (PCIe x 1)": "pcie_x1",
+        "Expansion Slots (PCIe x 4)": "pcie_x4",
+        "Expansion Slots (PCIe x 16)": "pcie_x16",
+        "Expansion Slots (M Dot 2) for SSD": "m2_ssd",
+        "Expansion Slots (M Dot 2) for WiFi": "m2_wifi",
+    }
+    for label, feature_key in motherboard_field_map.items():
+        exact_gem_specs[label] = str(motherboard_features.get(feature_key, 0))
+    exact_gem_specs["Trusted Platform Module"] = (
+        "No TPM 2.0"
+    )
+    exact_gem_specs.update({
+        "Graphics Type": "Integrated",
+        "Graphic Card Make and Model - Must declare": graphics_model,
+        "Size of Memory in Case of Dedicated Graphic Card (GB)": "0",
+        "Size of Memory in Case of Dedicated Graphic Card(GB)": "0",
+        "Recovery Media for OS": "On line/cloud",
+        "Type of RAM": "DDR4",
+        "Memory Expandable Up To (in GB)": "64",
+        "Total Numbers of DIMM Slots Available": "2",
+        "Number of DIMM Slots Populated with Memory Card/Module": "1",
+        "Cabinet Form Factor": gem_cabinet,
+        "Number of Internal Bays Available, Size 2 Point 5 Inch": cabinet_bays[0],
+        "Number of Internal Bay Populated, Size 2 Point 5 Inch": cabinet_bays[1],
+        "Number of Internal Bays Available, Size 3 Point 5 inch": cabinet_bays[2],
+        "Number of Internal Bay Populated, Size 3 Point 5 inch": cabinet_bays[3],
+        "Bays for Optical Drive": "0",
+        "Optical Drive": "No Optical Drive",
+        "Audio Interface Type": "true",
+        "Type of Ethernet Ports": "__FIRST_NON_PLACEHOLDER__",
+        "Number of Ethernet Ports": "__FIRST_NON_PLACEHOLDER__",
+        "Availibility of RoHS Certificate": "__FIRST_NON_PLACEHOLDER__",
+        "Availability of Certification for Environmental Management System with Manufacturer": "__FIRST_NON_PLACEHOLDER__",
+        "Compliance of Information Security, Cybersecurity and Privacy Protection-Information Security Management Systems Requirements": "__FIRST_NON_PLACEHOLDER__",
+        "Availability of EPR Registration in Respect of the Manufacturer as per e-Waste Rules as Amended Up To Date": "__FIRST_NON_PLACEHOLDER__",
+        "Agreed to Provide a copy of EPR Registration Certificate to Buyer on Demand": "__FIRST_NON_PLACEHOLDER__",
+        "Minimum Operating Temperature (in Degree Celsius)": "-5",
+        "Maximum Operating Temperature (in Degree Celsius)": "35",
+        "Operating Humidity(RH) (in Percentage)": "10 to 90",
+        "Power Supply Capacity- Maximum (in Watt)": "200",
+        "Minimum Power Efficiency Range (%)": "80-84",
+        "Mouse Connectivity": gem_keyboard_mouse_connectivity,
+        "Keyboard Connectivity": gem_keyboard_mouse_connectivity,
+        "Type of Keyboard": "Standard",
+        "Number of USB Ports Type C": "0",
+        "Number of VGA Ports": "1",
+        "Number of HDMI Ports": "1",
+        "Number of DP Ports": "0",
+        "Panel Type": "In Plane Switching (IPS)",
+        "Display Technology": "LED Backlit LCD",
+        "Maximum Resolution (Pixels)": "1920 x 1080 (Full HD)",
+        "Image Aspect Ratio": "16:9",
+        "Brightness (in Nits)": "200 to 250",
+        "Refresh Rate (in Hz)": "60 to 70",
+        "Monitor Port": "HDMI, VGA",
+        "Integrated Webcam with Mic": "No",
+        "Power Supply for Monitor": "External Power Adapter",
+        "Speaker": "No",
+    })
+
+    document_types = [
+        "approved_atc_documents",
+        "approved_price_paper",
+        "approved_all_documents",
+    ]
+    documents = [
+        {
+            "type": doc_type,
+            "url": request.build_absolute_uri(
+                f"/api/desktop-bids/{bid.id}/generate-docs/"
+            ),
+        }
+        for doc_type in document_types
+    ]
+    return {
+        "workflow": "desktop_gem_upload",
+        "gem_account": {
+            "id": str(account.get("id") or ""),
+            "username": str(account.get("username") or ""),
+            "password": str(account.get("password") or ""),
+        },
+        "bid_id": bid.id,
+        "callback_url": request.build_absolute_uri(
+            f"/api/desktop-bids/{bid.id}/gem-status/"
+        ),
+        "model_number": bid.model_number or "",
+        "brand": "ACXXEL",
+        "category": gem_category,
+        "quantity": bid.qty,
+        "price": bid.total_price,
+        "bid_number": bid.bid_no,
+        "department": bid.dept_name,
+        "organization": bid.organization or "",
+        "delivery_address": bid.address or "",
+        "pincode": bid.pincode or "",
+        "local_content": local_content,
+        "specifications": {
+            **catalogue_specs,
+            **exact_gem_specs,
+            "Processor": bid.processor or "",
+            "RAM": bid.ram or "",
+            "HDD": bid.hdd or "",
+            "SSD": " + ".join(filter(None, [bid.ssd1, bid.ssd2])),
+            "Operating System": bid.os or "",
+            "Optical Drive": exact_gem_specs["Optical Drive"],
+            "WiFi / Bluetooth": bid.wifi or "",
+            "Monitor": bid.monitor or "",
+            "Cabinet": bid.cabinet or "",
+            "Keyboard / Mouse": bid.keyboard or "",
+            "On Site OEM Warranty": bid.warranty or "",
+            "Motherboard": bid.motherboard or "",
+            "Optional Ports": bid.optional_ports or "",
+        },
+        "documents": documents,
+        "images": [
+            request.build_absolute_uri(catalogue_product.image.url)
+            for _ in [0]
+            if catalogue_product and catalogue_product.image
+        ],
+    }
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def start_desktop_gem_upload(request, bid_id):
+    try:
+        bid = DesktopBid.objects.get(id=bid_id)
+        if bid.review_status != "approved":
+            return JsonResponse(
+                {"error": "Admin approval is required before GeM upload."},
+                status=409,
+            )
+        if not bid.model_number:
+            return JsonResponse(
+                {"error": "Select or create a model before GeM upload."},
+                status=409,
+            )
+        data = _body_json(request)
+        account_id = str(data.get("gem_account") or "").strip()
+        account = next(
+            (item for item in _gem_accounts() if str(item.get("id")) == account_id),
+            None,
+        )
+        if not account:
+            return JsonResponse({"error": "Please select a valid GeM account."}, status=400)
+        bid.gem_account = account_id
+        bid.gem_status = "queued"
+        bid.gem_error = ""
+        bid.save(update_fields=["gem_account", "gem_status", "gem_error", "updated_at"])
+        return JsonResponse({
+            "success": True,
+            "gem_status": bid.gem_status,
+            "payload": _desktop_gem_payload(bid, request, account),
+        })
+    except DesktopBid.DoesNotExist:
+        return JsonResponse({"error": "Bid not found"}, status=404)
+
+
+@csrf_exempt
+@require_http_methods(["PATCH", "POST"])
+def update_desktop_gem_status(request, bid_id):
+    try:
+        bid = DesktopBid.objects.get(id=bid_id)
+        data = _body_json(request)
+        status_value = str(data.get("status") or "").strip().lower()
+        if status_value not in GEM_UPLOAD_STATUSES:
+            return JsonResponse({"error": "Invalid GeM status."}, status=400)
+
+        bid.gem_status = status_value
+        bid.gem_product_id = str(data.get("product_id") or bid.gem_product_id or "").strip()
+        bid.gem_product_url = str(data.get("product_url") or bid.gem_product_url or "").strip()
+        bid.gem_error = str(data.get("error") or "").strip()
+        if status_value in {"submitted", "published"}:
+            bid.gem_uploaded_at = timezone.now()
+        bid.save(update_fields=[
+            "gem_status", "gem_product_id", "gem_product_url", "gem_error",
+            "gem_uploaded_at", "updated_at",
+        ])
+        return JsonResponse({"success": True, "gem_status": bid.gem_status})
+    except DesktopBid.DoesNotExist:
+        return JsonResponse({"error": "Bid not found"}, status=404)
 
 MATCH_REQUIRED_FIELDS = 12
 MIN_STRONG_MATCH_FIELDS = 8
@@ -4940,6 +5408,8 @@ def _extract_motherboard_features_from_text(text):
         if m:
             features[key] = int(m.group(1))
 
+    if not features["pcie_x1"] and re.search(r"\bpci1\b", t):
+        features["pcie_x1"] = 1
     if "m2 wifi" in t or "wifi" in t:
         features["m2_wifi"] = max(features["m2_wifi"], 1)
     if "tpm" in t:
@@ -4954,6 +5424,20 @@ def _extract_motherboard_features_from_text(text):
         features["dp"] = 1
     if "ethernet" in t or "gigabit" in t or "lan" in t:
         features["ethernet"] = 1
+
+    known_slot_profiles = {
+        "b650": {"pcie_x1": 0, "pcie_x4": 2, "pcie_x16": 2, "m2_ssd": 0, "m2_wifi": 0},
+        "a520": {"pcie_x1": 0, "pcie_x4": 1, "pcie_x16": 1, "m2_ssd": 0, "m2_wifi": 0},
+        "h810": {"pcie_x1": 1, "pcie_x4": 0, "pcie_x16": 1, "m2_ssd": 1, "m2_wifi": 0},
+        "h610": {"pcie_x1": 0, "pcie_x4": 1, "pcie_x16": 1, "m2_ssd": 1, "m2_wifi": 0},
+        "q670": {"pcie_x1": 0, "pcie_x4": 2, "pcie_x16": 1, "m2_ssd": 2, "m2_wifi": 0},
+    }
+    for chipset, profile in known_slot_profiles.items():
+        if re.search(rf"\b{chipset}\b", t):
+            features.update(profile)
+            features["tpm"] = 1
+            break
+
     return features
 
 def _extract_motherboard_features_from_catalogue(product, catalogue_keys):
@@ -5347,7 +5831,7 @@ def match_catalogue_models(request, bid_id):
             "matches": [],
             "total_found": 0,
             "has_perfect_match": False,
-            "message": "Exact matching model nahi mila.",
+            "message": "No exact matching model was found.",
             "bid_specs_used": bid_specs,
             "best_failed_match": best_failed,
         }, status=200)

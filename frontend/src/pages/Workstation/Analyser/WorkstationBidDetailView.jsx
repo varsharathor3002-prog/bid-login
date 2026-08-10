@@ -1,6 +1,13 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import WorkstationDocument from "../User/WorkstationDocument";
+import {
+  INTEL_PROCESSORS, INTEL_XEON_PROCESSORS, AMD_THREADRIPPER_PROCESSORS,
+  INTEL_MOTHERBOARDS, INTEL_XEON_MOTHERBOARDS, AMD_MOTHERBOARDS,
+  RAMS, REGISTERED_RAMS, SSDS, HDDS, GRAPHICS_CARDS, CABINETS, KEYBOARDS,
+  POWER_SUPPLIES, OS_OPTIONS, MONITORS, WARRANTIES, getPriceFromLocalData,
+  getFilteredRams, getFilteredIntelMotherboards, getFilteredAmdMotherboards,
+} from "../User/WorkstationConfig";
 
 const API_BASE = "http://127.0.0.1:8000/api";
 const MATCH_API = (id) => `${API_BASE}/workstation-bids/${id}/match-catalogue/`;
@@ -38,6 +45,29 @@ const PRICE_FIELD_BY_NAME = {
   warranty: "warranty_price",
 };
 const PRICE_FIELD_NAMES = new Set(Object.values(PRICE_FIELD_BY_NAME));
+const PROCESSORS = [...INTEL_PROCESSORS, ...INTEL_XEON_PROCESSORS, ...AMD_THREADRIPPER_PROCESSORS];
+const ALL_MOTHERBOARDS = [...INTEL_MOTHERBOARDS, ...INTEL_XEON_MOTHERBOARDS, ...AMD_MOTHERBOARDS];
+const optionsFor = (name, form) => ({
+  processor: PROCESSORS,
+  ram: getFilteredRams(form?.processor),
+  hdd: HDDS,
+  ssd1: SSDS,
+  ssd2: SSDS,
+  graphics: GRAPHICS_CARDS,
+  motherboard: [...getFilteredIntelMotherboards(form?.processor), ...getFilteredAmdMotherboards(form?.processor)],
+  os: OS_OPTIONS,
+  monitor: MONITORS,
+  cabinet: CABINETS,
+  keyboard: KEYBOARDS,
+  power_supply: POWER_SUPPLIES,
+  warranty: WARRANTIES,
+}[name] || []);
+const REQUIRED_FIELDS = [
+  "bid_no", "dept_name", "organization", "qty", "pincode", "address", "atc",
+  "processor", "ram", "hdd", "ssd1", "ssd2", "graphics", "motherboard", "os",
+  "monitor", "cabinet", "keyboard", "power_supply", "warranty", "date", "epbg",
+];
+const CONDITIONAL_FIELDS = ["pro_descp", "motherboard_descp", "gp", "software1", "extra_requirements"];
 
 const TEXT_FIELDS = [
   ["address", "Address"], ["atc", "ATC"], ["pro_descp", "Processor Description"],
@@ -84,6 +114,23 @@ const AdminNoteBanner = ({ note }) => {
   );
 };
 
+const VerifiedField = ({ name, label, required, verifiedFields, readOnly, onToggle, children }) => {
+  const checked = !!verifiedFields[name];
+  return (
+    <div className="relative">
+      <div className="flex items-center justify-between mb-1">
+        <label className="block text-sm font-medium text-gray-700">{label}</label>
+        {!readOnly && (
+          <input type="checkbox" checked={checked} onChange={() => onToggle(name)}
+            title={required ? "Required - must verify" : "Optional"}
+            className="w-3.5 h-3.5 rounded cursor-pointer accent-green-600" />
+        )}
+      </div>
+      <div className={checked ? "ring-1 ring-green-500 rounded-md bg-green-50/50" : ""}>{children}</div>
+    </div>
+  );
+};
+
 function GeneralDocsViewPopup({ form }) {
   const [open, setOpen] = useState(false);
   const [generating, setGenerating] = useState({});
@@ -103,7 +150,7 @@ function GeneralDocsViewPopup({ form }) {
       body: JSON.stringify({ ...form, doc_type: doc.id }),
     });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok || !data.pdf_url) throw new Error(data.error || "Document generate nahi hua.");
+    if (!response.ok || !data.pdf_url) throw new Error(data.error || "The document could not be generated.");
     return data.pdf_url;
   };
 
@@ -259,6 +306,7 @@ export default function WorkstationBidDetailView() {
   const { id } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
+  const showGemUpload = location.state?.showGemUpload === true;
   const [form, setForm] = useState(location.state?.bid || {});
   const [readOnly] = useState(!!location.state?.readOnly);
   const [step, setStep] = useState(1);
@@ -271,6 +319,8 @@ export default function WorkstationBidDetailView() {
   const [noMatchFound, setNoMatchFound] = useState(false);
   const [newModelInput, setNewModelInput] = useState("");
   const [modelInputValue, setModelInputValue] = useState(location.state?.bid?.model_number || "");
+  const [verifiedFields, setVerifiedFields] = useState({});
+  const [gemStarting, setGemStarting] = useState(false);
 
   useEffect(() => {
     const loadBid = async () => {
@@ -290,13 +340,30 @@ export default function WorkstationBidDetailView() {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
+    setForm((prev) => {
+      const next = { ...prev, [name]: value };
+      const options = optionsFor(name, next);
+      if (options.length) next[PRICE_FIELD_BY_NAME[name]] = value === "None" ? "" : getPriceFromLocalData(options, value);
+      if (name === "processor") {
+        const compatibleRams = getFilteredRams(value);
+        const compatibleBoards = [...getFilteredIntelMotherboards(value), ...getFilteredAmdMotherboards(value)];
+        if (prev.ram && !compatibleRams.some((item) => item.name === prev.ram)) { next.ram = ""; next.ram_price = ""; }
+        if (prev.motherboard && !compatibleBoards.some((item) => item.name === prev.motherboard)) { next.motherboard = ""; next.motherboard_price = ""; }
+      }
+      return next;
+    });
   };
 
   const handleModelInputChange = (e) => {
     const value = e.target.value;
     setModelInputValue(value);
     setForm((prev) => ({ ...prev, model_number: value }));
+  };
+
+  const toggleVerification = (name) => {
+    const { scrollX, scrollY } = window;
+    setVerifiedFields((prev) => ({ ...prev, [name]: !prev[name] }));
+    requestAnimationFrame(() => window.scrollTo(scrollX, scrollY));
   };
 
   const saveModelNumberToDB = async (modelNo) => {
@@ -311,6 +378,7 @@ export default function WorkstationBidDetailView() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...form,
           model_number: trimmedModelNo,
           model: trimmedModelNo,
           model_no: trimmedModelNo,
@@ -397,7 +465,20 @@ export default function WorkstationBidDetailView() {
     setNewModelInput("");
   };
 
+  const handleGemUpload = () => {
+    setGemStarting(true);
+    const gemWindow = window.open("https://mkp.gem.gov.in/", "_blank", "noopener,noreferrer");
+    setMsg(gemWindow ? "GeM opened. Log in manually and add this approved workstation offering." : "Please allow pop-ups to open GeM.");
+    setGemStarting(false);
+  };
+
   const handleSave = async () => {
+    const conditionalRequired = CONDITIONAL_FIELDS.filter((name) => String(form?.[name] || "").trim());
+    const required = [...REQUIRED_FIELDS, ...conditionalRequired];
+    if (!required.every((name) => verifiedFields[name])) {
+      setMsg(`Please verify all required fields (${required.filter((name) => verifiedFields[name]).length}/${required.length}).`);
+      return;
+    }
     const currentModel = modelInputValue.trim();
     if (!currentModel) {
       alert("Please save a Model Number before proceeding.");
@@ -443,7 +524,12 @@ export default function WorkstationBidDetailView() {
 
   const isReAnalyze = form?.status === "re-analyze" || form?.status === "re_analyze" || form?.review_status === "re-analyze";
   const isReviewed = form?.status === "reviewed" || form?.review_status === "reviewed";
+  const isApproved = form?.status === "approved" || form?.review_status === "approved";
   const isPending = !isReAnalyze && !isReviewed;
+  const conditionalRequired = CONDITIONAL_FIELDS.filter((name) => String(form?.[name] || "").trim());
+  const activeRequiredFields = [...REQUIRED_FIELDS, ...conditionalRequired];
+  const verifiedCount = activeRequiredFields.filter((name) => verifiedFields[name]).length;
+  const allVerified = activeRequiredFields.every((name) => verifiedFields[name]);
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
@@ -475,8 +561,7 @@ export default function WorkstationBidDetailView() {
 
       <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {TOP_FIELDS.map(([name, label, type]) => (
-          <div key={name}>
-            <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+          <VerifiedField key={name} name={name} label={label} required verifiedFields={verifiedFields} readOnly={readOnly} onToggle={toggleVerification}>
             <input
               type={type || "text"}
               name={name}
@@ -485,13 +570,12 @@ export default function WorkstationBidDetailView() {
               readOnly={readOnly}
               className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 read-only:bg-gray-50"
             />
-          </div>
+          </VerifiedField>
         ))}
 
         <div className="md:col-span-2 lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-4">
           {TEXT_FIELDS.filter(([name]) => name === "address" || name === "atc").map(([name, label]) => (
-            <div key={name}>
-              <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+            <VerifiedField key={name} name={name} label={label} required verifiedFields={verifiedFields} readOnly={readOnly} onToggle={toggleVerification}>
               <textarea
                 name={name}
                 value={form[name] || ""}
@@ -500,7 +584,7 @@ export default function WorkstationBidDetailView() {
                 rows={2}
                 className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm resize-none outline-none focus:ring-2 focus:ring-blue-500 read-only:bg-gray-50"
               />
-            </div>
+            </VerifiedField>
           ))}
         </div>
 
@@ -520,19 +604,23 @@ export default function WorkstationBidDetailView() {
 
         {SPEC_FIELDS.filter(([name]) => !PRICE_FIELD_NAMES.has(name)).map(([name, label, type]) => {
           const priceField = PRICE_FIELD_BY_NAME[name];
+          const options = optionsFor(name, form);
+          const hasSavedCustomValue = form[name] && !options.some((option) => option.name === form[name]);
           return (
-            <div key={name}>
-              <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+            <VerifiedField key={name} name={name} label={label} required={REQUIRED_FIELDS.includes(name)} verifiedFields={verifiedFields} readOnly={readOnly} onToggle={toggleVerification}>
               {priceField ? (
                 <div className="flex gap-2">
-                  <input
-                    type={type || "text"}
+                  <select
                     name={name}
                     value={form[name] || ""}
                     onChange={handleChange}
-                    readOnly={readOnly}
-                    className="flex-1 min-w-0 border border-gray-300 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 read-only:bg-gray-50"
-                  />
+                    disabled={readOnly}
+                    className="flex-1 min-w-0 border border-gray-300 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white disabled:bg-gray-100"
+                  >
+                    <option value="">Select {label}</option>
+                    {hasSavedCustomValue && <option value={form[name]}>{form[name]}</option>}
+                    {options.map((option) => <option key={option.name} value={option.name}>{option.name}</option>)}
+                  </select>
                   <input
                     type="text"
                     value={form[priceField] || ""}
@@ -552,14 +640,13 @@ export default function WorkstationBidDetailView() {
                   className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 read-only:bg-gray-50"
                 />
               )}
-            </div>
+            </VerifiedField>
           );
         })}
 
         <div className="md:col-span-2 lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-4">
           {TEXT_FIELDS.filter(([name]) => name !== "address" && name !== "atc").map(([name, label]) => (
-            <div key={name}>
-              <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+            <VerifiedField key={name} name={name} label={label} required={conditionalRequired.includes(name)} verifiedFields={verifiedFields} readOnly={readOnly} onToggle={toggleVerification}>
               <textarea
                 name={name}
                 value={form[name] || ""}
@@ -568,9 +655,38 @@ export default function WorkstationBidDetailView() {
                 rows={2}
                 className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm resize-none outline-none focus:ring-2 focus:ring-blue-500 read-only:bg-gray-50"
               />
-            </div>
+            </VerifiedField>
           ))}
         </div>
+
+        {readOnly && isApproved && (
+          <div className="md:col-span-2 lg:col-span-3 rounded-lg border border-slate-300 bg-slate-50 p-4 shadow-sm">
+            <div className="flex items-center justify-between gap-4">
+              <label className="text-sm font-semibold text-slate-800">Total Approved Price</label>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-slate-700">₹</span>
+                <input readOnly disabled value={Number(form?.final_amount || form?.total_price || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  className="w-48 rounded-md border border-slate-300 bg-slate-100 px-3 py-2 text-right text-lg font-semibold text-slate-800" />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showGemUpload && readOnly && isApproved && (
+          <div className="md:col-span-2 lg:col-span-3 rounded-lg border border-indigo-200 bg-indigo-50 p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div className="flex-1">
+                <label className="block text-sm font-semibold text-indigo-950 mb-1">GeM upload</label>
+                <div className="w-full border border-indigo-200 bg-white rounded-md px-3 py-2 text-sm text-slate-700">Manual login in the GeM tab</div>
+                <p className="text-xs text-indigo-700 mt-2">Approved workstation model: <span className="font-semibold">{form.model_number || "-"}</span></p>
+              </div>
+              <button type="button" onClick={handleGemUpload} disabled={gemStarting}
+                className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white font-semibold px-6 py-2.5 rounded-md text-sm transition">
+                {gemStarting ? "Opening..." : "Upload to GeM"}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="px-6 pb-4">
@@ -664,9 +780,12 @@ export default function WorkstationBidDetailView() {
 
       <div className="px-6 pb-6 flex gap-3">
         {!readOnly && (
-          <button type="button" disabled={loading || modelSaving} onClick={handleSave} className="px-8 py-2.5 rounded bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-sm font-semibold">
-            {loading || modelSaving ? "Saving..." : "Next"}
-          </button>
+          <div className="flex items-center gap-3">
+            <button type="button" disabled={loading || modelSaving || !allVerified} onClick={handleSave} className="px-8 py-2.5 rounded bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white text-sm font-semibold">
+              {loading || modelSaving ? "Saving..." : "Next"}
+            </button>
+            <span className={`text-xs font-semibold ${allVerified ? "text-green-700" : "text-amber-700"}`}>Verified {verifiedCount}/{activeRequiredFields.length}</span>
+          </div>
         )}
         <button type="button" onClick={() => navigate(-1)} className="px-8 py-2.5 rounded bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm font-semibold">Cancel</button>
       </div>

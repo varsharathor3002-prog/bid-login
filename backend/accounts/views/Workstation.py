@@ -23,6 +23,7 @@ from .Desktop import (
     _values_overlap_score,
     _best_catalogue_match,
     _best_bid_match,
+    _catalogue_extra_specs,
 )
 
 
@@ -96,9 +97,26 @@ def _load_workstation_catalogue():
     return products
 
 
-def _workstation_catalogue_match_value(bid_value, catalogue_value):
-    if _match_is_blank(bid_value) or _match_is_blank(catalogue_value):
+def _workstation_catalogue_match_value(bid_value, catalogue_value, field_name=""):
+    absent_values = {"", "-", "none", "no", "n/a", "na", "not applicable", "not required"}
+    bid_absent = str(bid_value or "").strip().lower() in absent_values
+    catalogue_absent = str(catalogue_value or "").strip().lower() in absent_values
+    if bid_absent and catalogue_absent:
+        return True, 2500
+    if bid_absent or catalogue_absent:
         return False, 0
+    bid_normalized = re.sub(r"[^a-z0-9]+", "", str(bid_value).lower())
+    catalogue_normalized = re.sub(r"[^a-z0-9]+", "", str(catalogue_value).lower())
+    if bid_normalized and bid_normalized == catalogue_normalized:
+        return True, 2500
+    if field_name == "monitor":
+        bid_numbers = [float(value) for value in re.findall(r"\d+(?:\.\d+)?", str(bid_value))]
+        catalogue_numbers = [float(value) for value in re.findall(r"\d+(?:\.\d+)?", str(catalogue_value))]
+        if bid_numbers and len(catalogue_numbers) >= 2:
+            selected_size = bid_numbers[0]
+            lower_size, upper_size = catalogue_numbers[0], catalogue_numbers[1]
+            if lower_size <= selected_size <= upper_size:
+                return True, 2500
     score = _values_overlap_score(bid_value, catalogue_value)
     return score >= 100, score
 
@@ -139,7 +157,7 @@ def create_workstation_bid(request):
         if not user:
             return JsonResponse({
                 "error": f"User not found. ID: {user_id}, Username: {username}",
-                "hint": "Please logout karke dobara login karein"
+                "hint": "Please log out and sign in again."
             }, status=404)
 
         bid = WorkstationBid.objects.create(
@@ -293,6 +311,8 @@ def _workstation_bid_data(bid, request, status_label=None):
     )
     calculated_price = sum(float(getattr(bid, field, 0) or 0) for field in price_fields)
     approved_price = bid.final_amount or bid.total_price or calculated_price
+    catalogue_product = CatalogueProduct.objects.filter(model_no__iexact=bid.model_number or "").first()
+    catalogue_specs = _catalogue_extra_specs(catalogue_product) if catalogue_product else {}
     return {
         "id": bid.id,
         "bid_id": bid.id,
@@ -366,6 +386,7 @@ def _workstation_bid_data(bid, request, status_label=None):
         "extra_requirements_price": bid.extra_requirements_price,
         "optional_ports": bid.optional_ports or "",
         "model_number": bid.model_number or "",
+        "is_new_product": catalogue_specs.get("_source") == "workstation_bid",
         "analyser_note": bid.analyser_note or "",
         "analyser_username": bid.analyser_username or "",
         "analyser_display_name": bid.analyser_username or user_name,
@@ -445,9 +466,44 @@ def save_workstation_model_number(request, bid_id):
         if not model_number:
             return JsonResponse({"error": "Model number required"}, status=400)
 
-        model_number = model_number.strip()
+        model_number = model_number.strip().upper()
+        # Create the catalogue entry from the analyser's current selections,
+        # not from a potentially stale copy of the bid.
+        _apply_workstation_payload(bid, data)
         catalogue_product = CatalogueProduct.objects.filter(model_no__iexact=model_number).first()
-        bid.model_number = model_number
+        catalogue_created = False
+        if catalogue_product is None:
+            storage = " + ".join(
+                str(value).strip() for value in (bid.ssd1, bid.ssd2, bid.hdd)
+                if str(value or "").strip()
+            )
+            extra_specs = {
+                "_source": "workstation_bid",
+                "Computer Type": "Workstation",
+                "Processor": bid.processor or "",
+                "Motherboard": bid.motherboard or "",
+                "RAM": bid.ram or "",
+                "Storage": storage,
+                "Graphics Card": bid.graphic_card or "",
+                "Power Supply": bid.power_supply or "",
+                "Monitor": bid.monitor or "",
+                "Cabinet": bid.cabinet or "",
+                "Keyboard & Mouse": bid.keyboard or "",
+                "Operating System": bid.os or "",
+                "Warranty": bid.warranty or "",
+            }
+            catalogue_product = CatalogueProduct.objects.create(
+                model_no=model_number,
+                processor=bid.processor or "",
+                ram=bid.ram or "",
+                storage=storage,
+                os=bid.os or "",
+                category="Workstation",
+                description=bid.pro_descp or "Workstation",
+                extra_specs=extra_specs,
+            )
+            catalogue_created = True
+        bid.model_number = catalogue_product.model_no
         if bid.status not in ["complete", "approved"]:
             bid.status = "configured"
             bid.review_status = "pending"
@@ -460,6 +516,7 @@ def save_workstation_model_number(request, bid_id):
             "model": bid.model_number,
             "product_id": catalogue_product.id if catalogue_product else None,
             "source": "catalogue" if catalogue_product else "bid",
+            "catalogue_created": catalogue_created,
             "status": bid.status,
             "review_status": bid.review_status,
         }, status=200)
@@ -519,7 +576,7 @@ def match_workstation_catalogue_models(request, bid_id):
             if _match_is_blank(bid_value):
                 continue
             catalogue_value = product.get(product_key, "")
-            matched, score = _workstation_catalogue_match_value(bid_value, catalogue_value)
+            matched, score = _workstation_catalogue_match_value(bid_value, catalogue_value, bid_key)
             checked_count += 1
             if matched:
                 matched_count += 1
@@ -645,7 +702,7 @@ def match_workstation_catalogue_models(request, bid_id):
             "matches": [],
             "total_found": 0,
             "has_perfect_match": False,
-            "message": "Exact matching model nahi mila.",
+            "message": "No exact matching model was found.",
             "bid_specs_used": bid_specs,
             "best_failed_match": debug_all[0] if debug_all else None,
         }, status=200)
@@ -673,6 +730,33 @@ def match_workstation_catalogue_models(request, bid_id):
 def list_workstation_catalogue_products(request):
     search = (request.GET.get("search") or "").strip().lower()
     products = _load_workstation_catalogue()
+    known_models = {product["model_no"].strip().lower() for product in products}
+    for catalogue_product in CatalogueProduct.objects.filter(category__icontains="workstation").order_by("-created_at"):
+        model_key = (catalogue_product.model_no or "").strip().lower()
+        if not model_key or model_key in known_models:
+            continue
+        extra_specs = _catalogue_extra_specs(catalogue_product)
+        product = {
+            "id": f"catalogue-{catalogue_product.id}",
+            "catalogue_id": catalogue_product.id,
+            "model_no": catalogue_product.model_no or "",
+            "category": catalogue_product.category or "Workstation",
+            "processor": catalogue_product.processor or extra_specs.get("Processor", ""),
+            "motherboard": extra_specs.get("Motherboard", ""),
+            "ram": catalogue_product.ram or extra_specs.get("RAM", ""),
+            "storage": catalogue_product.storage or extra_specs.get("Storage", ""),
+            "ssd": extra_specs.get("SSD", ""),
+            "hdd": extra_specs.get("HDD", ""),
+            "graphics": extra_specs.get("Graphics Card", ""),
+            "os": catalogue_product.os or extra_specs.get("Operating System", ""),
+            "monitor": extra_specs.get("Monitor", ""),
+            "power_supply": extra_specs.get("Power Supply", ""),
+            "description": catalogue_product.description or "Workstation",
+            "extra_specs": extra_specs,
+            "source": "catalogue",
+        }
+        products.append(product)
+        known_models.add(model_key)
     if search:
         products = [
             product for product in products
@@ -747,9 +831,10 @@ def admin_review_workstation_bid(request, bid_id):
         )
         calculated_price = sum(float(getattr(bid, field, 0) or 0) for field in price_fields)
         requested_total = safe_float(data.get("total_price"), 0)
-        requested_final = safe_float(data.get("final_amount"), 0)
         bid.total_price = requested_total if requested_total > 0 else calculated_price
-        bid.final_amount = requested_final if requested_final > 0 else bid.total_price
+        # Admin's approved price is the final workstation amount. Do not let a
+        # stale calculated final_amount from the list payload override it.
+        bid.final_amount = bid.total_price
         bid.review_status = action
         bid.admin_note = data.get("admin_note", "").strip()
         bid.admin_username = data.get("admin_username", "").strip()
@@ -808,7 +893,7 @@ def update_workstation_docs(request, bid_id):
 @require_http_methods(["POST"])
 def generate_workstation_certificates(request, bid_id):
     if not fitz:
-        return JsonResponse({"error": "PyMuPDF installed nahi hai."}, status=500)
+        return JsonResponse({"error": "PyMuPDF is not installed."}, status=500)
     try:
         bid = WorkstationBid.objects.get(id=bid_id)
         body = json.loads(request.body or "{}")
@@ -829,12 +914,74 @@ def generate_workstation_certificates(request, bid_id):
             "ipv6": (21, 21),
             "preloaded_os": (22, 22),
         }
+        static_documents = {
+            "experience_certificate": "experience_certificate.pdf",
+            "past_performance": "past_performance.pdf",
+            "oem_annual_turnover": "oem_annual_turnover.pdf",
+            "atc_acceptance_letter": "atc_acceptance_letter.pdf",
+        }
+        approved_bundles = {"approved_atc_documents", "approved_all_documents"}
+        if doc_type in approved_bundles and bid.review_status != "approved":
+            return JsonResponse({"error": "Only approved bids can be downloaded"}, status=403)
+
+        out_dir = os.path.join(settings.MEDIA_ROOT, "generated_docs")
+        os.makedirs(out_dir, exist_ok=True)
+
+        if doc_type in static_documents:
+            source_path = os.path.join(settings.MEDIA_ROOT, "templates", "static_documents", static_documents[doc_type])
+            if not os.path.exists(source_path):
+                return JsonResponse({"error": f"{doc_type} template not found"}, status=404)
+            filename = f"workstation_{bid.id}_{doc_type}.pdf"
+            output_path = os.path.join(out_dir, filename)
+            static_doc = fitz.open(source_path)
+            static_doc.save(output_path)
+            static_doc.close()
+            return JsonResponse({"success": True, "pdf_url": request.build_absolute_uri(f"/media/generated_docs/{filename}")})
+
+        if doc_type == "approved_atc_documents":
+            if not bid.atc_special_document:
+                return JsonResponse({"error": "ATC document is not available"}, status=404)
+            return JsonResponse({"success": True, "pdf_url": request.build_absolute_uri(bid.atc_special_document.url)})
+
+        if doc_type == "approved_all_documents":
+            merged = fitz.open()
+            generated_names = [key for key in cert_page_ranges if key in (bid.selected_general_docs or [])]
+            generated_names.extend(["manufacturer_auth", "make_in_india"])
+            for child_type in dict.fromkeys(generated_names):
+                child_path = os.path.join(out_dir, f"workstation_{bid.id}_{child_type}.pdf")
+                if os.path.exists(child_path):
+                    child = fitz.open(child_path)
+                    merged.insert_pdf(child)
+                    child.close()
+            for template_name in static_documents.values():
+                child_path = os.path.join(settings.MEDIA_ROOT, "templates", "static_documents", template_name)
+                if os.path.exists(child_path):
+                    child = fitz.open(child_path)
+                    merged.insert_pdf(child)
+                    child.close()
+            if bid.atc_special_document and os.path.exists(bid.atc_special_document.path):
+                try:
+                    child = fitz.open(bid.atc_special_document.path)
+                    merged.insert_pdf(child)
+                    child.close()
+                except Exception:
+                    pass
+            if merged.page_count == 0:
+                merged.close()
+                return JsonResponse({"error": "No approved documents are available"}, status=404)
+            filename = f"workstation_{bid.id}_approved_all_documents.pdf"
+            merged.save(os.path.join(out_dir, filename))
+            merged.close()
+            return JsonResponse({"success": True, "pdf_url": request.build_absolute_uri(f"/media/generated_docs/{filename}")})
+
         if doc_type not in cert_page_ranges:
             return JsonResponse({"error": f"Invalid doc_type: '{doc_type}'"}, status=400)
 
-        template_path = os.path.join(settings.MEDIA_ROOT, "templates", "documents.pdf")
+        uses_workstation_spec_template = doc_type in {"data_sheet", "technical_compliance"}
+        template_name = "workstation.pdf" if uses_workstation_spec_template else "documents.pdf"
+        template_path = os.path.join(settings.MEDIA_ROOT, "templates", template_name)
         if not os.path.exists(template_path):
-            template_path = os.path.join("media", "templates", "documents.pdf")
+            template_path = os.path.join("media", "templates", template_name)
         if not os.path.exists(template_path):
             return JsonResponse({"error": "Template PDF not found"}, status=404)
 
@@ -1634,6 +1781,82 @@ def generate_workstation_certificates(request, bid_id):
             for rect, value, fontsize in replacements:
                 replace_technical_cell(rect, value, fontsize=fontsize)
 
+        workstation_template_replaced = set()
+
+        def fill_workstation_spec_template(page, technical=False):
+            """Fill only the value/offered column of media/templates/workstation.pdf."""
+            x_min = 410 if technical else 295
+            x_max = 528 if technical else 590
+
+            def replace_value(old, new, fontsize=9.2):
+                new = clean_text(new)
+                replacement_key = ("technical" if technical else "datasheet", old)
+                if not new or replacement_key in workstation_template_replaced:
+                    return
+                matches = [area for area in page.search_for(old) if area.x0 >= x_min]
+                if not matches:
+                    return
+                # Wrapped PDF text is returned as multiple rectangles. Clear
+                # the complete value/offered cell before writing once, or old
+                # continuation lines remain visible beside the new value.
+                matches = sorted(matches, key=lambda item: (abs(item.x0 - (428.8 if technical else 304)), item.y0))
+                anchor = matches[0]
+                same_value_lines = [item for item in matches if abs(item.x0 - anchor.x0) < 8]
+                y0 = min(item.y0 for item in same_value_lines) - 2
+                y1 = max(item.y1 for item in same_value_lines) + 4
+                cell_x0 = 424 if technical else anchor.x0 - 2
+                box = fitz.Rect(cell_x0, y0, x_max, y1)
+                page.add_redact_annot(box, fill=(1, 1, 1))
+                page.apply_redactions()
+                box = fitz.Rect(428.8 if technical else anchor.x0, y0 + 1, x_max - 2, max(y1 + 16, y0 + 30))
+                page.insert_textbox(box, new, fontsize=fontsize, fontname="hebo", color=(0, 0, 0))
+                workstation_template_replaced.add(replacement_key)
+
+            replacements = [
+                ("Intel Core i9-14900", specs["processor"]),
+                ("Intel Core Ultra 7 265K", specs["processor"]),
+                ("Intel Q Series", specs["motherboard"]),
+                ("NVIDIA Geforce RTX 5070 12GB", specs["graphics_model"]),
+                ("NVIDIA GeForce RTX 5070 Ti 16GB", specs["graphics_model"]),
+                ("Windows 11 Professional", specs["os"]),
+                ("DDR5", specs["ram_type"]),
+                ("128", specs["ram_size"]),
+                ("1024", specs["ssd_capacity"] or specs["ssd2"]),
+                ("2000", specs["hdd_capacity"]),
+                ("HDD@5400RPM", specs["hdd_capacity"]),
+                ("No Wireless Connectivity", specs["wifi"] or "No Wireless Connectivity"),
+                ("Wi-Fi 6 (802.11ax) + Bluetooth 5.3", specs["wifi"]),
+                ("68.1 - 73 (26.81\" - 28.74\")", specs["monitor"]),
+                ("60.96 CM (24.0\") [Falls in 58.1 - 63 CM range]", specs["monitor"]),
+                ("700", specs["power_supply"]),
+            ]
+            for old, new in replacements:
+                replace_value(old, new)
+            if technical:
+                replace_value("32", specs["ram_size"])
+                if page.number == 5:
+                    # These two offered cells contain heavily wrapped source
+                    # text, which PyMuPDF cannot reliably match as one phrase.
+                    # Clear the fixed offered cells completely and write once.
+                    offered_cells = [
+                        (fitz.Rect(424, 320, 528, 460), re.sub(r"\s*\+\s*", "\n", specs["wifi"] or "No Wireless Connectivity")),
+                        (fitz.Rect(424, 520, 528, 600), specs["monitor"]),
+                    ]
+                    for area, _value in offered_cells:
+                        page.add_redact_annot(area, fill=(1, 1, 1))
+                    page.apply_redactions()
+                    for area, value in offered_cells:
+                        if clean_text(value):
+                            page.insert_textbox(
+                                fitz.Rect(area.x0 + 5, area.y0 + 5, area.x1 - 4, area.y1 - 4),
+                                clean_text(value), fontsize=9.2, fontname="hebo", color=(0, 0, 0),
+                            )
+            if model_number:
+                # Model number is not printed in the supplied template; add it
+                # unobtrusively below the datasheet heading on its first page.
+                if not technical and page.number == 0:
+                    page.insert_text((304, 92), f"Model: {model_number}", fontsize=8.5, fontname="hebo", color=(0, 0, 0))
+
         def rewrite_warranty(page):
             formatted_model = model_number or "quoted model"
             paragraph = (
@@ -1652,6 +1875,13 @@ def generate_workstation_certificates(request, bid_id):
             signature_images = source_doc[5].get_images(full=True)
             if len(signature_images) > 1:
                 signature_image = source_doc.extract_image(signature_images[1][0]).get("image")
+        if not signature_image:
+            for signature_page in source_doc:
+                signature_images = signature_page.get_images(full=True)
+                if len(signature_images) > 1:
+                    signature_image = source_doc.extract_image(signature_images[1][0]).get("image")
+                    if signature_image:
+                        break
 
         def add_authorized_signatory(page, y=685, compact=False):
             x = 58
@@ -1683,7 +1913,12 @@ def generate_workstation_certificates(request, bid_id):
                 fontname="hebo",
                 lineheight=1.0 if compact else 1.05,
             )
-        page_from, page_to = cert_page_ranges[doc_type]
+        if doc_type == "data_sheet" and uses_workstation_spec_template:
+            page_from, page_to = (1, 7)
+        elif doc_type == "technical_compliance" and uses_workstation_spec_template:
+            page_from, page_to = (8, 13)
+        else:
+            page_from, page_to = cert_page_ranges[doc_type]
         doc = fitz.open()
         doc.insert_pdf(source_doc, from_page=page_from - 1, to_page=page_to - 1)
         source_doc.close()
@@ -1731,6 +1966,9 @@ def generate_workstation_certificates(request, bid_id):
         suppress_tender_docs = {"data_sheet", "technical_compliance"}
         for page_index, page in enumerate(doc):
             original_page = page_from + page_index
+            if uses_workstation_spec_template:
+                fill_workstation_spec_template(page, technical=doc_type == "technical_compliance")
+                continue
             if doc_type == "service_support":
                 fix_service_support_page(page)
                 if original_page == 30:
@@ -1779,6 +2017,94 @@ def generate_workstation_certificates(request, bid_id):
                 fix_preloaded_os_page(page)
             else:
                 remove_urls_and_config_links(page)
+
+        if doc_type == "data_sheet" and uses_workstation_spec_template:
+            snapshot = fitz.open(stream=doc.tobytes(), filetype="pdf")
+            compact_doc = fitz.open()
+            data_rows = [
+                ("Model Number", specs["model_number"]),
+                ("Processor", specs["processor"]),
+                ("Motherboard", specs["motherboard"]),
+                ("RAM", specs["ram_size"]),
+                ("Primary SSD", specs["ssd_capacity"]),
+                ("Secondary SSD", specs["ssd2"]),
+                ("Hard Disk Drive", specs["hdd_capacity"]),
+                ("Graphics Card", specs["graphics_model"]),
+                ("Operating System", specs["os"]),
+                ("Wi-Fi / Bluetooth", specs["wifi"]),
+                ("Optional Ports", specs["optional_ports"]),
+                ("DVD / Optical Drive", clean_text(bid.dvd)),
+                ("Monitor / Screen Size", specs["monitor"]),
+                ("Cabinet", specs["cabinet"]),
+                ("Keyboard & Mouse", specs["keyboard"]),
+                ("Power Supply", specs["power_supply"]),
+                ("On-Site OEM Warranty", specs["warranty"] or specs["warranty_text"]),
+            ]
+            page_rows = (data_rows[:9], data_rows[9:])
+            for page_index, rows in enumerate(page_rows):
+                page = compact_doc.new_page(width=612, height=792)
+                # The exact Acxxel / Laps N Tabs company header from the
+                # supplied workstation PDF is retained on both pages.
+                page.show_pdf_page(
+                    fitz.Rect(0, 0, 612, 97), snapshot, 0,
+                    clip=fitz.Rect(0, 0, 612, 97), keep_proportion=False,
+                )
+                page.insert_textbox(
+                    fitz.Rect(34, 103, 578, 130),
+                    "Datasheet of the product",
+                    fontsize=14, fontname="hebo", color=(0.08, 0.08, 0.08), align=1,
+                )
+                page.insert_textbox(
+                    fitz.Rect(34, 128, 578, 145),
+                    f"Model: {specs['model_number'] or '-'}",
+                    fontsize=8.5, fontname="hebo", color=(0.25, 0.25, 0.25), align=1,
+                )
+                y = 151
+                label_width = 205
+                row_height = 48
+                for label, raw_value in rows:
+                    value = clean_text(raw_value) or "-"
+                    page.draw_rect(
+                        fitz.Rect(34, y, label_width, y + row_height),
+                        color=(0.55, 0.55, 0.55), fill=(0.93, 0.94, 0.96), width=0.65,
+                    )
+                    page.draw_rect(
+                        fitz.Rect(label_width, y, 578, y + row_height),
+                        color=(0.55, 0.55, 0.55), width=0.65,
+                    )
+                    page.insert_textbox(
+                        fitz.Rect(43, y + 8, label_width - 7, y + row_height - 5),
+                        label, fontsize=9, fontname="hebo", color=(0, 0, 0),
+                    )
+                    page.insert_textbox(
+                        fitz.Rect(label_width + 9, y + 7, 570, y + row_height - 5),
+                        value, fontsize=10, fontname="hebo", color=(0, 0, 0),
+                    )
+                    y += row_height
+                if page_index == 1:
+                    add_authorized_signatory(page, y=610)
+            doc.close()
+            snapshot.close()
+            doc = compact_doc
+
+        if doc_type == "technical_compliance" and uses_workstation_spec_template and doc.page_count >= 6:
+            # The supplied template's last compliance page contains two RAID
+            # rows that are not part of the workstation offering. Remove that
+            # band and move every following section upward so no blank gap or
+            # broken pagination remains.
+            snapshot = fitz.open(stream=doc.tobytes(), filetype="pdf")
+            source_index = 5
+            compact_page = doc.new_page(width=612, height=792)
+            compact_page.show_pdf_page(
+                fitz.Rect(0, 0, 612, 230), snapshot, source_index,
+                clip=fitz.Rect(0, 0, 612, 230), keep_proportion=False,
+            )
+            compact_page.show_pdf_page(
+                fitz.Rect(0, 230, 612, 702), snapshot, source_index,
+                clip=fitz.Rect(0, 320, 612, 792), keep_proportion=False,
+            )
+            doc.delete_page(source_index)
+            snapshot.close()
 
         if doc_type in {"warranty", "non_return_hdd", "non_obsolete"}:
             for page in doc:

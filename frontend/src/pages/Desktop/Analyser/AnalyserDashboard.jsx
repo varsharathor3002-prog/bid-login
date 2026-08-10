@@ -10,11 +10,15 @@ const VISIBLE_PAGES = 5;
 
 export default function AnalyserDashboard({ product = "desktop" }) {
 
-    const [activeTab, setActiveTab] = useState("pending");
+    const [activeTab, setActiveTab] = useState(() => {
+        const status = new URLSearchParams(window.location.search).get("status");
+        return ["pending", "approved", "re-analyze"].includes(status) ? status : "pending";
+    });
     const [bids, setBids] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [reAnalyzeCount, setReAnalyzeCount] = useState(0);
+    const [gemTransferCount, setGemTransferCount] = useState(0);
     const [currentPage, setCurrentPage] = useState(1);
 
     const navigate = useNavigate();
@@ -26,6 +30,7 @@ export default function AnalyserDashboard({ product = "desktop" }) {
 
     useEffect(() => {
         fetchReAnalyzeCount();
+        fetchGemTransferCount();
     }, [product]);
 
     const fetchReAnalyzeCount = async () => {
@@ -46,7 +51,8 @@ export default function AnalyserDashboard({ product = "desktop" }) {
 
         try {
 
-            const url = `${API_MAP[product]}?status=${activeTab}`;
+            const requestedStatus = activeTab === "gem-transfer" ? "approved" : activeTab;
+            const url = `${API_MAP[product]}?status=${requestedStatus}`;
 
             const res = await fetch(url, {
                 headers: {
@@ -60,7 +66,14 @@ export default function AnalyserDashboard({ product = "desktop" }) {
 
             const data = await res.json();
 
-            setBids(data);
+            const visibleBids =
+                activeTab === "gem-transfer"
+                    ? data.filter((bid) => bid.is_new_product)
+                    : data;
+            setBids(visibleBids);
+            if (activeTab === "gem-transfer") {
+                setGemTransferCount(visibleBids.length);
+            }
 
             if (activeTab === "re-analyze") {
                 setReAnalyzeCount(data.length);
@@ -68,7 +81,7 @@ export default function AnalyserDashboard({ product = "desktop" }) {
 
         } catch {
 
-            setError("Backend se connect nahi ho pa raha.");
+            setError("Unable to connect to the backend.");
             setBids([]);
 
         } finally {
@@ -102,6 +115,21 @@ export default function AnalyserDashboard({ product = "desktop" }) {
         if (page < 1 || page > totalPages) return;
         setCurrentPage(page);
     };
+
+    const fetchGemTransferCount = async () => {
+        try {
+            const res = await fetch(`${API_MAP[product]}?status=approved`);
+            if (!res.ok) return;
+            const data = await res.json();
+            setGemTransferCount(
+                Array.isArray(data) ? data.filter((bid) => bid.is_new_product).length : 0
+            );
+        } catch {
+            setGemTransferCount(0);
+        }
+    };
+
+    const isApprovedView = activeTab === "approved" || activeTab === "gem-transfer";
 
     return (
 
@@ -144,8 +172,25 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                     <span>⚠️</span>
                     Re-Analyze
                     {reAnalyzeCount > 0 && (
-                        <span className="bg-rose-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center leading-none">
-                            {reAnalyzeCount}
+                        <span className="inline-flex h-5 w-5 flex-none items-center justify-center rounded-full bg-rose-500 text-[10px] font-bold leading-none text-white shadow-sm">
+                            {reAnalyzeCount > 99 ? "99+" : reAnalyzeCount}
+                        </span>
+                    )}
+                </button>
+
+                <button
+                    onClick={() => setActiveTab("gem-transfer")}
+                    className={`py-4 px-2 text-sm font-semibold transition-all flex items-center gap-2
+                    ${activeTab === "gem-transfer"
+                            ? "text-blue-600 border-b-2 border-blue-600"
+                            : "text-gray-500 hover:text-gray-700"
+                        }`}
+                >
+                    <span>↗</span>
+                    Transfer Catalogue to GeM
+                    {gemTransferCount > 0 && (
+                        <span className="inline-flex h-5 w-5 flex-none items-center justify-center rounded-full bg-blue-600 text-[10px] font-bold leading-none text-white shadow-sm">
+                            {gemTransferCount > 99 ? "99+" : gemTransferCount}
                         </span>
                     )}
                 </button>
@@ -163,16 +208,16 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                 <table className="w-full table-fixed text-left border-separate border-spacing-0 [&_th]:!px-2 [&_td]:!px-2">
 
                     <colgroup>
-                        <col className={activeTab === "approved" ? "w-[5%]" : "w-[6%]"} />
-                        <col className={activeTab === "approved" ? "w-[11%]" : "w-[16%]"} />
-                        <col className={activeTab === "approved" ? "w-[13%]" : "w-[18%]"} />
-                        <col className={activeTab === "approved" ? "w-[5%]" : "w-[6%]"} />
-                        <col className={activeTab === "approved" ? "w-[10%]" : "w-[15%]"} />
-                        <col className={activeTab === "approved" ? "w-[10%]" : "w-[13%]"} />
-                        <col className={activeTab === "approved" ? "w-[10%]" : "w-[13%]"} />
-                        <col className={activeTab === "approved" ? "w-[9%]" : "w-[13%]"} />
-                        {activeTab === "approved" && <col className="w-[11%]" />}
-                        {activeTab === "approved" && <col className="w-[16%]" />}
+                        <col className={isApprovedView ? "w-[5%]" : "w-[6%]"} />
+                        <col className={isApprovedView ? "w-[12%]" : "w-[16%]"} />
+                        <col className={isApprovedView ? "w-[15%]" : "w-[18%]"} />
+                        <col className={isApprovedView ? "w-[6%]" : "w-[6%]"} />
+                        <col className={isApprovedView ? "w-[12%]" : "w-[15%]"} />
+                        <col className={isApprovedView ? "w-[11%]" : "w-[13%]"} />
+                        {!isApprovedView && <col className="w-[13%]" />}
+                        <col className={isApprovedView ? "w-[10%]" : "w-[13%]"} />
+                        {isApprovedView && <col className="w-[14%]" />}
+                        {isApprovedView && <col className="w-[15%]" />}
                     </colgroup>
 
                     <thead>
@@ -203,21 +248,23 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                                 Date
                             </th>
 
-                            <th className="px-5 py-4 text-[11px] tracking-wider font-bold text-white uppercase border-b border-slate-700 whitespace-nowrap">
-                                Status
-                            </th>
+                            {!isApprovedView && (
+                                <th className="px-5 py-4 text-[11px] tracking-wider font-bold text-white uppercase border-b border-slate-700 whitespace-nowrap">
+                                    Status
+                                </th>
+                            )}
 
                             <th className="px-5 py-4 text-[11px] tracking-wider font-bold text-white uppercase border-b border-slate-700 whitespace-nowrap">
                                 Action
                             </th>
 
-                            {activeTab === "approved" && (
-                                <th className="!pr-5 py-4 text-[11px] tracking-wider font-bold text-white uppercase border-b border-slate-700 whitespace-nowrap">
-                                    Price Approved
+                            {isApprovedView && (
+                                <th className="px-5 py-4 text-[11px] tracking-wider font-bold text-white uppercase border-b border-slate-700">
+                                    Approved Details For Bidding
                                 </th>
                             )}
 
-                            {activeTab === "approved" && (
+                            {isApprovedView && (
                                 <th className="w-[15%] !pl-5 py-4 text-[11px] tracking-wider font-bold text-white uppercase border-b border-l border-slate-700">
                                     Download Docs for the bid
                                 </th>
@@ -232,7 +279,7 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                         {loading && (
                             <tr>
                                 <td
-                                    colSpan={activeTab === "approved" ? 10 : 8}
+                                    colSpan={isApprovedView ? 9 : 8}
                                     className="text-center py-16 text-gray-400 font-medium"
                                 >
                                     Loading bids...
@@ -243,10 +290,12 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                         {!loading && bids.length === 0 && (
                             <tr>
                                 <td
-                                    colSpan={activeTab === "approved" ? 10 : 8}
+                                    colSpan={isApprovedView ? 9 : 8}
                                     className="text-center py-16 text-gray-400 font-medium"
                                 >
-                                    No bids found.
+                                    {activeTab === "gem-transfer"
+                                        ? "No approved manually-created products found."
+                                        : "No bids found."}
                                 </td>
                             </tr>
                         )}
@@ -314,6 +363,7 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                                         </span>
                                     </td>
 
+                                    {!isApprovedView && (
                                     <td className="px-5 py-4 border-b border-gray-100">
 
                                         {bid.status === "pending" && (
@@ -335,6 +385,7 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                                         )}
 
                                     </td>
+                                    )}
 
                                     <td className="px-5 py-4 border-b border-gray-100">
 
@@ -343,7 +394,13 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                                                     onClick={() =>
                                                         navigate(
                                                             `/analyser-dashboard/${product}/bid/${bid.id}`,
-                                                            { state: { bid, readOnly: true } }
+                                                            {
+                                                                state: {
+                                                                    bid,
+                                                                    readOnly: true,
+                                                                    showGemUpload: activeTab === "gem-transfer",
+                                                                },
+                                                            }
                                                         )
                                                     }
                                                     className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded text-[11px] font-bold uppercase tracking-widest shadow-sm transition-all whitespace-nowrap"
@@ -373,9 +430,21 @@ export default function AnalyserDashboard({ product = "desktop" }) {
 
                                     </td>
 
-                                    {activeTab === "approved" && (
+                                    {isApprovedView && (
                                     <td className="!pr-5 py-4 border-b border-gray-100">
-                                        <span className="whitespace-nowrap text-sm font-semibold text-emerald-700">
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                navigate(
+                                                    `/analyser-dashboard/${product}/bid/${bid.id}/approved-details`,
+                                                    { state: { bid } }
+                                                )
+                                            }
+                                            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-[11px] font-bold uppercase tracking-widest shadow-sm whitespace-nowrap"
+                                        >
+                                            Download
+                                        </button>
+                                        <span className="hidden">
                                             ₹{Number(bid.total_price || 0).toLocaleString("en-IN", {
                                                 minimumFractionDigits: 2,
                                                 maximumFractionDigits: 2,
@@ -384,7 +453,7 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                                     </td>
                                     )}
 
-                                    {activeTab === "approved" && (
+                                    {isApprovedView && (
                                     <td className="!pl-5 py-4 border-b border-l border-gray-100">
                                         {bid.status === "approved" ? (
                                             <button

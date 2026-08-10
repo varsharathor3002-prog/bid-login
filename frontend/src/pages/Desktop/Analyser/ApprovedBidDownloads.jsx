@@ -31,11 +31,11 @@ export default function ApprovedBidDownloads() {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.pdf_url) {
-        throw new Error(data.error || "Document generate nahi hua.");
+        throw new Error(data.error || "The document could not be generated.");
       }
 
       const fileResponse = await fetch(data.pdf_url);
-      if (!fileResponse.ok) throw new Error("Document download nahi hua.");
+      if (!fileResponse.ok) throw new Error("The document could not be downloaded.");
 
       const blobUrl = URL.createObjectURL(await fileResponse.blob());
       const link = document.createElement("a");

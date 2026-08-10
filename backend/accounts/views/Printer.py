@@ -1064,7 +1064,7 @@ def create_printer_bid(request):
         if not user:
             return JsonResponse({
                 "error": f"User not found. ID: {user_id}, Username: {username}",
-                "hint": "Please logout karke dobara login karein"
+                "hint": "Please log out and sign in again."
             }, status=404)
 
         bid = PrinterBid.objects.create(

@@ -1,0 +1,52 @@
+{
+  "manifest_version": 3,
+  "name": "Acxxel GeM Desktop Workflow",
+  "version": "3.42.33",
+  "description": "Fills approved Desktop jobs and reads technical evaluation results in an authenticated GeM tab.",
+  "permissions": ["storage", "tabs", "alarms", "scripting"],
+  "host_permissions": [
+    "http://127.0.0.1:8000/*",
+    "http://localhost:8000/*",
+    "http://localhost:5173/*",
+    "https://acxxelbidding.com/*",
+    "https://www.acxxelbidding.com/*",
+    "https://*.gem.gov.in/*"
+  ],
+  "background": { "service_worker": "src/background.js" },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "src/popup.html",
+    "default_title": "Acxxel GeM Desktop Workflow",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://localhost:5173/*",
+        "http://127.0.0.1:5173/*",
+        "https://acxxelbidding.com/*",
+        "https://www.acxxelbidding.com/*"
+      ],
+      "js": ["src/app-bridge.js"]
+    },
+    {
+      "matches": ["https://*.gem.gov.in/*"],
+      "js": ["src/gem-page-bridge.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://*.gem.gov.in/*"],
+      "js": ["src/gem-content.js", "src/gem-bid-sync.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

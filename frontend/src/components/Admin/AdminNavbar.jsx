@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import useOutsideClick from "../../hooks/useOutsideClick";
+import { connectGemExtension } from "../../utils/connectGemExtension";
 import {
   FaSignOutAlt,
   FaChevronDown,
@@ -20,6 +21,8 @@ import {
   FaPrint,
   FaBox,
   FaShieldAlt,
+  FaBan,
+  FaTags,
 } from "react-icons/fa";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -40,6 +43,7 @@ const bidItems = [
 const adminItems = [
   { name: "Add User",     path: "/admin-dashboard/add-user",     icon: <FaUserPlus /> },
   { name: "Add Analyser", path: "/admin-dashboard/add-analyser", icon: <FaUserCircle /> },
+  { name: "Add Admin",    path: "/admin-dashboard/add-admin",    icon: <FaShieldAlt /> },
 ];
 
 const BID_PRODUCTS = [
@@ -93,8 +97,16 @@ const normalizeDailyData = (data = []) =>
     total:    Number(item.total    ?? 0),
   }));
 
-const MetricCard = ({ icon, num, label, gradient, iconBg, loading = false }) => (
-  <div className={`relative rounded-2xl p-5 flex items-center gap-4 shadow-md overflow-hidden ${gradient}`}>
+const MetricCard = ({ icon, num, label, gradient, iconBg, loading = false, onClick }) => (
+  <div
+    onClick={onClick}
+    role={onClick ? "link" : undefined}
+    tabIndex={onClick ? 0 : undefined}
+    onKeyDown={onClick ? (event) => {
+      if (event.key === "Enter" || event.key === " ") onClick();
+    } : undefined}
+    className={`relative rounded-2xl p-5 flex items-center gap-4 shadow-md overflow-hidden ${gradient} ${onClick ? "cursor-pointer transition-transform hover:-translate-y-0.5 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2" : ""}`}
+  >
     <div className="absolute -right-4 -top-4 w-24 h-24 rounded-full bg-white opacity-10" />
     <div className="absolute -right-1 -bottom-6 w-16 h-16 rounded-full bg-white opacity-10" />
     <div className={`relative z-10 text-2xl ${iconBg} p-3 rounded-xl shadow-inner flex items-center justify-center`}>
@@ -112,6 +124,7 @@ const MetricCard = ({ icon, num, label, gradient, iconBg, loading = false }) => 
 );
 
 const AdminHome = () => {
+  const navigate = useNavigate();
   const [selectedProduct, setSelectedProduct] = useState(BID_PRODUCTS[0]);
   const [dropOpen, setDropOpen] = useState(false);
   const productDropdownRef = useRef(null);
@@ -136,6 +149,8 @@ const AdminHome = () => {
 
   useOutsideClick(productDropdownRef, () => setDropOpen(false), dropOpen);
   useOutsideClick(analyserDropdownRef, () => setAnalyserDropOpen(false), analyserDropOpen);
+
+  const approvalPath = `/admin-dashboard/${selectedProduct.key}-bid-approval`;
 
   const fetchAccountCounts = useCallback(async () => {
     setAccountsLoading(true);
@@ -339,13 +354,13 @@ const AdminHome = () => {
       {}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <MetricCard icon={<FaFileInvoiceDollar className="text-blue-600" />} num={stats.totalBids} label="Total Bids" gradient="bg-gradient-to-br from-blue-500 to-blue-600" iconBg="bg-blue-100" loading={statsLoading} />
-        <MetricCard icon={<FaHourglassHalf className="text-amber-500" />} num={stats.pending} label="Pending Review" gradient="bg-gradient-to-br from-amber-400 to-amber-500" iconBg="bg-amber-100" loading={statsLoading} />
-        <MetricCard icon={<FaThumbsUp className="text-emerald-600" />} num={stats.approved} label="Approved Bids" gradient="bg-gradient-to-br from-emerald-500 to-emerald-600" iconBg="bg-emerald-100" loading={statsLoading} />
-        <MetricCard icon={<FaThumbsDown className="text-rose-600" />} num={stats.reAnalyze} label="Re-Analyze" gradient="bg-gradient-to-br from-rose-500 to-rose-600" iconBg="bg-rose-100" loading={statsLoading} />
+        <MetricCard onClick={() => navigate(`${approvalPath}?status=pending`)} icon={<FaHourglassHalf className="text-amber-500" />} num={stats.pending} label="Pending Review" gradient="bg-gradient-to-br from-amber-400 to-amber-500" iconBg="bg-amber-100" loading={statsLoading} />
+        <MetricCard onClick={() => navigate(`${approvalPath}?status=approved`)} icon={<FaThumbsUp className="text-emerald-600" />} num={stats.approved} label="Approved Bids" gradient="bg-gradient-to-br from-emerald-500 to-emerald-600" iconBg="bg-emerald-100" loading={statsLoading} />
+        <MetricCard onClick={() => navigate(`${approvalPath}?status=re-analyze`)} icon={<FaThumbsDown className="text-rose-600" />} num={stats.reAnalyze} label="Re-Analyze" gradient="bg-gradient-to-br from-rose-500 to-rose-600" iconBg="bg-rose-100" loading={statsLoading} />
       </div>
       <div className="grid grid-cols-2 gap-4">
-        <MetricCard icon={<FaUsers className="text-violet-600" />} num={userCount} label="Total Users Registered" gradient="bg-gradient-to-br from-violet-500 to-violet-600" iconBg="bg-violet-100" loading={accountsLoading} />
-        <MetricCard icon={<FaUserTie className="text-cyan-600" />} num={analyserCount} label="Total Analysers Registered" gradient="bg-gradient-to-br from-cyan-500 to-cyan-600" iconBg="bg-cyan-100" loading={accountsLoading} />
+        <MetricCard onClick={() => navigate("/admin-dashboard/add-user")} icon={<FaUsers className="text-violet-600" />} num={userCount} label="Total Users Registered" gradient="bg-gradient-to-br from-violet-500 to-violet-600" iconBg="bg-violet-100" loading={accountsLoading} />
+        <MetricCard onClick={() => navigate("/admin-dashboard/add-analyser")} icon={<FaUserTie className="text-cyan-600" />} num={analyserCount} label="Total Analysers Registered" gradient="bg-gradient-to-br from-cyan-500 to-cyan-600" iconBg="bg-cyan-100" loading={accountsLoading} />
       </div>
 
       {}
@@ -419,6 +434,7 @@ const AdminHome = () => {
 const AdminNavbar = () => {
   const [openBid, setOpenBid] = useState(true);
   const [openAdmin, setOpenAdmin] = useState(false);
+  const [openRates, setOpenRates] = useState(false);
   const [username, setUsername] = useState("");
   const navigate = useNavigate();
   const location = useLocation();
@@ -429,6 +445,8 @@ const AdminNavbar = () => {
       setUsername(stored.trim());
     }
   }, []);
+
+  useEffect(() => connectGemExtension(), []);
 
   const handleLogout = () => {
     localStorage.removeItem("admin_username");
@@ -485,6 +503,18 @@ const AdminNavbar = () => {
         {}
         <div className="flex-1 p-3 overflow-y-auto hide-scrollbar">
 
+          <div
+            onClick={() => navigate("/admin-dashboard/disqualified-bids")}
+            className={`flex items-center gap-3 px-4 py-3 mb-3 rounded-xl cursor-pointer transition-all duration-200 focus:outline-none focus:ring-0 no-highlight select-none ${
+              isActive("/admin-dashboard/disqualified-bids")
+                ? "bg-gray-700/50 text-white"
+                : "hover:bg-gray-700/50 text-gray-200"
+            }`}
+          >
+            <span className="text-lg text-red-400"><FaBan /></span>
+            <span className="text-sm font-medium">Disqualified Bid</span>
+          </div>
+
           {}
           <button
             onClick={() => setOpenAdmin(!openAdmin)}
@@ -517,6 +547,24 @@ const AdminNavbar = () => {
               ))}
             </div>
           )}
+
+          <div className="mt-3">
+            <button
+              onClick={() => setOpenRates(!openRates)}
+              className="flex items-center justify-between w-full px-4 py-3 bg-gray-800/50 rounded-xl hover:bg-gray-700/70 transition border border-gray-700/30 focus:outline-none focus:ring-0 no-highlight select-none"
+            >
+              <span className="flex items-center gap-2 font-medium"><FaTags className="text-emerald-400" /><span>Component Rate</span></span>
+              <span className={`transition duration-300 text-gray-400 ${openRates ? "rotate-180" : ""}`}><FaChevronDown /></span>
+            </button>
+            {openRates && (
+              <div className="mt-3 space-y-1.5 ml-2">
+                {[{ key: "desktop", label: "Desktop", ready: true }, { key: "workstation", label: "Workstation", ready: true }, { key: "aio", label: "AIO", ready: false }].map((item) => {
+                  const path = `/admin-dashboard/component-rates/${item.key}`;
+                  return <div key={item.key} onClick={() => item.ready && navigate(path)} className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 no-highlight select-none ${!item.ready ? "cursor-not-allowed text-gray-500 opacity-70" : isActive(path) ? "cursor-pointer bg-gray-700/70 text-white" : "cursor-pointer hover:bg-gray-700/50 text-gray-200"}`}><FaDesktop className={item.ready ? "text-emerald-400" : "text-gray-500"} /><span className="text-sm font-medium">{item.label}</span>{!item.ready && <span className="ml-auto rounded-full bg-gray-600 px-2 py-0.5 text-[10px] text-gray-300">Coming Soon</span>}</div>;
+                })}
+              </div>
+            )}
+          </div>
 
           {}
           <div className="mt-3">

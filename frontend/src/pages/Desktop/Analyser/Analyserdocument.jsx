@@ -76,7 +76,7 @@ export default function AnalyserDocument() {
 
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || "Document generate nahi hua");
+        throw new Error(errData.error || "The document could not be generated.");
       }
 
       const data = await response.json();
@@ -86,10 +86,10 @@ export default function AnalyserDocument() {
         setGenerated((prev) => ({ ...prev, [doc.id]: true }));
         setSelectedDocs((prev) => ({ ...prev, [doc.id]: true }));
       } else {
-        throw new Error("PDF URL nahi mila");
+        throw new Error("The PDF URL was not returned.");
       }
     } catch (err) {
-      setError(err.message || "Document generate karte waqt kuch galat hua.");
+      setError(err.message || "An error occurred while generating the document.");
     } finally {
       setGenerating((prev) => ({ ...prev, [doc.id]: false }));
     }
@@ -130,7 +130,7 @@ export default function AnalyserDocument() {
       setSuccess(true);
       setTimeout(() => navigate("/analyser-dashboard/desktop"), 1400);
     } catch (err) {
-      setError(err.message || "Submit karte waqt kuch galat hua.");
+      setError(err.message || "An error occurred while submitting the document.");
     } finally {
       setSubmitting(false);
     }

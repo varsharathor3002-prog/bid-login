@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { fetchComponentRates } from "../../../utils/componentRates";
 
 const API_BASE = import.meta.env.VITE_API_URL;
 
@@ -107,9 +108,11 @@ export const MOTHERBOARDS = [
   { name: "Q670 DDR4 4 DIMM, PCI X 16- 1 PCI 4 X2, M.2 2, 4 USB 2.0, 4 USB 3.0 TYPE C 1, VGA, HDMI", price: 10000 },
 ];
 
+let liveRateByName = {};
+
 export const getPriceFromLocalData = (categoryList, value) => {
   const item = categoryList.find((item) => item.name === value);
-  return item ? item.price : "";
+  return item ? (liveRateByName[item.name] ?? item.price) : "";
 };
 
 const getProcessorCategory = (processorName) => {
@@ -249,6 +252,11 @@ const normalizeInitialForm = (source = {}) => {
 
 export default function DesktopConfig({ bidData, onNext }) {
   const bid_id = bidData?.bid_id;
+  useEffect(() => {
+    fetchComponentRates("desktop").then((rates) => {
+      liveRateByName = Object.fromEntries(rates.map((rate) => [rate.name, Number(rate.price)]));
+    }).catch((error) => console.error("Component rates:", error));
+  }, []);
   const draftKey = useMemo(() => getDraftKey(bid_id), [bid_id]);
 
   const [form, setForm] = useState(() => {

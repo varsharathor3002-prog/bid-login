@@ -9,7 +9,12 @@ import {
 
 const API_BASE = import.meta.env.VITE_API_URL;
 
-export default function AddAnalyser() {
+export default function AddAnalyser({ accountType = "analyser" }) {
+
+  const isAdmin = accountType === "admin";
+  const singularLabel = isAdmin ? "Admin" : "Analyser";
+  const pluralLabel = isAdmin ? "Admins" : "Analysers";
+  const endpointName = isAdmin ? "admin" : "analyser";
 
   const [analysers, setAnalysers] = useState([]);
 
@@ -34,7 +39,7 @@ export default function AddAnalyser() {
     try {
 
       const res = await fetch(
-        `${API_BASE}/analyser-list/`
+        `${API_BASE}/${endpointName}-list/`
       );
 
       const data = await res.json();
@@ -52,7 +57,7 @@ export default function AddAnalyser() {
 
       console.log(error);
 
-      alert("Failed to load analysers");
+      alert(`Failed to load ${pluralLabel.toLowerCase()}.`);
     }
   };
 
@@ -60,7 +65,7 @@ export default function AddAnalyser() {
 
     fetchAnalysers();
 
-  }, []);
+  }, [endpointName]);
 
   
   const handleChange = (e) => {
@@ -96,7 +101,7 @@ export default function AddAnalyser() {
       setLoading(true);
 
       const res = await fetch(
-        `${API_BASE}/register-analyser/`,
+        `${API_BASE}/register-${endpointName}/`,
         {
           method: "POST",
 
@@ -150,7 +155,7 @@ export default function AddAnalyser() {
   const deleteAnalyser = async (id) => {
 
     const confirmDelete = window.confirm(
-      "Delete this analyser?"
+      `Delete this ${singularLabel.toLowerCase()}?`
     );
 
     if (!confirmDelete) return;
@@ -158,7 +163,7 @@ export default function AddAnalyser() {
     try {
 
       const res = await fetch(
-        `${API_BASE}/delete-analyser/${id}/`,
+        `${API_BASE}/delete-${endpointName}/${id}/`,
         {
           method: "DELETE",
         }
@@ -194,7 +199,7 @@ export default function AddAnalyser() {
       <div className="flex items-center justify-between mb-6">
 
         <h1 className="text-3xl font-bold text-gray-700">
-          All Analysers
+          All {pluralLabel}
         </h1>
 
         <button
@@ -202,7 +207,7 @@ export default function AddAnalyser() {
           className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-3 rounded-lg flex items-center gap-2 font-semibold shadow-lg"
         >
           <FaPlus />
-          Add Analyser
+          Add {singularLabel}
         </button>
 
       </div>
@@ -285,7 +290,7 @@ export default function AddAnalyser() {
                   colSpan="4"
                   className="py-10 text-center text-gray-500"
                 >
-                  No analysers found
+                  No {pluralLabel.toLowerCase()} found
                 </td>
 
               </tr>
@@ -316,10 +321,10 @@ export default function AddAnalyser() {
               </button>
 
               <h2 className="text-2xl font-bold text-center text-gray-700 mb-6">
-                Add New Analyser
+                Add New {singularLabel}
               </h2>
 
-              <form onSubmit={handleSubmit}>
+              <form onSubmit={handleSubmit} autoComplete="off">
 
                 <input
                   type="text"
@@ -327,6 +332,7 @@ export default function AddAnalyser() {
                   placeholder="Username"
                   value={form.username}
                   onChange={handleChange}
+                  autoComplete="off"
                   className="w-full mb-4 border border-gray-300 rounded-lg px-4 py-3 outline-none focus:ring-2 focus:ring-indigo-400"
                 />
 
@@ -336,6 +342,7 @@ export default function AddAnalyser() {
                   placeholder="Email"
                   value={form.email}
                   onChange={handleChange}
+                  autoComplete="off"
                   className="w-full mb-4 border border-gray-300 rounded-lg px-4 py-3 outline-none focus:ring-2 focus:ring-indigo-400"
                 />
 
@@ -351,6 +358,7 @@ export default function AddAnalyser() {
                     placeholder="Password"
                     value={form.password}
                     onChange={handleChange}
+                    autoComplete="new-password"
                     className="w-full border border-gray-300 rounded-lg px-4 py-3 pr-12 outline-none focus:ring-2 focus:ring-indigo-400"
                   />
 
@@ -381,6 +389,7 @@ export default function AddAnalyser() {
                     placeholder="Confirm Password"
                     value={form.confirmPassword}
                     onChange={handleChange}
+                    autoComplete="new-password"
                     className="w-full border border-gray-300 rounded-lg px-4 py-3 pr-12 outline-none focus:ring-2 focus:ring-indigo-400"
                   />
 
@@ -407,7 +416,7 @@ export default function AddAnalyser() {
                   {
                     loading
                     ? "Adding..."
-                    : "Add Analyser"
+                    : `Add ${singularLabel}`
                   }
                 </button>
 

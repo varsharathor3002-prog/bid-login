@@ -195,7 +195,7 @@ export default function WorkstationDocument({ bidData, onSuccess, onBack, submit
           {/* ── Header ── */}
           <div style={{ padding: "20px 24px", borderBottom: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "space-between", background: "linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              {onBack && (
+              {onBack && !analyserMode && (
                 <button
                   type="button"
                   onClick={onBack}
@@ -210,9 +210,9 @@ export default function WorkstationDocument({ bidData, onSuccess, onBack, submit
                 </svg>
               </div>
               <div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: "#0f172a" }}>Document Upload</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: "#0f172a" }}>{analyserMode ? "General Documents" : "Document Upload"}</div>
                 <div style={{ fontSize: 11, color: "#64748b", fontFamily: "'DM Mono', monospace" }}>
-                  Final Step · Bid #{bidData?.bid_no || "—"}
+                  {analyserMode ? "Generate & Review" : "Final Step"} · Bid #{bidData?.bid_no || "—"}
                 </div>
               </div>
             </div>
@@ -238,7 +238,7 @@ export default function WorkstationDocument({ bidData, onSuccess, onBack, submit
                 marginBottom: 24,
               }}>
 
-                <button type="button" className="upload-btn upload-btn-general" style={{ width: "100%", maxWidth: analyserMode ? 260 : undefined }} onClick={() => setModal("general")}>
+                <button type="button" className="upload-btn upload-btn-general" style={{ width: "100%", maxWidth: undefined, minHeight: analyserMode ? 162 : undefined }} onClick={() => setModal("general")}>
                   {selectedGeneralDocsCount > 0 && (
                     <span className="badge-count" style={{ background: "#f97316" }}>{selectedGeneralDocsCount}</span>
                   )}
@@ -248,9 +248,9 @@ export default function WorkstationDocument({ bidData, onSuccess, onBack, submit
                     </svg>
                   </div>
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: "#9a3412" }}>General Documents</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#9a3412" }}>{analyserMode ? "Analyser Documents" : "General Documents"}</div>
                     <div style={{ fontSize: 11, color: "#c2410c", marginTop: 2 }}>
-                      {selectedGeneralDocsCount > 0 ? `${selectedGeneralDocsCount} selected` : "Select Certificates"}
+                      {selectedGeneralDocsCount > 0 ? `${selectedGeneralDocsCount} selected` : analyserMode ? "Select or View PDFs" : "Select Certificates"}
                     </div>
                   </div>
                 </button>
@@ -325,10 +325,22 @@ export default function WorkstationDocument({ bidData, onSuccess, onBack, submit
                     <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    {submitLabel}
+                    {analyserMode ? "Accept & Send to Admin" : submitLabel}
                   </>
                 )}
               </button>
+              {analyserMode && onBack && (
+                <button
+                  type="button"
+                  onClick={onBack}
+                  style={{ marginTop: 9, display: "flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 7, border: "1px solid #cbd5e1", background: "#fff", color: "#334155", fontSize: 14, fontWeight: 600, cursor: "pointer", boxShadow: "0 1px 3px rgba(15,23,42,0.12)" }}
+                >
+                  <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+                  </svg>
+                  Back to Review
+                </button>
+              )}
             </form>
           </div>
         </div>

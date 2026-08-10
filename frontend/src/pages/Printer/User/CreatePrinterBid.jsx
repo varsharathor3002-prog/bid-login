@@ -226,7 +226,7 @@ function Step1Form({ onNext, savedData, productMode = "printer" }) {
         "";
 
       if (!userId) {
-        setError("Session expire ho gayi. Please logout karke dobara login karo.");
+        setError("Your session has expired. Please log out and sign in again.");
         return;
       }
 
@@ -250,13 +250,13 @@ function Step1Form({ onNext, savedData, productMode = "printer" }) {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Bid create nahi ho paya.");
+        throw new Error(data.error || "The bid could not be created.");
       }
 
       onNext({ ...form, bid_id: data.bid_id, printer_type: printerType });
     } catch (err) {
       console.error(err);
-      setError(err.message || "Bid create nahi ho pa raha.");
+      setError(err.message || "Unable to create the bid.");
     } finally {
       setLoading(false);
     }

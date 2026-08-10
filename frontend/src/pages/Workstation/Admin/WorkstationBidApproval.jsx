@@ -1,4 +1,11 @@
 import { useEffect, useRef, useState } from "react";
+import {
+  INTEL_PROCESSORS, INTEL_XEON_PROCESSORS, AMD_THREADRIPPER_PROCESSORS,
+  INTEL_MOTHERBOARDS, INTEL_XEON_MOTHERBOARDS, AMD_MOTHERBOARDS,
+  SSDS, HDDS, GRAPHICS_CARDS, CABINETS, KEYBOARDS, POWER_SUPPLIES,
+  OS_OPTIONS, MONITORS, WARRANTIES, getPriceFromLocalData, getFilteredRams,
+  getFilteredIntelMotherboards, getFilteredAmdMotherboards,
+} from "../User/WorkstationConfig";
 
 const API_BASE = "http://127.0.0.1:8000/api";
 const TABS = [
@@ -9,6 +16,22 @@ const TABS = [
 
 const ROWS_PER_PAGE = 8;
 const PAGE_WINDOW = 5;
+const PRICE_FIELDS = [
+  "processor_price", "pro_descp_price", "motherboard_price", "motherboard_descp_price",
+  "ram_price", "ssd1_price", "ssd2_price", "hdd_price", "graphics_price", "cabinet_price",
+  "keyboard_price", "power_supply_price", "monitor_price", "os_price", "warranty_price",
+  "freightInstallation_price", "hddreturnable_price", "extra_requirements_price",
+];
+const toPrice = (value) => Number(String(value ?? "").replace(/,/g, "").trim()) || 0;
+const calculateTotalPrice = (values) => PRICE_FIELDS.reduce((sum, name) => sum + toPrice(values?.[name]), 0);
+const PROCESSORS = [...INTEL_PROCESSORS, ...INTEL_XEON_PROCESSORS, ...AMD_THREADRIPPER_PROCESSORS];
+const optionsFor = (name, form) => ({
+  processor: PROCESSORS, ram: getFilteredRams(form?.processor), hdd: HDDS, ssd1: SSDS, ssd2: SSDS,
+  graphics: GRAPHICS_CARDS,
+  motherboard: [...getFilteredIntelMotherboards(form?.processor), ...getFilteredAmdMotherboards(form?.processor)],
+  os: OS_OPTIONS, monitor: MONITORS, cabinet: CABINETS, keyboard: KEYBOARDS,
+  power_supply: POWER_SUPPLIES, warranty: WARRANTIES,
+}[name] || []);
 
 const FIELDS = [
   ["bid_no", "Bid Number"], ["model_number", "Model Number"], ["dept_name", "Department"],
@@ -29,7 +52,7 @@ const TEXT_FIELDS = [
   ["optional_ports", "Optional Ports"],
 ];
 
-const PriceField = ({ label, name, priceName, form, handleChange, isTextArea = false, optional = false }) => (
+const PriceField = ({ label, name, priceName, form, handleChange, options = [], isTextArea = false, optional = false }) => (
   <div className="col-span-1">
     <div className="flex items-center gap-2 mb-1">
       <label className="block text-sm font-medium text-gray-700">{label}</label>
@@ -45,6 +68,13 @@ const PriceField = ({ label, name, priceName, form, handleChange, isTextArea = f
           autoComplete="off"
           className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm resize-none outline-none focus:ring-2 focus:ring-blue-500"
         />
+      ) : options.length ? (
+        <select name={name} value={form?.[name] || ""} onChange={handleChange}
+          className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+          <option value="">Select {label}</option>
+          {form?.[name] && !options.some((option) => option.name === form[name]) && <option value={form[name]}>{form[name]}</option>}
+          {options.map((option) => <option key={option.name} value={option.name}>{option.name}</option>)}
+        </select>
       ) : (
         <input
           type="text"
@@ -331,7 +361,10 @@ function SpecialDocView({ form }) {
 }
 
 export default function WorkstationBidApproval() {
-  const [activeTab, setActiveTab] = useState("pending");
+  const [activeTab, setActiveTab] = useState(() => {
+    const status = new URLSearchParams(window.location.search).get("status");
+    return ["pending", "approved", "re-analyze"].includes(status) ? status : "pending";
+  });
   const [bids, setBids] = useState([]);
   const [reAnalyzeCount, setReAnalyzeCount] = useState(0);
   const [selected, setSelected] = useState(null);
@@ -373,7 +406,10 @@ export default function WorkstationBidApproval() {
 
   const openModal = (bid) => {
     setSelected(bid);
-    setForm({ ...bid });
+    const next = { ...bid, freightInstallation: bid.freightInstallation || "Yes", hddreturnable: !bid.hddreturnable || bid.hddreturnable === "No" ? "None" : bid.hddreturnable };
+    next.component_total_price = calculateTotalPrice(next);
+    next.total_price = bid.review_status === "approved" ? bid.total_price : "";
+    setForm(next);
     setAdminNote(bid.admin_note || "");
     setMsg("");
   };
@@ -385,9 +421,32 @@ export default function WorkstationBidApproval() {
     setMsg("");
   };
 
-  const handleChange = (e) => setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setForm((prev) => {
+      const next = { ...prev, [name]: value };
+      const options = optionsFor(name, next);
+      if (options.length) next[`${name}_price`] = value === "None" ? 0 : getPriceFromLocalData(options, value);
+      if (name === "processor") {
+        const compatibleRams = getFilteredRams(value);
+        const compatibleBoards = [...getFilteredIntelMotherboards(value), ...getFilteredAmdMotherboards(value)];
+        if (prev.ram && !compatibleRams.some((item) => item.name === prev.ram)) { next.ram = ""; next.ram_price = ""; }
+        if (prev.motherboard && !compatibleBoards.some((item) => item.name === prev.motherboard)) { next.motherboard = ""; next.motherboard_price = ""; }
+      }
+      if (name === "freightInstallation" && value === "No") next.freightInstallation_price = 0;
+      if (name === "hddreturnable" && value === "No") next.hddreturnable_price = 0;
+      if (PRICE_FIELDS.includes(name) || options.length) next.component_total_price = calculateTotalPrice(next);
+      if (name === "freightInstallation" || name === "hddreturnable") next.component_total_price = calculateTotalPrice(next);
+      return next;
+    });
+  };
 
   const handleAction = async (status) => {
+    if (status === "approved" && toPrice(form.total_price) <= 0) {
+      setMsg("Please enter a valid Bid Approved Price.");
+      document.querySelector('[name="total_price"]')?.focus();
+      return;
+    }
     setSubmitting(true);
     setMsg("");
     try {
@@ -518,8 +577,8 @@ export default function WorkstationBidApproval() {
       )}
 
       {selected && (
-        <div className="fixed inset-0 bg-black/60 z-50 overflow-y-auto py-8 px-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-7xl mx-auto">
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 overflow-hidden">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-7xl max-h-[calc(100vh-2rem)] overflow-y-auto">
             <div className="flex justify-between items-center px-6 py-4 border-b bg-gray-50 rounded-t-xl">
               <div className="flex items-center gap-4">
                 <button type="button" onClick={closeModal}
@@ -599,19 +658,9 @@ export default function WorkstationBidApproval() {
                 </div>
               </div>
 
-              <PriceField label="Processor" name="processor" priceName="processor_price" form={form} handleChange={handleChange} />
-              <PriceField label="RAM" name="ram" priceName="ram_price" form={form} handleChange={handleChange} />
-              <PriceField label="Hard Disk Drive" name="hdd" priceName="hdd_price" form={form} handleChange={handleChange} />
-              <PriceField label="Solid State Drive 1" name="ssd1" priceName="ssd1_price" form={form} handleChange={handleChange} />
-              <PriceField label="Solid State Drive 2" name="ssd2" priceName="ssd2_price" form={form} handleChange={handleChange} />
-              <PriceField label="Graphics Card" name="graphics" priceName="graphics_price" form={form} handleChange={handleChange} />
-              <PriceField label="Motherboard" name="motherboard" priceName="motherboard_price" form={form} handleChange={handleChange} />
-              <PriceField label="OS" name="os" priceName="os_price" form={form} handleChange={handleChange} />
-              <PriceField label="Monitor" name="monitor" priceName="monitor_price" form={form} handleChange={handleChange} />
-              <PriceField label="Cabinet" name="cabinet" priceName="cabinet_price" form={form} handleChange={handleChange} />
-              <PriceField label="Keyboard & Mouse" name="keyboard" priceName="keyboard_price" form={form} handleChange={handleChange} />
-              <PriceField label="Power Supply" name="power_supply" priceName="power_supply_price" form={form} handleChange={handleChange} />
-              <PriceField label="Warranty" name="warranty" priceName="warranty_price" form={form} handleChange={handleChange} />
+              {[["processor", "Processor"], ["ram", "RAM"], ["hdd", "Hard Disk Drive"], ["ssd1", "Solid State Drive 1"], ["ssd2", "Solid State Drive 2"], ["graphics", "Graphics Card"], ["motherboard", "Motherboard"], ["os", "OS"], ["monitor", "Monitor"], ["cabinet", "Cabinet"], ["keyboard", "Keyboard & Mouse"], ["power_supply", "Power Supply"], ["warranty", "Warranty"]].map(([name, label]) => (
+                <PriceField key={name} label={label} name={name} priceName={`${name}_price`} options={optionsFor(name, form)} form={form} handleChange={handleChange} />
+              ))}
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Bid End Date</label>
@@ -635,11 +684,49 @@ export default function WorkstationBidApproval() {
                 />
               </div>
 
-              <PriceField label="Processor Description" name="pro_descp" isTextArea optional form={form} handleChange={handleChange} />
-              <PriceField label="Motherboard Description" name="motherboard_descp" isTextArea optional form={form} handleChange={handleChange} />
+              <PriceField label="Processor Description" name="pro_descp" priceName="pro_descp_price" isTextArea optional form={form} handleChange={handleChange} />
+              <PriceField label="Motherboard Description" name="motherboard_descp" priceName="motherboard_descp_price" isTextArea optional form={form} handleChange={handleChange} />
               <PriceField label="Graphics Description" name="gp" isTextArea optional form={form} handleChange={handleChange} />
               <PriceField label="Additional Software" name="software1" isTextArea optional form={form} handleChange={handleChange} />
-              <PriceField label="Extra Requirements" name="extra_requirements" isTextArea optional form={form} handleChange={handleChange} />
+              <PriceField label="Extra Requirements" name="extra_requirements" priceName="extra_requirements_price" isTextArea optional form={form} handleChange={handleChange} />
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Freight & Installation</label>
+                <div className="flex gap-2">
+                  <input type="text" value={form.freightInstallation || "Yes"} readOnly className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm bg-gray-50" />
+                  <input type="text" name="freightInstallation_price" value={form.freightInstallation_price ?? ""} onChange={handleChange} disabled={(form.freightInstallation || "Yes") === "No"} placeholder="Price" className="w-28 border border-blue-300 rounded-md px-2 py-2 text-sm text-center outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">HDD Return Option {form.hddreturnable === "Yes" && <span className="text-red-600">*</span>}</label>
+                <div className="flex gap-2">
+                  <select name="hddreturnable" value={form.hddreturnable || "No"} onChange={handleChange} className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm">
+                    <option value="Yes">Yes</option><option value="None">None</option>
+                  </select>
+                  <input type="number" min="0" step="0.01" required={form.hddreturnable === "Yes"} name="hddreturnable_price" value={form.hddreturnable_price ?? ""} onChange={handleChange} placeholder="Price" className="w-28 border border-blue-300 rounded-md px-2 py-2 text-sm text-center outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+              </div>
+
+              <div className="md:col-span-2 lg:col-span-3 grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <div className="rounded-lg border border-slate-300 bg-slate-50 p-4 shadow-sm">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <label className="block text-sm font-semibold text-slate-800">Total Value of Components</label>
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-slate-700">₹</span>
+                      <input type="number" readOnly value={form.component_total_price ?? calculateTotalPrice(form)} className="w-48 rounded-md border border-slate-300 bg-slate-100 px-3 py-2 text-right text-lg font-semibold text-slate-700 outline-none" />
+                    </div>
+                  </div>
+                </div>
+                <div className="rounded-lg border border-emerald-300 bg-emerald-50 p-4 shadow-sm">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <label className="block text-sm font-semibold text-emerald-900">Bid Approved Price <span className="text-red-600">*</span></label>
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-emerald-800">₹</span>
+                      <input type="number" min="0" step="0.01" required name="total_price" value={form.total_price ?? ""} onChange={handleChange} readOnly={selected.status === "approved" || selected.review_status === "approved"} disabled={selected.status === "approved" || selected.review_status === "approved"} placeholder="Enter approved price" className="w-48 rounded-md border border-emerald-300 bg-white px-3 py-2 text-right text-lg font-semibold text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-700" />
+                    </div>
+                  </div>
+                </div>
+              </div>
 
               <div className="md:col-span-2 lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-4">
                 {TEXT_FIELDS.filter(([name]) => name === "optional_ports").map(([name, label]) => (

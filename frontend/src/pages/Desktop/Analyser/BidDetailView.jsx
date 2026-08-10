@@ -318,6 +318,7 @@ export default function BidDetailView({ product = "desktop" }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const readOnly = state?.readOnly || false;
+  const showGemUpload = state?.showGemUpload === true;
 
   const [form, setForm] = useState(null);
   const [loadingBid, setLoadingBid] = useState(true);
@@ -331,6 +332,12 @@ export default function BidDetailView({ product = "desktop" }) {
   const [noMatchFound, setNoMatchFound] = useState(false);
   const [newModelInput, setNewModelInput] = useState("");
   const [modelInputValue, setModelInputValue] = useState("");
+  const [gemStarting, setGemStarting] = useState(false);
+  const [gemAccountModalOpen, setGemAccountModalOpen] = useState(false);
+  const [gemAccounts, setGemAccounts] = useState([]);
+  const [gemAccountsLoading, setGemAccountsLoading] = useState(false);
+  const [selectedGemAccount, setSelectedGemAccount] = useState("");
+  const [gemJob, setGemJob] = useState(null);
 
   useEffect(() => {
     fetchBid();
@@ -696,6 +703,240 @@ export default function BidDetailView({ product = "desktop" }) {
     }
   };
 
+  const openGemAccountModal = async () => {
+    const token = localStorage.getItem("token") || "";
+    if (!token) {
+      setMsg("Your session needs to be refreshed. Please log out and log in again as Analyser.");
+      return;
+    }
+    setGemAccountModalOpen(true);
+    setGemAccountsLoading(true);
+    setMsg("");
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/gem/accounts/`, {
+        headers: { "Authorization": `Bearer ${token}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) {
+        localStorage.removeItem("token");
+        throw new Error("Your session has expired. Please log out and log in again as Analyser.");
+      }
+      if (res.status === 403) {
+        throw new Error("Only an Analyser can select an account for GeM upload.");
+      }
+      if (!res.ok) {
+        throw new Error(data.error || "Unable to load saved GeM accounts.");
+      }
+      setGemAccounts(Array.isArray(data) ? data : []);
+      setSelectedGemAccount(String(data[0]?.id || ""));
+    } catch (error) {
+      setMsg(error.message || "Unable to load saved GeM accounts.");
+      setGemAccountModalOpen(false);
+    } finally {
+      setGemAccountsLoading(false);
+    }
+  };
+
+  const handleGemUpload = async () => {
+    const bidId = id || state?.id || state?.bid_id || form?.id || form?.bid_id;
+    if (!bidId) {
+      setMsg("Bid ID not found.");
+      return;
+    }
+
+    setGemStarting(true);
+    setMsg("");
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/desktop-bids/${bidId}/gem-upload/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ gem_account: selectedGemAccount }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Unable to start GeM upload.");
+
+      const bridgeReady =
+        document.documentElement.dataset.acxxelGemExtension === "ready";
+      if (!bridgeReady) {
+        await fetch(data.payload.callback_url, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            status: "failed",
+            error: "Extension bridge is not loaded on this page.",
+          }),
+        }).catch(() => {});
+        setForm((prev) => ({
+          ...prev,
+          gem_status: "failed",
+          gem_error: "Extension bridge is not loaded on this page.",
+        }));
+        throw new Error(
+          "GeM extension is not loaded on this page. Check extension Site access, then refresh this tab."
+        );
+      }
+
+      const extensionAcknowledged = new Promise((resolve) => {
+        const timeout = window.setTimeout(() => {
+          document.removeEventListener("acxxel-gem-upload-ack", handleAck);
+          resolve({ ok: false, error: "Extension background worker timed out." });
+        }, 2500);
+        function handleAck(event) {
+          window.clearTimeout(timeout);
+          document.removeEventListener("acxxel-gem-upload-ack", handleAck);
+          resolve(event.detail || { ok: false });
+        }
+        document.addEventListener("acxxel-gem-upload-ack", handleAck);
+      });
+
+      document.dispatchEvent(new CustomEvent("acxxel-start-gem-upload", {
+        detail: data.payload,
+      }));
+
+      const acknowledgement = await extensionAcknowledged;
+      if (!acknowledgement.ok) {
+        const extensionError =
+          acknowledgement.error || "Browser extension did not respond.";
+        await fetch(data.payload.callback_url, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            status: "failed",
+            error: extensionError,
+          }),
+        }).catch(() => {});
+        setForm((prev) => ({
+          ...prev,
+          gem_status: "failed",
+          gem_error: extensionError,
+        }));
+        throw new Error(
+          `GeM extension could not start: ${extensionError}`
+        );
+      }
+
+      setForm((prev) => ({
+        ...prev,
+        gem_account: selectedGemAccount,
+        gem_status: "queued",
+        gem_error: "",
+      }));
+      setGemAccountModalOpen(false);
+      setMsg("✅ GeM opened. Complete login or captcha there if requested.");
+    } catch (error) {
+      setMsg(error.message || "Unable to start GeM upload.");
+    } finally {
+      setGemStarting(false);
+    }
+  };
+
+  const handleGemJobUpload = async () => {
+    const bidId = id || state?.id || state?.bid_id || form?.id || form?.bid_id;
+    if (!bidId) {
+      setMsg("Bid ID was not found, so GeM auto-fill was not queued.");
+      return;
+    }
+    setGemStarting(true);
+    setMsg("");
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_API_URL}/desktop-bids/${bidId}/gem-jobs/`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${localStorage.getItem("token") || ""}`,
+          },
+          body: JSON.stringify({}),
+        }
+      );
+      const data = await response.json().catch(() => ({}));
+      if (response.status === 401) {
+        localStorage.removeItem("token");
+        setMsg("Acxxel session expired. Log in again before starting GeM auto-fill.");
+        return;
+      }
+      if (response.status === 403) {
+        setMsg(data.error || "Your account is not authorized to start GeM auto-fill for this bid.");
+        return;
+      }
+      if (!response.ok) throw new Error(data.error || "Unable to queue GeM upload.");
+      setGemJob(data);
+      setForm((prev) => ({
+        ...prev,
+        gem_account: data.account_label,
+        gem_status: data.status,
+        gem_error: "",
+      }));
+      setGemAccountModalOpen(false);
+      if (document.documentElement.dataset.acxxelGemExtension !== "ready") {
+        setMsg("Job queued. Load the Acxxel GeM Desktop Workflow extension, then use its popup.");
+      } else {
+        const bridgeRequest = (requestEvent, resultEvent, detail) => new Promise(
+          (resolve, reject) => {
+            const timeout = window.setTimeout(() => {
+              document.removeEventListener(resultEvent, handleResult);
+              reject(new Error("GeM extension did not respond. Reload the extension and refresh this page."));
+            }, 5000);
+            function handleResult(event) {
+              window.clearTimeout(timeout);
+              document.removeEventListener(resultEvent, handleResult);
+              const result = event.detail || {};
+              if (result.ok) resolve(result);
+              else reject(new Error(result.error || "GeM extension could not complete the request."));
+            }
+            document.addEventListener(resultEvent, handleResult);
+            document.dispatchEvent(new CustomEvent(requestEvent, { detail }));
+          }
+        );
+        await bridgeRequest("acxxel-gem-connect", "acxxel-gem-connect-result", {
+          token: data.extension_token || localStorage.getItem("token") || "",
+          apiBase: import.meta.env.VITE_API_URL,
+        });
+        const startResult = await bridgeRequest(
+          "acxxel-gem-start",
+          "acxxel-gem-start-result",
+          { jobId: data.id }
+        );
+        if (!startResult.result?.tabId) {
+          throw new Error("Chrome did not confirm that the GeM login tab was opened.");
+        }
+        setMsg("GeM login opened. Log in manually, then open Add New Offering.");
+      }
+    } catch (error) {
+      setMsg(error.message || "Unable to queue GeM upload.");
+    } finally {
+      setGemStarting(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!showGemUpload || !readOnly || !form?.id || form?.review_status !== "approved") return undefined;
+    let stopped = false;
+    const loadJob = async () => {
+      const response = await fetch(
+        `${import.meta.env.VITE_API_URL}/gem/jobs/?bid_id=${form.id}`,
+        { headers: { "Authorization": `Bearer ${localStorage.getItem("token") || ""}` } }
+      );
+      const data = await response.json().catch(() => []);
+      if (!stopped && response.ok && Array.isArray(data) && data[0]) {
+        setGemJob(data[0]);
+        setForm((prev) => ({
+          ...prev,
+          gem_account: data[0].account_label,
+          gem_status: data[0].status,
+          gem_error: data[0].error || data[0].rejection_reason || "",
+        }));
+      }
+    };
+    loadJob();
+    const timer = window.setInterval(loadJob, 5000);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [showGemUpload, readOnly, form?.id, form?.review_status]);
+
   const conditionalRequiredFields = CONDITIONAL_VERIFICATION_FIELDS.filter(
     (field) => String(form?.[field] ?? "").trim() !== ""
   );
@@ -974,7 +1215,7 @@ export default function BidDetailView({ product = "desktop" }) {
             <textarea name="optional_ports" value={form?.optional_ports || ""} onChange={handleChange} disabled={readOnly} rows={2} className={textareaCls} placeholder="e.g. Serial Port, Display Port, USB Type-C" />
           </VerifiedInputWrapper>
 
-          {readOnly && isApproved && (
+          {showGemUpload && readOnly && isApproved && (
             <div className="md:col-span-2 lg:col-span-3 rounded-lg border border-slate-300 bg-slate-50 p-4 shadow-sm">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <label className="block text-sm font-semibold text-slate-800">Total Approved Price</label>
@@ -999,7 +1240,87 @@ export default function BidDetailView({ product = "desktop" }) {
               </div>
             </div>
           )}
+
+          {readOnly && isApproved && (
+            <div className="md:col-span-2 lg:col-span-3 border border-indigo-200 bg-indigo-50 p-4 rounded-lg">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div className="flex-1">
+                  <label className="block text-sm font-semibold text-indigo-950 mb-1">GeM upload</label>
+                  <div className="w-full border border-indigo-200 bg-white rounded-md px-3 py-2 text-sm text-slate-700">
+                    Manual login in the GeM tab
+                  </div>
+                  <p className="text-xs text-indigo-700 mt-2">
+                    Status: <span className="font-semibold">{String(form?.gem_status || "not_started").replaceAll("_", " ")}</span>
+                    {form?.gem_error ? ` - ${form.gem_error}` : ""}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleGemJobUpload}
+                  disabled={gemStarting}
+                  className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white font-semibold px-6 py-2.5 rounded-md text-sm transition"
+                >
+                  Upload to GeM
+                </button>
+              </div>
+            </div>
+          )}
         </div>
+
+        {false && gemAccountModalOpen && (
+          <div className="fixed inset-0 z-[70] bg-black/50 flex items-center justify-center p-4">
+            <div className="w-full max-w-md bg-white rounded-lg shadow-2xl border border-slate-200">
+              <div className="px-5 py-4 border-b border-slate-200">
+                <h3 className="text-base font-bold text-slate-900">Select GeM account</h3>
+                <p className="text-xs text-slate-500 mt-1">Choose the saved account to log in and upload this bid.</p>
+              </div>
+              <div className="p-5">
+                {gemAccountsLoading ? (
+                  <div className="py-6 text-center text-sm text-slate-500">Loading accounts...</div>
+                ) : gemAccounts.length === 0 ? (
+                  <div className="py-6 text-center text-sm text-rose-600">No saved GeM account found.</div>
+                ) : (
+                  <div className="space-y-2">
+                    {gemAccounts.map((account) => (
+                      <label
+                        key={account.id}
+                        className={`flex items-center gap-3 border rounded-md p-3 cursor-pointer transition ${
+                          selectedGemAccount === String(account.id)
+                            ? "border-indigo-500 bg-indigo-50"
+                            : "border-slate-200 hover:bg-indigo-50"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="selected_gem_account"
+                          value={account.id}
+                          checked={selectedGemAccount === String(account.id)}
+                          onChange={(event) => setSelectedGemAccount(event.target.value)}
+                          className="h-4 w-4 accent-indigo-600"
+                        />
+                        <span>
+                          <span className="block text-sm font-semibold text-slate-800">{account.label}</span>
+                          <span className="block text-xs text-slate-500">Encrypted credentials saved</span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="px-5 py-4 border-t border-slate-200 flex justify-end gap-2">
+                <button type="button" onClick={() => setGemAccountModalOpen(false)}
+                  className="px-4 py-2 text-sm font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-md">
+                  Cancel
+                </button>
+                <button type="button" onClick={handleGemJobUpload}
+                  disabled={gemStarting || !selectedGemAccount}
+                  className="px-4 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 rounded-md">
+                  {gemStarting ? "Starting..." : "Continue"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="mt-8 mb-4">
           <div className="relative flex items-center gap-2 bg-gray-50 p-2 rounded-lg border border-gray-300 w-fit">

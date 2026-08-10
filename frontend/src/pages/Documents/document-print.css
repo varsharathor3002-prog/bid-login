@@ -15,8 +15,43 @@ html[data-print-ready="true"] body { background: #e5e7eb; }
 .support-table { margin-top: 18mm; font-size: 10pt; font-weight: 700; }
 .support-table td { padding: 8px 12px; border: 3px solid white; background: #ddd; }
 .print-status { padding: 40px; font: 600 16px Arial; }
+.approved-bidding-page { position: relative; display: flex; flex-direction: column; }
+.approved-bidding-page h1 {
+  margin: 18mm 0 0;
+  padding: 10px 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background: #f8fafc;
+  color: #172554;
+  text-decoration: none;
+  letter-spacing: .6px;
+}
+.approved-bidding-table {
+  width: 100%;
+  margin-top: 9mm;
+  border-collapse: collapse;
+  border: 1.5px solid #475569;
+  font-size: 12pt;
+}
+.approved-bidding-table th, .approved-bidding-table td { border: 1px solid #94a3b8; padding: 13px 15px; }
+.approved-bidding-table th { width: 38%; background: #eaf0f7; color: #172554; text-align: left; }
+.approved-bidding-table td { background: #fff; font-weight: 600; color: #111827; }
+.approved-bidding-footer {
+  display: flex;
+  flex-direction: column;
+  width: 92mm;
+  margin-top: 38mm;
+  padding-top: 5mm;
+  border-top: 1.5px solid #cbd5e1;
+  color: #111827;
+  font-size: 9.5pt;
+  line-height: 1.35;
+}
+.approved-bidding-footer .company-line { color: #1755bd; font-size: 8.5pt; margin-top: 3px; }
+.approved-bidding-footer img { width: 48mm; height: 17mm; margin: 2px 0; object-fit: contain; object-position: left center; }
 @media print {
   html, body { margin: 0; background: white; }
+  .print-toolbar { display: none !important; }
   .print-document { padding: 0; }
-  .a4-page { margin: 0; break-after: page; }
+  .a4-page { margin: 0; }
 }

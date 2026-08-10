@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import useOutsideClick from "../../hooks/useOutsideClick";
+import { connectGemExtension } from "../../utils/connectGemExtension";
 import {
   FaBox,
   FaDesktop,
@@ -15,6 +16,7 @@ import {
   FaExclamationTriangle,
   FaChartLine,
   FaTachometerAlt,
+  FaBan,
 } from "react-icons/fa";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -74,8 +76,16 @@ const normalizeDailyData = (data = []) =>
     total: Number(item.total ?? 0),
   }));
 
-const StatCard = ({ label, value, Icon, gradient, loading }) => (
-  <div className={`relative overflow-hidden rounded-2xl p-5 flex items-center gap-4 shadow-md ${gradient} transition-transform hover:scale-[1.02]`}>
+const StatCard = ({ label, value, Icon, gradient, loading, onClick }) => (
+  <div
+    onClick={onClick}
+    role={onClick ? "link" : undefined}
+    tabIndex={onClick ? 0 : undefined}
+    onKeyDown={onClick ? (event) => {
+      if (event.key === "Enter" || event.key === " ") onClick();
+    } : undefined}
+    className={`relative overflow-hidden rounded-2xl p-5 flex items-center gap-4 shadow-md ${gradient} transition-transform hover:scale-[1.02] ${onClick ? "cursor-pointer focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2" : ""}`}
+  >
     <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 bg-white/20">
       <Icon className="text-white text-xl" />
     </div>
@@ -87,6 +97,7 @@ const StatCard = ({ label, value, Icon, gradient, loading }) => (
 );
 
 const AnalyserHome = () => {
+  const navigate = useNavigate();
   const [selectedProduct, setSelectedProduct] = useState(PRODUCTS[0]);
   const [dropOpen, setDropOpen] = useState(false);
   const productDropdownRef = useRef(null);
@@ -195,9 +206,9 @@ const AnalyserHome = () => {
         </div>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <StatCard label="Pending Bids" value={stats.pending} Icon={FaClipboardList} gradient="bg-gradient-to-br from-amber-400 to-orange-500" loading={loading} />
-        <StatCard label="Approved Bids" value={stats.reviewed} Icon={FaCheckCircle} gradient="bg-gradient-to-br from-emerald-400 to-emerald-600" loading={loading} />
-        <StatCard label="Rejected / Re-Analyze Bids" value={stats.reAnalyze} Icon={FaExclamationTriangle} gradient="bg-gradient-to-br from-rose-500 to-rose-700" loading={loading} />
+        <StatCard onClick={() => navigate(`/analyser-dashboard/${selectedProduct.key}?status=pending`)} label="Pending Bids" value={stats.pending} Icon={FaClipboardList} gradient="bg-gradient-to-br from-amber-400 to-orange-500" loading={loading} />
+        <StatCard onClick={() => navigate(`/analyser-dashboard/${selectedProduct.key}?status=approved`)} label="Approved Bids" value={stats.reviewed} Icon={FaCheckCircle} gradient="bg-gradient-to-br from-emerald-400 to-emerald-600" loading={loading} />
+        <StatCard onClick={() => navigate(`/analyser-dashboard/${selectedProduct.key}?status=re-analyze`)} label="Rejected / Re-Analyze Bids" value={stats.reAnalyze} Icon={FaExclamationTriangle} gradient="bg-gradient-to-br from-rose-500 to-rose-700" loading={loading} />
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white border-2 border-slate-100 rounded-2xl p-6 shadow-sm">
@@ -275,6 +286,8 @@ const AnalyserNavbar = () => {
     }
   }, []);
 
+  useEffect(() => connectGemExtension(), []);
+
   const handleLogout = () => {
     localStorage.removeItem("analyser_username");
     localStorage.removeItem("role");
@@ -343,6 +356,31 @@ const AnalyserNavbar = () => {
             <span className="text-sm font-medium">Dashboard</span>
           </div>
 
+          <div
+            onClick={() => navigate("/analyser-dashboard/disqualified-bids")}
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-all duration-200 mb-2 focus:outline-none focus:ring-0 no-highlight select-none ${
+              location.pathname === "/analyser-dashboard/disqualified-bids"
+                ? "bg-gray-700/50 text-white"
+                : "hover:bg-gray-700/50 text-gray-200"
+            }`}
+          >
+            <span className="text-lg text-red-400"><FaBan /></span>
+            <span className="text-sm font-medium">Disqualified Bid</span>
+          </div>
+
+          <div
+            onClick={() => navigate("/analyser-dashboard/product")}
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-all duration-200 mb-2 focus:outline-none focus:ring-0 no-highlight select-none ${
+              location.pathname === "/analyser-dashboard/product" ||
+              location.pathname === "/analyser-dashboard/workstation/product"
+                ? "bg-gray-700/50 text-white"
+                : "hover:bg-gray-700/50 text-gray-200"
+            }`}
+          >
+            <span className="text-lg" style={{ color: "#ec4899" }}><FaBox /></span>
+            <span className="text-sm font-medium">Product</span>
+          </div>
+
           {}
           <button
             onClick={() => setBidsOpen(!bidsOpen)}
@@ -382,16 +420,6 @@ const AnalyserNavbar = () => {
                 );
               })}
 
-              <div className="border-t border-gray-700/50 my-2"></div>
-
-              {}
-              <div
-                onClick={() => navigate(location.pathname.includes("/workstation") ? "/analyser-dashboard/workstation/product" : "/analyser-dashboard/product")}
-                className={`flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-all duration-200 focus:outline-none focus:ring-0 no-highlight select-none hover:bg-gray-700/50 text-gray-200`}
-              >
-                <span className="text-lg" style={{ color: "#ec4899" }}><FaBox /></span>
-                <span className="text-sm font-medium">Product</span>
-              </div>
             </div>
           )}
         </div>
