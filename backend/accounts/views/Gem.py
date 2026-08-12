@@ -20,9 +20,25 @@ from ..models import (
     GemAccount,
     GemAuditLog,
     GemUploadJob,
+    PrinterBid,
     User,
+    WorkstationBid,
 )
 from .Desktop import _desktop_gem_payload
+from .Printer import _printer_gem_payload
+from .Workstation import _workstation_gem_payload
+
+# Per product_type: (bid model, FK attribute on GemUploadJob, payload builder).
+_PRODUCT_JOB_CONFIG = {
+    "desktop": (DesktopBid, "bid", _desktop_gem_payload),
+    "printer": (PrinterBid, "printer_bid", _printer_gem_payload),
+    "workstation": (WorkstationBid, "workstation_bid", _workstation_gem_payload),
+}
+
+
+def _payload_for_job(job, request):
+    _bid_model, _fk, payload_builder = _PRODUCT_JOB_CONFIG[job.product_type]
+    return payload_builder(job.related_bid, request, {})
 
 
 def _json_body(request):
@@ -87,11 +103,13 @@ def _account_picker_data(account):
 
 
 def _job_data(job, include_audit=False):
+    related_bid = job.related_bid
     data = {
         "id": job.id,
-        "bid_id": job.bid_id,
-        "bid_no": job.bid.bid_no,
-        "model_number": job.bid.model_number or "",
+        "product_type": job.product_type,
+        "bid_id": related_bid.id if related_bid else None,
+        "bid_no": related_bid.bid_no if related_bid else "",
+        "model_number": (related_bid.model_number or "") if related_bid else "",
         "account_id": job.account_id,
         "account_label": job.account.label if job.account else "Manual GeM login",
         "triggered_by": job.triggered_by.username if job.triggered_by else "",
@@ -189,21 +207,19 @@ def gem_account_detail(request, account_id):
     return JsonResponse(_account_admin_data(account))
 
 
-@csrf_exempt
-@require_http_methods(["POST"])
-def create_gem_upload_job(request, bid_id):
+def _create_gem_upload_job(request, bid_id, product_type):
+    bid_model, fk_attr, payload_builder = _PRODUCT_JOB_CONFIG[product_type]
     data = _json_body(request)
     user, error = _require_role(request, {"analyser", "admin"}, data)
     if error:
         return error
-    bid = DesktopBid.objects.filter(id=bid_id).first()
+    bid = bid_model.objects.filter(id=bid_id).first()
     if not bid:
-        return JsonResponse({"error": "Desktop bid not found."}, status=404)
+        return JsonResponse({"error": f"{product_type.capitalize()} bid not found."}, status=404)
     if bid.review_status != "approved":
         return JsonResponse({"error": "Admin approval is required before GeM upload."}, status=409)
-    payload = _desktop_gem_payload(bid, request, {})
+    payload = payload_builder(bid, request, {})
     payload.pop("gem_account", None)
-    category_key = (payload.get("category") or {}).get("key", "")
     active = bid.gem_upload_jobs.filter(
         status__in=["queued", "ready_for_fill", "retrying"]
     ).first()
@@ -217,11 +233,12 @@ def create_gem_upload_job(request, bid_id):
 
     with transaction.atomic():
         job = GemUploadJob.objects.create(
-            bid=bid,
+            product_type=product_type,
             account=None,
             triggered_by=user,
             payload_snapshot=payload,
             next_attempt_at=timezone.now(),
+            **{fk_attr: bid},
         )
         GemAuditLog.objects.create(
             job=job,
@@ -240,12 +257,35 @@ def create_gem_upload_job(request, bid_id):
 
 
 @csrf_exempt
+@require_http_methods(["POST"])
+def create_gem_upload_job(request, bid_id):
+    return _create_gem_upload_job(request, bid_id, "desktop")
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def create_printer_gem_upload_job(request, bid_id):
+    return _create_gem_upload_job(request, bid_id, "printer")
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def create_workstation_gem_upload_job(request, bid_id):
+    return _create_gem_upload_job(request, bid_id, "workstation")
+
+
+@csrf_exempt
 @require_http_methods(["GET"])
 def gem_jobs(request):
     user, error = _require_role(request, {"admin", "analyser"})
     if error:
         return error
-    jobs = GemUploadJob.objects.select_related("bid", "account", "triggered_by")
+    jobs = GemUploadJob.objects.select_related(
+        "bid", "printer_bid", "workstation_bid", "account", "triggered_by"
+    )
+    product_type = request.GET.get("product_type")
+    if product_type:
+        jobs = jobs.filter(product_type=product_type)
     bid_id = request.GET.get("bid_id")
     if bid_id:
         jobs = jobs.filter(bid_id=bid_id)
@@ -303,12 +343,12 @@ def extension_jobs(request):
     user, error = _require_role(request, {"analyser", "admin"})
     if error:
         return error
-    jobs = GemUploadJob.objects.select_related("bid", "account", "triggered_by").filter(
-        status__in=["queued", "ready_for_fill", "filled"]
-    )
+    jobs = GemUploadJob.objects.select_related(
+        "bid", "printer_bid", "workstation_bid", "account", "triggered_by"
+    ).filter(status__in=["queued", "ready_for_fill", "filled"])
     jobs = list(jobs[:25])
     for job in jobs:
-        payload = _desktop_gem_payload(job.bid, request, {})
+        payload = _payload_for_job(job, request)
         payload.pop("gem_account", None)
         if job.payload_snapshot != payload:
             job.payload_snapshot = payload
@@ -323,12 +363,14 @@ def extension_claim_job(request, job_id):
     user, error = _require_role(request, {"analyser", "admin"}, data)
     if error:
         return error
-    job = GemUploadJob.objects.select_related("bid", "account", "triggered_by").filter(id=job_id).first()
+    job = GemUploadJob.objects.select_related(
+        "bid", "printer_bid", "workstation_bid", "account", "triggered_by"
+    ).filter(id=job_id).first()
     if not job:
         return JsonResponse({"error": "Upload job not found."}, status=404)
     if job.status not in {"queued", "ready_for_fill"}:
         return JsonResponse({"error": "This job is not available for form filling."}, status=409)
-    payload = _desktop_gem_payload(job.bid, request, {})
+    payload = _payload_for_job(job, request)
     payload.pop("gem_account", None)
     job.payload_snapshot = payload
     job.status = "ready_for_fill"
@@ -512,7 +554,9 @@ def extension_report_job(request, job_id):
     user, error = _require_role(request, {"analyser", "admin"}, data)
     if error:
         return error
-    job = GemUploadJob.objects.select_related("bid", "account", "triggered_by").filter(id=job_id).first()
+    job = GemUploadJob.objects.select_related(
+        "bid", "printer_bid", "workstation_bid", "account", "triggered_by"
+    ).filter(id=job_id).first()
     if not job:
         return JsonResponse({"error": "Upload job not found."}, status=404)
     status_value = str(data.get("status") or "").strip()
@@ -531,11 +575,13 @@ def extension_report_job(request, job_id):
     if status_value in {"published", "rejected", "failed"}:
         job.completed_at = now
     job.save()
-    job.bid.gem_status = status_value
-    job.bid.gem_error = job.error or job.rejection_reason
-    job.bid.gem_product_id = job.gem_product_id
-    job.bid.gem_product_url = job.gem_product_url
-    job.bid.save(update_fields=["gem_status", "gem_error", "gem_product_id", "gem_product_url", "updated_at"])
+    related_bid = job.related_bid
+    if related_bid:
+        related_bid.gem_status = status_value
+        related_bid.gem_error = job.error or job.rejection_reason
+        related_bid.gem_product_id = job.gem_product_id
+        related_bid.gem_product_url = job.gem_product_url
+        related_bid.save(update_fields=["gem_status", "gem_error", "gem_product_id", "gem_product_url", "updated_at"])
     GemAuditLog.objects.create(
         job=job, actor=user, event=f"extension_{status_value}",
         message=job.progress or job.error or job.rejection_reason,

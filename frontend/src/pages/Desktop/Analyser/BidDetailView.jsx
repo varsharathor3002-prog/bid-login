@@ -1057,7 +1057,7 @@ export default function BidDetailView({ product = "desktop" }) {
             <input type="number" name="qty" value={form?.qty || ""} onChange={handleChange} disabled={readOnly} className={inputCls} />
           </VerifiedInputWrapper>
 
-          <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="pincode" label="Pincode">
+          <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="pincode" label="Buyer Pincode">
             <input type="text" name="pincode" value={form?.pincode || ""} onChange={handleChange} disabled={readOnly} className={inputCls} />
           </VerifiedInputWrapper>
 

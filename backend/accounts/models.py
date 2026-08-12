@@ -224,8 +224,24 @@ class GemUploadJob(models.Model):
         ("cancelled", "Cancelled"),
     ]
 
+    PRODUCT_TYPE_CHOICES = [
+        ("desktop", "Desktop"),
+        ("printer", "Printer"),
+        ("workstation", "Workstation"),
+    ]
+
+    product_type = models.CharField(max_length=20, choices=PRODUCT_TYPE_CHOICES, default="desktop")
     bid = models.ForeignKey(
-        DesktopBid, on_delete=models.CASCADE, related_name="gem_upload_jobs"
+        DesktopBid, on_delete=models.CASCADE, related_name="gem_upload_jobs",
+        null=True, blank=True,
+    )
+    printer_bid = models.ForeignKey(
+        "PrinterBid", on_delete=models.CASCADE, related_name="gem_upload_jobs",
+        null=True, blank=True,
+    )
+    workstation_bid = models.ForeignKey(
+        "WorkstationBid", on_delete=models.CASCADE, related_name="gem_upload_jobs",
+        null=True, blank=True,
     )
     account = models.ForeignKey(
         GemAccount, on_delete=models.SET_NULL, null=True, blank=True,
@@ -267,8 +283,14 @@ class GemUploadJob(models.Model):
             ),
         ]
 
+    @property
+    def related_bid(self):
+        """Whichever product bid this job belongs to (desktop/printer/workstation)."""
+        return self.bid or self.printer_bid or self.workstation_bid
+
     def __str__(self):
-        return f"GeM job {self.id}: {self.bid.bid_no}"
+        bid = self.related_bid
+        return f"GeM job {self.id}: {bid.bid_no if bid else 'unassigned'}"
 
 
 class GemAuditLog(models.Model):
@@ -495,6 +517,13 @@ class WorkstationBid(models.Model):
     admin_note = models.TextField(blank=True, null=True)
     admin_username = models.CharField(max_length=100, blank=True, null=True)
 
+    gem_status = models.CharField(max_length=30, default="not_started")
+    gem_account = models.CharField(max_length=100, blank=True, null=True)
+    gem_product_id = models.CharField(max_length=255, blank=True, null=True)
+    gem_product_url = models.URLField(max_length=1000, blank=True, null=True)
+    gem_error = models.TextField(blank=True, null=True)
+    gem_uploaded_at = models.DateTimeField(blank=True, null=True)
+
 
 
 
@@ -618,6 +647,13 @@ class PrinterBid(models.Model):
 
     admin_note = models.TextField(blank=True, null=True)
     admin_username = models.CharField(max_length=100, blank=True, null=True)
+
+    gem_status = models.CharField(max_length=30, default="not_started")
+    gem_account = models.CharField(max_length=100, blank=True, null=True)
+    gem_product_id = models.CharField(max_length=255, blank=True, null=True)
+    gem_product_url = models.URLField(max_length=1000, blank=True, null=True)
+    gem_error = models.TextField(blank=True, null=True)
+    gem_uploaded_at = models.DateTimeField(blank=True, null=True)
 
 
 

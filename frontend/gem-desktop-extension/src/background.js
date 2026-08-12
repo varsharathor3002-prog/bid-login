@@ -433,6 +433,43 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       });
       return { ok: true, stopped: true };
     }
+    if (message.type === "PAUSE_GEM_BID_SYNC") {
+      const tabs = await chrome.tabs.query({ url: "https://bidplus.gem.gov.in/seller-bids*" });
+      const responses = await Promise.all(tabs.map((tab) => (
+        chrome.tabs.sendMessage(tab.id, { type: "PAUSE_GEM_BID_SYNC" }).catch(() => null)
+      )));
+      if (!responses.some((response) => response?.ok)) {
+        throw new Error("No running GeM bid sync was found to pause.");
+      }
+      const current = await chrome.storage.local.get("gemBidSync");
+      await chrome.storage.local.set({
+        gemBidSync: {
+          ...(current.gemBidSync || {}),
+          status: "paused",
+          message: "GeM bid sync paused by user.",
+          updatedAt: Date.now(),
+          extensionVersion: chrome.runtime.getManifest().version,
+        },
+      });
+      return { ok: true, paused: true };
+    }
+    if (message.type === "RESUME_GEM_BID_SYNC") {
+      const tabs = await chrome.tabs.query({ url: "https://bidplus.gem.gov.in/seller-bids*" });
+      await Promise.all(tabs.map((tab) => (
+        chrome.tabs.sendMessage(tab.id, { type: "RESUME_GEM_BID_SYNC" }).catch(() => null)
+      )));
+      const current = await chrome.storage.local.get("gemBidSync");
+      await chrome.storage.local.set({
+        gemBidSync: {
+          ...(current.gemBidSync || {}),
+          status: "running",
+          message: "GeM bid sync resumed.",
+          updatedAt: Date.now(),
+          extensionVersion: chrome.runtime.getManifest().version,
+        },
+      });
+      return { ok: true, resumed: true };
+    }
     if (message.type === "SAVE_GEM_BID_RESULTS") {
       const result = await api("/gem/bid-results/", {
         method: "POST",

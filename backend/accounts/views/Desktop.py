@@ -11,6 +11,7 @@ from datetime import timedelta
 from django.views.decorators.http import require_http_methods
 from django.test import RequestFactory
 from ..models import User, DesktopBid, CatalogueProduct
+from ..restricted_pincodes import is_restricted_pincode, restriction_message
 import re
 import os
 import shutil
@@ -3981,7 +3982,8 @@ def _bid_data(bid, request, status_label=None):
         "submitted_by": bid.user.username if bid.user else "Unknown",
         "bid_no": bid.bid_no, "dept_name": bid.dept_name, "qty": bid.qty,
         "organization": bid.organization or "", "address": bid.address or "",
-        "pincode": bid.pincode or "", "atc": bid.atc or "",
+        "pincode": bid.pincode or "",
+        "atc": bid.atc or "",
         "atc_special_document": _file_url(request, bid.atc_special_document),
         "selected_general_docs": bid.selected_general_docs or [],
         "selected_general_doc_labels": bid.selected_general_doc_labels or [],
@@ -4051,6 +4053,18 @@ def _get_model_number_from_data(data):
         )
     return str(model or "").strip()
 
+def _pincode_restriction_error(data):
+    """Returns a 400 JsonResponse if the buyer or installation pincode is
+    restricted (no supply available), else None."""
+    for field, label in (("pincode", "Buyer"),):
+        value = str(data.get(field) or "").strip()
+        if value and is_restricted_pincode(value):
+            return JsonResponse({
+                "error": f"{label} Pincode: {restriction_message(value)}",
+            }, status=400)
+    return None
+
+
 @csrf_exempt
 @require_http_methods(["POST"])
 def create_desktop_bid(request):
@@ -4059,6 +4073,10 @@ def create_desktop_bid(request):
         user_id = data.get("user_id")
         if not user_id:
             return JsonResponse({"error": "User ID required"}, status=400)
+
+        restriction_error = _pincode_restriction_error(data)
+        if restriction_error:
+            return restriction_error
 
         try:
             qty = int(data.get("qty", 0) or 0)
@@ -4532,6 +4550,9 @@ def review_desktop_bid(request, bid_id):
     try:
         bid = DesktopBid.objects.get(id=bid_id)
         data = json.loads(request.body)
+        restriction_error = _pincode_restriction_error(data)
+        if restriction_error:
+            return restriction_error
         bid.bid_no = data.get("bid_no", bid.bid_no)
         bid.dept_name = data.get("dept_name", bid.dept_name)
         bid.organization = data.get("organization", bid.organization)
@@ -4683,6 +4704,10 @@ def admin_review_desktop_bid(request, bid_id):
             ).parse()
         else:
             data = json.loads(request.body)
+
+        restriction_error = _pincode_restriction_error(data)
+        if restriction_error:
+            return restriction_error
 
         action = data.get("status", "")
         if action not in ("approved", "re-analyze"):

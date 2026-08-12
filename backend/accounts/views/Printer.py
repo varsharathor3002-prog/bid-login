@@ -1628,3 +1628,90 @@ def update_printer_docs(request, bid_id):
         return JsonResponse({"error": "Bid not found"}, status=404)
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
+
+
+# ---------------------------------------------------------------------------
+# GeM extension autofill payload (plumbing only)
+#
+# TODO(gem-fields): The keys inside `specifications` below reuse this app's
+# own internal field labels (same as PrinterConfig.jsx / _printer_bid_data).
+# They have NOT been verified against the live GeM "Printer / Multifunction
+# Printer" category technical-evaluation form. Before the Chrome extension
+# can actually autofill a Printer bid on GeM, someone needs to open an
+# approved Printer bid on bidplus.gem.gov.in and confirm each field's exact
+# label + accepted option text (the way `_desktop_gem_payload` in Desktop.py
+# already does for Desktop), then adjust the keys/values here to match.
+# ---------------------------------------------------------------------------
+def _printer_gem_payload(bid, request, account):
+    document_types = [
+        "approved_atc_documents",
+        "approved_price_paper",
+        "approved_all_documents",
+    ]
+    documents = [
+        {
+            "type": doc_type,
+            "url": request.build_absolute_uri(
+                f"/api/printer-bids/{bid.id}/generate-docs/"
+            ),
+        }
+        for doc_type in document_types
+    ]
+    catalogue_product = CatalogueProduct.objects.filter(
+        model_no__iexact=bid.model_number or ""
+    ).first()
+    local_content = str(bid.local_content or "").strip().rstrip("%")
+    return {
+        "workflow": "printer_gem_upload",
+        "product_type": "printer",
+        "bid_id": bid.id,
+        "callback_url": request.build_absolute_uri(
+            f"/api/printer-bids/{bid.id}/gem-status/"
+        ),
+        "model_number": bid.model_number or "",
+        "brand": "ACXXEL",
+        "category": {
+            "key": "printer",
+            "label": bid.printer_type or "Printer",
+            "slug": "",
+        },
+        "quantity": bid.qty,
+        "price": bid.final_amount,
+        "bid_number": bid.bid_no,
+        "department": bid.dept_name,
+        "organization": bid.organization or "",
+        "delivery_address": bid.address or "",
+        "pincode": bid.pincode or "",
+        "local_content": local_content,
+        "specifications": {
+            "Printing Technology": bid.printing_technology or "",
+            "Cartridge Technology": bid.cartridge_technology or "",
+            "Type of Printing": bid.type_of_printing or "",
+            "Availability of Fax": bid.fax_availability or "No",
+            "Operating System Compatibility": bid.operating_system_compatibility or "",
+            "Minimum Print Speed A4 Monochrome (Black) (PPM) - Laser/LED MFPs": bid.mono_print_speed_ppm or "",
+            "Minimum Print Speed A4 Colour (PPM) - Laser/LED MFPs": bid.colour_print_speed_ppm or "",
+            "Auto Duplexing Printing/Copying (2-sided Feature)": bid.auto_duplexing or "Yes",
+            "Reduction and Enlarge Features": bid.reduction_enlarge_features or "",
+            "Maximum Scan Area (Platen/ADF)": bid.max_scan_area or "",
+            "A4 Scan Speed Colour (Image Per Minute) @ 200 x 200 DPI": bid.a4_scan_speed_colour or "",
+            "Scan To Functions": bid.scan_to_functions or "",
+            "Original Document Feeder Type (For Scanning and Copying)": bid.document_feeder_type or "",
+            "Feeder Capacity (Number of Sheets)": bid.feeder_capacity or "",
+            "Number of Main Paper Tray": bid.main_paper_tray_count or "",
+            "Total Main Paper Tray Combined Capacity (75 GSM)": bid.total_paper_tray_capacity or "",
+            "Bypass Tray Facility": bid.bypass_tray_facility or "",
+            "Bypass Tray Capacity (75 GSM)": bid.bypass_tray_capacity or "",
+            "Connectivity": bid.connectivity or "",
+            "Duty Cycle (Prints/Month)": bid.duty_cycle or "",
+            "On Site Warranty (In Year)": bid.onsite_warranty or "",
+            "Extended Warranty (in Years)": bid.extended_warranty or "",
+            "Country Of Origin": "INDIA",
+        },
+        "documents": documents,
+        "images": [
+            request.build_absolute_uri(catalogue_product.image.url)
+            for _ in [0]
+            if catalogue_product and catalogue_product.image
+        ],
+    }

@@ -2,7 +2,9 @@ const state = document.getElementById("state");
 const message = document.getElementById("message");
 const jobs = document.getElementById("jobs");
 const syncButton = document.getElementById("sync-bids");
+const pauseSyncButton = document.getElementById("pause-sync");
 const stopSyncButton = document.getElementById("stop-sync");
+const retrySyncButton = document.getElementById("retry-sync");
 const syncState = document.getElementById("sync-state");
 const copySyncStatus = document.getElementById("copy-sync-status");
 document.getElementById("version").textContent = `v${chrome.runtime.getManifest().version}`;
@@ -18,10 +20,24 @@ function showSyncState(sync) {
     const updated = sync.updatedAt ? new Date(sync.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "";
     syncState.textContent = `${sync.message || sync.status}${details.length ? ` (${details.join(" · ")})` : ""}${updated ? ` · Updated ${updated}` : ""}`;
   }
-  syncButton.disabled = sync?.status === "running" || sync?.status === "starting";
-  syncButton.textContent = syncButton.disabled ? "Sync running..." : "Sync Current GeM Tab";
-  stopSyncButton.hidden = !syncButton.disabled;
+  const active = ["running", "starting", "paused"].includes(sync?.status);
+  const paused = sync?.status === "paused";
+  const retryable = ["failed", "stopped"].includes(sync?.status);
+
+  syncButton.disabled = active;
+  syncButton.textContent = paused
+    ? "Sync paused..."
+    : syncButton.disabled ? "Sync running..." : "Sync Current GeM Tab";
+
+  pauseSyncButton.hidden = !active || sync?.status === "starting";
+  pauseSyncButton.disabled = false;
+  pauseSyncButton.textContent = paused ? "Resume Sync" : "Pause Sync";
+
+  stopSyncButton.hidden = !active;
   stopSyncButton.disabled = false;
+
+  retrySyncButton.hidden = !retryable;
+  retrySyncButton.disabled = false;
 }
 
 function refreshSyncState() {
@@ -58,6 +74,39 @@ stopSyncButton.addEventListener("click", () => {
       return;
     }
     window.setTimeout(refreshSyncState, 200);
+  });
+});
+
+pauseSyncButton.addEventListener("click", () => {
+  const resuming = pauseSyncButton.textContent === "Resume Sync";
+  pauseSyncButton.disabled = true;
+  pauseSyncButton.textContent = resuming ? "Resuming..." : "Pausing...";
+  chrome.runtime.sendMessage({ type: resuming ? "RESUME_GEM_BID_SYNC" : "PAUSE_GEM_BID_SYNC" }, (response) => {
+    if (chrome.runtime.lastError || !response?.ok) {
+      pauseSyncButton.disabled = false;
+      pauseSyncButton.textContent = resuming ? "Resume Sync" : "Pause Sync";
+      syncState.className = "sync-state failed";
+      syncState.textContent = chrome.runtime.lastError?.message || response?.error
+        || `Unable to ${resuming ? "resume" : "pause"} sync.`;
+      return;
+    }
+    window.setTimeout(refreshSyncState, 200);
+  });
+});
+
+retrySyncButton.addEventListener("click", () => {
+  retrySyncButton.disabled = true;
+  retrySyncButton.textContent = "Retrying...";
+  syncState.textContent = "Retrying GeM bid sync...";
+  chrome.runtime.sendMessage({ type: "START_GEM_BID_SYNC" }, (response) => {
+    retrySyncButton.textContent = "Retry Sync";
+    if (chrome.runtime.lastError || !response?.ok) {
+      retrySyncButton.disabled = false;
+      syncState.className = "sync-state failed";
+      syncState.textContent = chrome.runtime.lastError?.message || response?.error || "Unable to retry sync.";
+      return;
+    }
+    window.setTimeout(refreshSyncState, 300);
   });
 });
 

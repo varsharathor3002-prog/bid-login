@@ -2125,3 +2125,98 @@ def generate_workstation_certificates(request, bid_id):
         return JsonResponse({"error": "Bid not found"}, status=404)
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=400)
+
+
+# ---------------------------------------------------------------------------
+# GeM extension autofill payload (plumbing only)
+#
+# TODO(gem-fields): The keys inside `specifications` below reuse this app's
+# own internal field labels (same as WorkstationConfig.jsx / _workstation_bid_data).
+# They have NOT been verified against the live GeM "Workstation" category
+# technical-evaluation form. Before the Chrome extension can actually
+# autofill a Workstation bid on GeM, someone needs to open an approved
+# Workstation bid on bidplus.gem.gov.in and confirm each field's exact
+# label + accepted option text (the way `_desktop_gem_payload` in Desktop.py
+# already does for Desktop), then adjust the keys/values here to match.
+# ---------------------------------------------------------------------------
+def _workstation_gem_payload(bid, request, account):
+    document_types = [
+        "approved_atc_documents",
+        "approved_price_paper",
+        "approved_all_documents",
+    ]
+    documents = [
+        {
+            "type": doc_type,
+            "url": request.build_absolute_uri(
+                f"/api/workstation-bids/{bid.id}/generate-docs/"
+            ),
+        }
+        for doc_type in document_types
+    ]
+    catalogue_product = CatalogueProduct.objects.filter(
+        model_no__iexact=bid.model_number or ""
+    ).first()
+    price_fields = (
+        "processor_price", "pro_descp_price", "motherboard_price",
+        "motherboard_descp_price", "ram_price", "ssd1_price", "ssd2_price",
+        "hdd_price", "graphic_card_price", "cabinet_price", "keyboard_price",
+        "power_supply_price", "monitor_price", "os_price", "wifi_price",
+        "dvd_price", "warranty_price", "freightInstallation_price",
+        "hdd_non_return_price", "extra_requirements_price",
+    )
+    calculated_price = sum(float(getattr(bid, field, 0) or 0) for field in price_fields)
+    approved_price = bid.final_amount or bid.total_price or calculated_price
+    return {
+        "workflow": "workstation_gem_upload",
+        "product_type": "workstation",
+        "bid_id": bid.id,
+        "callback_url": request.build_absolute_uri(
+            f"/api/workstation-bids/{bid.id}/gem-status/"
+        ),
+        "model_number": bid.model_number or "",
+        "brand": "ACXXEL",
+        "category": {
+            "key": "workstation",
+            "label": "Workstation",
+            "slug": "",
+        },
+        "quantity": bid.qty,
+        "price": approved_price,
+        "bid_number": bid.bid_no,
+        "department": bid.dept_name,
+        "organization": bid.organization or "",
+        "delivery_address": bid.address or "",
+        "pincode": bid.pincode or "",
+        "local_content": "",
+        "specifications": {
+            "Processor": bid.processor or "",
+            "Processor Description": bid.pro_descp or "",
+            "Motherboard": bid.motherboard or "",
+            "Motherboard Description": bid.motherboard_descp or "",
+            "RAM": bid.ram or "",
+            "SSD": " + ".join(filter(None, [bid.ssd1, bid.ssd2])),
+            "HDD": bid.hdd or "",
+            "Graphics Card": bid.graphic_card or "",
+            "Graphics Description": bid.graphics_description or "",
+            "Operating System": bid.os or "",
+            "Additional Software": bid.additional_software or "",
+            "DVD": bid.dvd or "",
+            "Wi-Fi / Bluetooth": bid.wifi or "",
+            "Monitor": bid.monitor or "",
+            "Cabinet": bid.cabinet or "",
+            "Keyboard / Mouse": bid.keyboard or "",
+            "Power Supply (SMPS)": bid.power_supply or "",
+            "Warranty": bid.warranty or "",
+            "HDD Return Option": bid.hdd_non_return or "No",
+            "Freight and Installation": bid.freightInstallation or "Yes",
+            "Extra Requirements": bid.extra_requirements or "",
+            "Country Of Origin": "INDIA",
+        },
+        "documents": documents,
+        "images": [
+            request.build_absolute_uri(catalogue_product.image.url)
+            for _ in [0]
+            if catalogue_product and catalogue_product.image
+        ],
+    }

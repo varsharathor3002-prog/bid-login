@@ -2,6 +2,7 @@
   const BID_PATTERN = /GEM\s*\/\s*\d{4}\s*\/\s*[A-Z]+\s*\/\s*\d+/i;
   let syncing = false;
   let stopRequested = false;
+  let pauseRequested = false;
 
   const text = (node) => String(node?.innerText || node?.textContent || "").replace(/\s+/g, " ").trim();
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -12,6 +13,17 @@
     const error = new Error("GeM bid sync stopped by user.");
     error.code = "GEM_SYNC_STOPPED";
     throw error;
+  }
+
+  async function waitWhilePaused(context) {
+    if (!pauseRequested) return;
+    await progress("paused", "GeM bid sync paused by user.", context);
+    while (pauseRequested) {
+      stopIfRequested();
+      await sleep(500);
+    }
+    stopIfRequested();
+    await progress("running", "GeM bid sync resumed.", context);
   }
 
   function runtimeMessage(message) {
@@ -653,6 +665,7 @@
     if (syncing) throw new Error("A GeM bid sync is already running in this tab.");
     syncing = true;
     stopRequested = false;
+    pauseRequested = false;
     let page = 1;
     let saved = 0;
     let checked = 0;
@@ -666,6 +679,7 @@
       await sleep(1500);
       while (true) {
         stopIfRequested();
+        await waitWhilePaused({ page, saved });
         await progress("running", "Waiting for bid cards from the complete GeM list...", { page, saved });
         const cards = await waitForBidCards(180000, async (seconds) => {
           await progress(
@@ -686,6 +700,8 @@
         }
         visited.add(signature);
         await extractPage(async (result, recordNumber, totalRecords) => {
+          stopIfRequested();
+          await waitWhilePaused({ page, saved });
           checked += 1;
           // Never discard a disqualified record in the scanner. The analyser
           // table applies its 2026 filter from the actual disqualified_at date.
@@ -884,7 +900,22 @@
     }
     if (message.type === "STOP_GEM_BID_SYNC") {
       stopRequested = true;
+      pauseRequested = false;
       sendResponse({ ok: true, stopping: syncing });
+      return true;
+    }
+    if (message.type === "PAUSE_GEM_BID_SYNC") {
+      if (!syncing) {
+        sendResponse({ ok: false, error: "No GeM bid sync is currently running in this tab." });
+        return true;
+      }
+      pauseRequested = true;
+      sendResponse({ ok: true, pausing: true });
+      return true;
+    }
+    if (message.type === "RESUME_GEM_BID_SYNC") {
+      pauseRequested = false;
+      sendResponse({ ok: true, resuming: syncing });
       return true;
     }
     if (message.type !== "START_GEM_BID_SYNC") return undefined;

@@ -1,7 +1,17 @@
 import { useEffect, useState } from "react";
-import { FaEye } from "react-icons/fa";
+import { FaEye, FaTrash } from "react-icons/fa";
 
 const API_BASE = import.meta.env.VITE_API_URL;
+const HIDDEN_IDS_KEY = "desktop_disqualified_hidden_ids";
+
+function loadHiddenIds() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(HIDDEN_IDS_KEY) || "[]");
+    return new Set(Array.isArray(saved) ? saved : []);
+  } catch {
+    return new Set();
+  }
+}
 
 function EvaluationHistoryModal({ bid, onClose }) {
   useEffect(() => {
@@ -17,12 +27,12 @@ function EvaluationHistoryModal({ bid, onClose }) {
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/45 p-4" onMouseDown={onClose}>
-      <div className="max-h-[85vh] w-full max-w-6xl overflow-hidden bg-white shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
-        <div className="flex items-center justify-between border-b border-gray-200 px-6 py-5">
+      <div className="flex max-h-[85vh] w-full max-w-6xl flex-col overflow-hidden bg-white shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-6 py-5">
           <h2 className="text-base font-bold text-sky-800">Reason for Technical Evaluation</h2>
           <button type="button" onClick={onClose} aria-label="Close" className="text-2xl font-bold text-gray-400 hover:text-gray-700">&times;</button>
         </div>
-        <div className="overflow-auto p-6">
+        <div className="min-h-0 flex-1 overflow-auto p-6">
           <div className="mb-6 grid grid-cols-1 gap-px overflow-hidden border border-slate-200 bg-slate-200 sm:grid-cols-2 lg:grid-cols-3">
             {[
               ["Bid No.", bid.bid_no || "-"],
@@ -72,6 +82,17 @@ export default function DisqualifiedBidsPanel({ showProductFilter = false }) {
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [hiddenIds, setHiddenIds] = useState(loadHiddenIds);
+
+  const handleRemove = (row) => {
+    if (!window.confirm(`Remove bid ${row.bid_no} from this list? It will stay in the audit records.`)) return;
+    setHiddenIds((prev) => {
+      const next = new Set(prev);
+      next.add(row.id);
+      localStorage.setItem(HIDDEN_IDS_KEY, JSON.stringify([...next]));
+      return next;
+    });
+  };
   useEffect(() => {
     let active = true;
     async function load() {
@@ -105,6 +126,8 @@ export default function DisqualifiedBidsPanel({ showProductFilter = false }) {
   if (loading) return <div className="py-16 text-center text-sm font-medium text-gray-500">Loading disqualified bids...</div>;
   if (error) return <div className="m-6 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>;
 
+  const visibleRows = rows.filter((row) => !hiddenIds.has(row.id));
+
   return (
     <div className="bg-white">
       {showProductFilter && (
@@ -128,7 +151,7 @@ export default function DisqualifiedBidsPanel({ showProductFilter = false }) {
           </tr>
         </thead>
         <tbody>
-          {rows.map((row, index) => (
+          {visibleRows.map((row, index) => (
             <tr key={row.id} className="border-b border-gray-100 align-top hover:bg-gray-50">
               <td className="px-4 py-4 text-sm font-bold text-gray-700">{index + 1}</td>
               <td className="px-4 py-4 text-sm font-bold text-blue-700">{row.bid_no}</td>
@@ -142,11 +165,19 @@ export default function DisqualifiedBidsPanel({ showProductFilter = false }) {
                 </button>
               </td>
               <td className="px-4 py-4 text-center">
-                <span className="text-xs font-semibold text-slate-500" title="Permanent audit record">Protected</span>
+                <button
+                  type="button"
+                  onClick={() => handleRemove(row)}
+                  className="inline-flex items-center justify-center rounded p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600"
+                  title="Remove from this list"
+                  aria-label={`Remove bid ${row.bid_no} from this list`}
+                >
+                  <FaTrash className="text-sm" aria-hidden="true" />
+                </button>
               </td>
             </tr>
           ))}
-          {rows.length === 0 && (
+          {visibleRows.length === 0 && (
             <tr><td colSpan="7" className="py-16 text-center text-sm text-gray-500">No disqualified bids have been synced from GeM yet.</td></tr>
           )}
         </tbody>

@@ -100,6 +100,8 @@ urlpatterns = [
     path("gem/bid-results/<int:result_id>/", views.delete_gem_bid_result, name="delete_gem_bid_result"),
     path("gem/bid-results/pending/", views.gem_pending_bid_results, name="gem_pending_bid_results"),
     path("desktop-bids/<int:bid_id>/gem-jobs/", views.create_gem_upload_job, name="create_gem_upload_job"),
+    path("printer-bids/<int:bid_id>/gem-jobs/", views.create_printer_gem_upload_job, name="create_printer_gem_upload_job"),
+    path("workstation-bids/<int:bid_id>/gem-jobs/", views.create_workstation_gem_upload_job, name="create_workstation_gem_upload_job"),
     path("desktop-bids/<int:bid_id>/delete/", views.delete_desktop_bid, name="delete_desktop_bid"),
 
 

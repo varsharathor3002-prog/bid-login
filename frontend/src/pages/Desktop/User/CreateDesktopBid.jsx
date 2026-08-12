@@ -321,12 +321,15 @@ function Step1Form({ onNext, savedData }) {
           </div>
 
           <div>
-            <Label>Pin Code</Label>
+            <Label>Buyer Pincode</Label>
             <Input
-              type="number"
-              placeholder="Enter PIN Code"
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={6}
+              placeholder="Enter Buyer Pincode"
               value={form.pincode}
-              onChange={(e) => handleChange("pincode", e.target.value)}
+              onChange={(e) => handleChange("pincode", e.target.value.replace(/\D/g, "").slice(0, 6))}
               required
             />
           </div>
