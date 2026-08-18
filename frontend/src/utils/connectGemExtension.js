@@ -1,5 +1,5 @@
 export function connectGemExtension() {
-  const token = localStorage.getItem("token") || "";
+  const token = sessionStorage.getItem("token") || localStorage.getItem("token") || "";
   if (!token) return () => {};
 
   let cancelled = false;

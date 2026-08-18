@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Acxxel GeM Desktop Workflow",
-  "version": "3.42.34",
+  "version": "3.49.1",
   "description": "Fills approved Desktop jobs and reads technical evaluation results in an authenticated GeM tab.",
   "permissions": ["storage", "tabs", "alarms", "scripting"],
   "host_permissions": [
@@ -45,7 +45,7 @@
     },
     {
       "matches": ["https://*.gem.gov.in/*"],
-      "js": ["src/gem-content.js", "src/gem-bid-sync.js"],
+      "js": ["src/gem-content.js", "src/blocked-pins.js", "src/gem-bid-sync.js"],
       "run_at": "document_idle"
     }
   ]

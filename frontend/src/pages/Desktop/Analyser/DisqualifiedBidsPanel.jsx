@@ -99,7 +99,7 @@ export default function DisqualifiedBidsPanel({ showProductFilter = false }) {
       try {
         const query = new URLSearchParams({ status: "disqualified", year: "2026" });
         const response = await fetch(`${API_BASE}/gem/bid-results/?${query}`, {
-          headers: { Authorization: `Bearer ${localStorage.getItem("token") || ""}` },
+          headers: { Authorization: `Bearer ${sessionStorage.getItem("token") || localStorage.getItem("token") || ""}` },
         });
         const contentType = response.headers.get("content-type") || "";
         const payload = contentType.includes("application/json")

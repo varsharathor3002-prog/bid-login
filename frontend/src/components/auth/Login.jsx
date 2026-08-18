@@ -40,25 +40,42 @@ export default function Login() {
       const loginName = data.username || "";
       const loginRole = data.role || role || "";
 
+      // Prevent a previous role's display identity from surviving a new login
+      // while the API token belongs to a different account/role.
+      localStorage.removeItem("user_username");
+      localStorage.removeItem("analyser_username");
+      localStorage.removeItem("admin_username");
+      sessionStorage.removeItem("user_username");
+      sessionStorage.removeItem("analyser_username");
+      sessionStorage.removeItem("admin_username");
+
             localStorage.setItem("role", loginRole);
       localStorage.setItem("username", loginName);
       localStorage.setItem("display_username", loginName);
       localStorage.setItem("user_id", data.user_id || "");
       localStorage.setItem("token", data.token || "");
+      sessionStorage.setItem("role", loginRole);
+      sessionStorage.setItem("username", loginName);
+      sessionStorage.setItem("user_id", String(data.user_id || ""));
+      sessionStorage.setItem("token", data.token || "");
 
       if (data.email) {
         localStorage.setItem("email", data.email);
+        sessionStorage.setItem("email", data.email);
       }
 
             if (loginRole === "user") {
         localStorage.setItem("user_username", loginName);
+        sessionStorage.setItem("user_username", loginName);
         localStorage.setItem("bid_user_id", data.user_id || "");
         navigate("/user");
       } else if (loginRole === "analyser") {
         localStorage.setItem("analyser_username", loginName);
+        sessionStorage.setItem("analyser_username", loginName);
         navigate("/analyser-dashboard");
       } else if (loginRole === "admin") {
         localStorage.setItem("admin_username", loginName);
+        sessionStorage.setItem("admin_username", loginName);
         navigate("/admin-dashboard");
       }
     } catch (error) {

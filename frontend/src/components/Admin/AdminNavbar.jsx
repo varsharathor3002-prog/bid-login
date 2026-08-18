@@ -23,6 +23,7 @@ import {
   FaShieldAlt,
   FaBan,
   FaTags,
+  FaClipboardList,
 } from "react-icons/fa";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -173,7 +174,7 @@ const AdminHome = () => {
     } finally {
       setAccountsLoading(false);
     }
-  }, []);
+  }, [navigate]);
 
   const fetchStats = useCallback(async () => {
     if (!selectedProduct.ready) {
@@ -440,7 +441,11 @@ const AdminNavbar = () => {
   const location = useLocation();
 
   useEffect(() => {
-    const stored = localStorage.getItem("admin_username");
+    if ((sessionStorage.getItem("role") || localStorage.getItem("role")) !== "admin") {
+      navigate("/", { replace: true });
+      return;
+    }
+    const stored = sessionStorage.getItem("admin_username") || localStorage.getItem("admin_username");
     if (stored && stored !== "undefined" && stored !== "null" && stored.trim() !== "") {
       setUsername(stored.trim());
     }
@@ -449,6 +454,7 @@ const AdminNavbar = () => {
   useEffect(() => connectGemExtension(), []);
 
   const handleLogout = () => {
+    sessionStorage.clear();
     localStorage.removeItem("admin_username");
     localStorage.removeItem("role");
     localStorage.removeItem("username");
@@ -513,6 +519,12 @@ const AdminNavbar = () => {
           >
             <span className="text-lg text-red-400"><FaBan /></span>
             <span className="text-sm font-medium">Disqualified Bid</span>
+          </div>
+
+          <div onClick={() => navigate("/admin-dashboard/bid-assignments")}
+            className={`flex items-center gap-3 px-4 py-3 mb-3 rounded-xl cursor-pointer transition-all duration-200 ${isActive("/admin-dashboard/bid-assignments") ? "bg-gray-700/50 text-white" : "hover:bg-gray-700/50 text-gray-200"}`}>
+            <span className="text-lg text-cyan-400"><FaClipboardList /></span>
+            <span className="text-sm font-medium">Bid Assignment Tracking</span>
           </div>
 
           {}

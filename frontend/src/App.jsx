@@ -30,13 +30,16 @@ import PrinterApprovedBidDownloads from "./pages/Printer/Analyser/PrinterApprove
 import PrinterBidApproval from "./pages/Printer/Admin/PrinterBidApproval";
 import DocumentPrintView from "./pages/Documents/DocumentPrintView";
 import DisqualifiedBidsPanel from "./pages/Desktop/Analyser/DisqualifiedBidsPanel";
+import BidNotParticipated from "./pages/Desktop/Analyser/BidNotParticipated";
 import ComponentRates from "./pages/Admin/ComponentRates.jsx";
+import UserAssignedBids from "./pages/User/UserAssignedBids.jsx";
+import AdminBidAssignments from "./pages/Admin/AdminBidAssignments.jsx";
 
 const ComingSoon = ({ product }) => (
   <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
     <div className="text-6xl">🚧</div>
     <h2 className="text-2xl font-bold text-gray-600">{product} — Coming Soon</h2>
-    <p className="text-gray-400 text-sm">Yeh section abhi development mein hai.</p>
+    <p className="text-gray-400 text-sm">This section is currently under development.</p>
   </div>
 );
 
@@ -44,7 +47,7 @@ const AdminWelcome = () => (
   <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
     <div className="text-6xl">👈</div>
     <h2 className="text-2xl font-bold text-gray-600">Select an option from Sidebar</h2>
-    <p className="text-gray-400 text-sm">Left sidebar se koi option choose karein.</p>
+    <p className="text-gray-400 text-sm">Choose an option from the left sidebar.</p>
   </div>
 );
 
@@ -62,6 +65,7 @@ function App() {
           <Route path="aio" element={<div>AIO Page Content</div>} />
           {}
           <Route path="toner" element={<div>Toner Content</div>} />
+          <Route path="bid-to-be-participated" element={<UserAssignedBids />} />
         </Route>
 
         {}
@@ -81,6 +85,7 @@ function App() {
           <Route path="printer" element={<AnalyserPrinterDashboard />} />
           <Route path="printer/bid/:id/downloads" element={<PrinterApprovedBidDownloads />} />
           <Route path="disqualified-bids" element={<DisqualifiedBidsPanel showProductFilter />} />
+          <Route path="bid-not-participated" element={<BidNotParticipated />} />
           <Route path="toner" element={<ComingSoon product="Toner" />} />
         </Route>
 
@@ -99,6 +104,7 @@ function App() {
           <Route path="add-analyser" element={<AddAnalyser />} />
           <Route path="add-admin" element={<AddAnalyser accountType="admin" />} />
           <Route path="disqualified-bids" element={<DisqualifiedBidsPanel showProductFilter />} />
+          <Route path="bid-assignments" element={<AdminBidAssignments />} />
           <Route path="component-rates/:product" element={<ComponentRates />} />
           <Route
             path="add-product"

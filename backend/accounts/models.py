@@ -370,6 +370,84 @@ class GemBidEvaluationHistory(models.Model):
         return f"{self.bid_result.bid_no}: {self.status}"
 
 
+class GemBidOpportunity(models.Model):
+    bid_no = models.CharField(max_length=100, unique=True)
+    bid_date = models.DateTimeField(blank=True, null=True)
+    end_date = models.DateTimeField(blank=True, null=True)
+    product_name = models.CharField(max_length=500)
+    department = models.TextField(blank=True, default="")
+    delivery_pincode = models.CharField(max_length=6, blank=True, default="")
+    product_type = models.CharField(max_length=40, blank=True, default="")
+    pdf_url = models.URLField(max_length=1000, blank=True, default="")
+    is_deleted = models.BooleanField(default=False)
+    last_seen_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-bid_date", "-created_at"]
+
+    def __str__(self):
+        return f"{self.bid_no}: {self.product_name}"
+
+
+class GemBidAssignment(models.Model):
+    STATUS_CHOICES = [
+        ("assigned", "Assigned"),
+        ("in_progress", "In Progress"),
+        ("participated", "Participated"),
+        ("skipped", "Not Eligible / Skipped"),
+        ("expired", "Expired"),
+    ]
+
+    opportunity = models.OneToOneField(
+        GemBidOpportunity, on_delete=models.PROTECT, related_name="assignment"
+    )
+    assigned_to = models.ForeignKey(
+        User, on_delete=models.PROTECT, related_name="gem_bid_assignments"
+    )
+    assigned_by = models.ForeignKey(
+        User, on_delete=models.PROTECT, related_name="gem_bid_assignments_created"
+    )
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="assigned")
+    assigned_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    completed_at = models.DateTimeField(blank=True, null=True)
+    hidden_for_user = models.BooleanField(default=False)
+    hidden_for_analyser = models.BooleanField(default=False)
+    hidden_for_admin = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["-assigned_at", "-id"]
+        indexes = [
+            models.Index(fields=["assigned_to", "status"], name="gem_assign_user_status_idx"),
+            models.Index(fields=["status", "assigned_at"], name="gem_assign_status_date_idx"),
+        ]
+
+
+class GemBidAssignmentHistory(models.Model):
+    assignment = models.ForeignKey(
+        GemBidAssignment, on_delete=models.CASCADE, related_name="history"
+    )
+    action = models.CharField(max_length=30)
+    from_user = models.ForeignKey(
+        User, on_delete=models.PROTECT, related_name="gem_bid_assignment_history_from",
+        blank=True, null=True,
+    )
+    to_user = models.ForeignKey(
+        User, on_delete=models.PROTECT, related_name="gem_bid_assignment_history_to",
+        blank=True, null=True,
+    )
+    old_status = models.CharField(max_length=20, blank=True, default="")
+    new_status = models.CharField(max_length=20, blank=True, default="")
+    changed_by = models.ForeignKey(
+        User, on_delete=models.PROTECT, related_name="gem_bid_assignment_changes"
+    )
+    changed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-changed_at", "-id"]
+
+
 
 
 class WorkstationBid(models.Model):

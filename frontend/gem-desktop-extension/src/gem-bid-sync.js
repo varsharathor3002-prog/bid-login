@@ -141,10 +141,22 @@
   }
 
   function dateFrom(value) {
-    const match = String(value || "").match(/\d{4}[-/]\d{2}[-/]\d{2}(?:\s+\d{2}:\d{2}:\d{2})?|\d{2}[-/]\d{2}[-/]\d{4}(?:\s+\d{2}:\d{2}(?::\d{2})?)?/);
+    const match = String(value || "").match(/\d{4}[-/]\d{2}[-/]\d{2}(?:\s+\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?)?|\d{2}[-/]\d{2}[-/]\d{4}(?:\s+\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?)?/i);
     if (!match) return "";
-    const parsed = new Date(match[0].replace(/(\d{2})\/(\d{2})\/(\d{4})/, "$3-$2-$1"));
-    return Number.isNaN(parsed.getTime()) ? match[0] : parsed.toISOString();
+    const parts = match[0].match(/^(\d{2,4})[-/](\d{2})[-/](\d{2,4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?)?$/i);
+    if (!parts) return "";
+    const yearFirst = parts[1].length === 4;
+    const year = Number(yearFirst ? parts[1] : parts[3]);
+    const month = Number(parts[2]);
+    const day = Number(yearFirst ? parts[3] : parts[1]);
+    let hour = Number(parts[4] || 0);
+    const minute = Number(parts[5] || 0);
+    const second = Number(parts[6] || 0);
+    const meridiem = String(parts[7] || "").toUpperCase();
+    if (meridiem === "PM" && hour < 12) hour += 12;
+    if (meridiem === "AM" && hour === 12) hour = 0;
+    const parsed = new Date(year, month - 1, day, hour, minute, second);
+    return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString();
   }
 
   function productType(raw, itemName) {
@@ -680,12 +692,12 @@
       while (true) {
         stopIfRequested();
         await waitWhilePaused({ page, saved });
-        await progress("running", "Waiting for bid cards from the complete GeM list...", { page, saved });
+        await progress("running", `Waiting for bid cards from the complete GeM list... Checked ${checked}; saved ${saved} disqualified bids from 2026.`, { page, saved, checked });
         const cards = await waitForBidCards(180000, async (seconds) => {
           await progress(
             "running",
             `Waiting for GeM bid cards to load (${seconds}s)...`,
-            { page, saved },
+            { page, saved, checked },
           );
         });
         if (!cards.length) {
@@ -703,21 +715,24 @@
           stopIfRequested();
           await waitWhilePaused({ page, saved });
           checked += 1;
-          // Never discard a disqualified record in the scanner. The analyser
-          // table applies its 2026 filter from the actual disqualified_at date.
-          const wanted = result.is_disqualified;
+          // This screen is specifically the 2026 disqualification register.
+          // Use the evaluation-history timestamp, never the bid number/year.
+          const disqualifiedYear = result.disqualified_at
+            ? new Date(result.disqualified_at).getFullYear()
+            : 0;
+          const wanted = result.is_disqualified && disqualifiedYear === 2026;
           if (!wanted) {
             await progress(
               "running",
               `Checked ${result.bid_no} (${recordNumber}/${totalRecords} on page ${page}).`,
-              { page, saved },
+              { page, saved, checked },
             );
             return;
           }
           await progress(
             "running",
             `Saving disqualified bid ${result.bid_no}.`,
-            { page, saved },
+            { page, saved, checked },
           );
           const response = await runtimeMessage({
             type: "SAVE_GEM_BID_RESULTS",
@@ -727,10 +742,10 @@
           await progress(
             "running",
             `Completed ${result.bid_no} (${recordNumber}/${totalRecords} on page ${page}).`,
-            { page, saved },
+            { page, saved, checked },
           );
         });
-        await progress("running", `Synced page ${page}.`, { page, saved });
+        await progress("running", `Synced page ${page}. Checked ${checked}; saved ${saved} disqualified bids from 2026.`, { page, saved, checked });
         const advance = await advancePage(signature, page);
         if (!advance.advanced) {
           if (advance.reason !== "end") {
@@ -742,8 +757,8 @@
       }
       await progress(
         "complete",
-        `Full GeM scan complete. Checked ${checked} bids; saved ${saved} disqualified bids.`,
-        { page, saved },
+        `Full GeM scan complete. Checked ${checked} bids; saved ${saved} disqualified bids from 2026.`,
+        { page, saved, checked },
       );
     } catch (error) {
       if (error.code === "GEM_SYNC_STOPPED") {
@@ -751,6 +766,331 @@
         return;
       }
       await progress("failed", error.message || "GeM bid sync failed.", { page, saved });
+      throw error;
+    } finally {
+      syncing = false;
+    }
+  }
+
+  const OPPORTUNITY_PRODUCTS = [
+    ["desktop", /\b(?:entry|mid(?:dle)?|high)[ -]*(?:level)?[ -]*desktop|desktop computer/i],
+    ["workstation", /\bworkstation\b/i],
+    ["toner", /\btoner(?: cartridge)?\b/i],
+    ["printer", /\b(?:multi\s*function\s*)?printer\b/i],
+    ["aio", /\b(?:all[ -]*in[ -]*one|aio)\b/i],
+    ["bunch_bid", /\bb(?:ou)?nch\s*bid\b/i],
+  ];
+  const OPPORTUNITY_CATEGORIES = [
+    ["Entry/Mid Desktop", "Entry and Mid Level Desktop", /entry\s+and\s+mid.*desktop/i],
+    ["High-End Desktop", "High End Desktop", /high\s+end.*desktop/i],
+    ["Workstation", "Workstation", /workstation/i],
+    ["Printer", "Printer", /\bprinter\b/i],
+    ["Toner", "Toner Cartridge", /toner/i],
+    ["AIO", "All in One", /all\s+in\s+one|\baio\b/i],
+    ["Bunch Bid", "Bunch Bid", /bunch\s+bid/i],
+  ];
+
+  function opportunityFromText(bidNo, raw) {
+    const flat = String(raw || "").replace(/[\u0000-\u001f]+/g, " ").replace(/\s+/g, " ").trim();
+    const bounded = (start, end) => flat.match(new RegExp(`${start}\\s*:?\\s*(.+?)(?=${end})`, "i"))?.[1]?.trim() || "";
+    const itemName = bounded(
+      "Item\\s+Category",
+      "(?:Minimum\\s+Average|Years?\\s+of\\s+Past|MSE\\s+Relaxation|Startup\\s+Relaxation|Bidder\\s+Turnover|$)"
+    ) || bounded("Items?", "(?:Quantity|Department|Start\\s+Date|End\\s+Date|$)");
+    const englishItemName = itemName.split(/[\u0900-\u097f]/, 1)[0];
+    const qMarkers = [...englishItemName.matchAll(/\(Q\d+\)/gi)];
+    const cleanItemName = (qMarkers.length ? englishItemName.slice(0, qMarkers.at(-1).index + qMarkers.at(-1)[0].length) : englishItemName)
+      .replace(/\s*\(Q\d+\)\s*/gi, "")
+      .replace(/\s*,\s*/g, ", ")
+      .trim();
+    const productText = `${cleanItemName} ${raw}`;
+    const matchedProducts = OPPORTUNITY_PRODUCTS
+      .filter(([type, pattern]) => type !== "bunch_bid" && pattern.test(productText));
+    const looksLikeBunch = /\b(?:bunch|boq)\s*(?:bid)?\b/i.test(productText)
+      || matchedProducts.length > 1
+      || (itemName.match(/\(Q\d+\)/gi) || []).length > 1
+      || /\s,\s/.test(itemName);
+    const product = looksLikeBunch && matchedProducts.length
+      ? ["bunch_bid", /./]
+      : matchedProducts[0] || OPPORTUNITY_PRODUCTS.find(([type, pattern]) => (
+        type === "bunch_bid" && pattern.test(productText)
+      ));
+    if (!product) return { reject: "product" };
+    const pacField = bounded("(?:Is\\s+PAC|PAC\\s+Only|PAC\\s+Bid)", "(?:Bid|Ministry|Department|Item|$)");
+    if (/\bPAC\b/i.test(cleanItemName) || /^(?:yes|true)\b/i.test(pacField)) return { reject: "pac" };
+    const deliveryText = bounded(
+      "Consignees?/Reporting\\s+Officer\\s+and\\s+Quantity",
+      "(?:Special\\s+terms|Buyer\\s+Added|Technical\\s+Specifications|$)"
+    ) || bounded("(?:Consignee|Delivery)\\s+Address", "(?:Quantity|Delivery\\s+Days|$)");
+    const pins = deliveryText.match(/\b[1-9]\d{5}\b/g) || [];
+    const normalizedDelivery = deliveryText.toLowerCase();
+    if (pins.length) {
+      if (pins.some((pin) => ACXXEL_BLOCKED_DELIVERY_PINS.has(pin))) return { reject: "location" };
+    } else {
+      const blockedDistrict = [...ACXXEL_BLOCKED_DELIVERY_DISTRICTS].some((district) => normalizedDelivery.includes(district));
+      if (blockedDistrict) return { reject: "location" };
+      const blockedState = [...ACXXEL_BLOCKED_DELIVERY_STATES].some((state) => normalizedDelivery.includes(state));
+      if (blockedState) return { reject: "location" };
+    }
+    const indianDateTime = "(\\d{2}[-/]\\d{2}[-/]\\d{4}(?:\\s+\\d{1,2}:\\d{2}(?::\\d{2})?\\s*(?:AM|PM)?)?)";
+    let endDate = dateFrom(flat.match(new RegExp(`Bid\\s+End\\s+Date(?:/Time)?\\s*:?\\s*${indianDateTime}`, "i"))?.[1])
+      || dateFrom(flat.match(new RegExp(`(?:Bid\\s+End|End\\s+Date)[^\\d]{0,60}${indianDateTime}`, "i"))?.[1]);
+    const validityDays = Number(flat.match(/Bid\s+Offer\s+Validity\s*\(From\s+End\s+Date\)\s*:?\s*(\d+)\s*\(?Days?/i)?.[1] || 0);
+    if (!endDate) {
+      const futureDates = [...flat.matchAll(/\b\d{2}[-/]\d{2}[-/]\d{4}(?:\s+\d{2}:\d{2}(?::\d{2})?)?/g)]
+        .map((match) => dateFrom(match[0]))
+        .filter(Boolean)
+        .sort((a, b) => Date.parse(a) - Date.parse(b));
+      endDate = futureDates.find((value) => Date.parse(value) > Date.now()) || "";
+    }
+    const endTime = Date.parse(endDate || "");
+    if (endTime && endTime <= Date.now()) return { reject: "expired" };
+    if (!endTime && !validityDays) return { reject: "date" };
+    if (validityDays > 120 || (endTime && endTime - Date.now() > 120 * 86400000)) return { reject: "over120" };
+    return {
+      eligible: true,
+      bid_no: bidNo,
+      bid_date: dateFrom(flat.match(new RegExp(`(?:Dated|Bid\\s+Start\\s+Date(?:/Time)?)\\s*:?\\s*${indianDateTime}`, "i"))?.[1]),
+      end_date: endDate,
+      product_name: cleanItemName.slice(0, 500),
+      product_type: product[0],
+      department: bounded("Department\\s+Name", "(?:Organisation|Office|Contact|Buyer|Item\\s+Category|$)"),
+      delivery_pincode: pins[0] || "",
+    };
+  }
+
+  function bidDetailUrl(bidNo, card) {
+    const link = [...card.querySelectorAll("a[href]")].find((node) => (
+      normalizeBidNo(text(node)) === bidNo || text(node).includes(bidNo)
+    ));
+    if (!link) return "";
+    try { return new URL(link.getAttribute("href"), location.href).href; } catch { return ""; }
+  }
+
+  async function opportunityFromBidDetail(bidNo, card) {
+    const url = bidDetailUrl(bidNo, card);
+    if (!url || !/^https:\/\/[^/]*gem\.gov\.in\//i.test(url)) return { reject: "detail" };
+    let response;
+    try {
+      response = await runtimeMessage({ type: "READ_GEM_BID_DETAIL", url, bidNo });
+    } catch (error) {
+      if (/no tab with id|tab.*(?:closed|not found)|invalid tab id/i.test(String(error?.message || error))) {
+        return { reject: "detail" };
+      }
+      throw error;
+    }
+    if (!response.detailText) return { reject: "detail" };
+    const opportunity = opportunityFromText(bidNo, response.detailText);
+    if (opportunity?.eligible) opportunity.pdf_url = url;
+    return opportunity;
+  }
+
+  async function selectLatestBidSort() {
+    const selects = [...document.querySelectorAll("select")].filter(visible);
+    for (const select of selects) {
+      const options = [...select.options];
+      const latest = options.find((option) => /bid\s+start\s+date\s*:\s*latest\s+first/i.test(text(option)))
+        || options.find((option) => /bid.*latest\s+first/i.test(text(option)));
+      if (!latest) continue;
+      const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set;
+      if (setter) setter.call(select, latest.value); else select.value = latest.value;
+      select.dispatchEvent(new Event("input", { bubbles: true }));
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+      await sleep(3000);
+      if (!/latest\s+first/i.test(text(select.selectedOptions?.[0]))) {
+        throw new Error("GeM Sort by could not be changed to Latest First.");
+      }
+      return true;
+    }
+    // GeM renders Sort by as an Angular/Bootstrap custom dropdown rather than
+    // a native select (button label + menu items).
+    const exact = (pattern) => searchableDocuments().flatMap((root) => [...root.querySelectorAll(
+      "button, a, [role=button], li, span, div, [class*=dropdown]"
+    )]).filter(visible).filter((node) => pattern.test(text(node)))
+      .sort((a, b) => text(a).length - text(b).length);
+    let current = exact(/Bid\s+(?:Start|End)\s+Date\s*:\s*(?:Latest|Oldest)\s+First/i)[0];
+    if (!current) {
+      const sortLabel = exact(/Sort\s+by\s*:/i)[0];
+      current = sortLabel?.parentElement?.querySelector("button, [role=button], a") || null;
+    }
+    if (!current) return false;
+    activateControl(current);
+    await sleep(500);
+    const latestOption = exact(/Bid\s+Start\s+Date\s*:\s*Latest\s+First/i)
+      .find((node) => node !== current);
+    if (!latestOption) return false;
+    activateControl(latestOption);
+    const end = Date.now() + 10000;
+    while (Date.now() < end) {
+      await sleep(250);
+      const selected = exact(/Bid\s+Start\s+Date\s*:\s*Latest\s+First/i)
+        .find((node) => !node.closest(".dropdown-menu, [role=menu]"));
+      if (selected) return true;
+    }
+    return false;
+  }
+
+  async function applyOpportunityFilters() {
+    const inputFor = (pattern) => [...document.querySelectorAll('input[type="checkbox"], input[type="radio"]')]
+      .find((input) => {
+        const label = input.id ? document.querySelector(`label[for="${CSS.escape(input.id)}"]`) : input.closest("label");
+        return pattern.test(text(label || input.parentElement));
+      });
+    const ongoing = inputFor(/^ongoing\s+bids?\s+available\s+for\s+participation$/i);
+    if (ongoing && !ongoing.checked) { ongoing.click(); await sleep(2500); }
+    const ongoingRa = inputFor(/^ongoing\s+ras?\s+available\s+for\s+participation$/i);
+    if (ongoingRa?.checked && ongoingRa.type === "checkbox") { ongoingRa.click(); await sleep(2000); }
+    const submitted = inputFor(/already\s+submitted|participated/i);
+    if (submitted?.checked && submitted.type === "checkbox") { submitted.click(); await sleep(2000); }
+    const evaluated = inputFor(/^technical\s+evaluated$/i);
+    if (evaluated?.checked && evaluated.type === "checkbox") { evaluated.click(); await sleep(2000); }
+    const all = inputFor(/^all\s+bids?\/ras?$/i);
+    if (all && !all.checked) { all.click(); await sleep(2500); }
+    const sortedAutomatically = await selectLatestBidSort();
+    if (!sortedAutomatically) {
+      await progress(
+        "running",
+        "Using the current GeM sort. Keep Bid Start Date: Latest First selected manually.",
+        { page: 1, saved: 0 },
+      );
+    }
+    location.hash = "page-1";
+    await sleep(2500);
+  }
+
+  function categorySelectContainer() {
+    const heading = [...document.querySelectorAll("div, span, label, p")]
+      .filter(visible).find((node) => /^by\s+category\s*:?$/i.test(text(node)));
+    if (!heading) return null;
+    const candidates = [...document.querySelectorAll(
+      ".ui-select-container, .multiSelect, .dropdown-multiselect, [class*=multiselect]"
+    )].filter(visible);
+    const noneSelected = [...document.querySelectorAll("button, [role=button], a")]
+      .filter(visible).find((node) => /^none\s+selected$/i.test(text(node)));
+    if (noneSelected) {
+      return noneSelected.closest(
+        ".ui-select-container, .multiSelect, .dropdown-multiselect, [class*=multiselect]"
+      ) || noneSelected.parentElement;
+    }
+    const below = candidates.filter((node) => node.getBoundingClientRect().top >= heading.getBoundingClientRect().bottom - 4);
+    return (below.length ? below : candidates).sort((a, b) => (
+      Math.abs(a.getBoundingClientRect().top - heading.getBoundingClientRect().bottom)
+      - Math.abs(b.getBoundingClientRect().top - heading.getBoundingClientRect().bottom)
+    ))[0] || null;
+  }
+
+  async function clearOpportunityCategory() {
+    const container = categorySelectContainer();
+    if (!container) throw new Error("GeM By Category search control was not found.");
+    for (const close of [...container.querySelectorAll(
+      ".ui-select-match-close, .close, [aria-label*=remove i], [title*=remove i]"
+    )].filter(visible)) activateControl(close);
+    const toggle = [...container.querySelectorAll(
+      ".ui-select-toggle, .ui-select-match, [role=combobox], button, a"
+    )].find(visible);
+    const hasVisibleMenu = Boolean([...container.querySelectorAll(
+      ".ui-select-choices, .checkBoxContainer, .dropdown-menu"
+    )].find(visible));
+    if (toggle && !hasVisibleMenu) { activateControl(toggle); await sleep(500); }
+    for (const checked of container.querySelectorAll('input[type="checkbox"]:checked')) {
+      const option = checked.closest(".multiSelectItem, li, label, [role=option]");
+      if (option && visible(option)) activateControl(option);
+    }
+    await sleep(1200);
+    return container;
+  }
+
+  async function selectOpportunityCategory(query, pattern) {
+    const container = await clearOpportunityCategory();
+    const toggle = [...container.querySelectorAll(
+      ".ui-select-toggle, .ui-select-match, [role=combobox], button, a"
+    )].find(visible);
+    if (!toggle) throw new Error("GeM By Category dropdown could not be opened.");
+    let input = [...container.querySelectorAll('input:not([type="hidden"]):not([type="checkbox"])')].find(visible)
+      || [...document.querySelectorAll(
+        '.ui-select-container.open input:not([type="hidden"]), .multiSelect input[type=text], .dropdown-menu input[type=text]'
+      )].find(visible);
+    if (!input) {
+      activateControl(toggle);
+      await sleep(400);
+      input = [...container.querySelectorAll('input:not([type="hidden"]):not([type="checkbox"])')].find(visible)
+        || [...document.querySelectorAll('.multiSelect input[type=text], .dropdown-menu input[type=text]')].find(visible);
+    }
+    if (!input) throw new Error("GeM By Category search box did not open.");
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+    if (setter) setter.call(input, query); else input.value = query;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    const end = Date.now() + 12000;
+    while (Date.now() < end) {
+      await sleep(300);
+      const choice = [...document.querySelectorAll(
+        ".ui-select-choices-row, .ui-select-choices li, [role=option], .multiSelectItem, .dropdown-menu li, .dropdown-menu a"
+      )].filter(visible).find((node) => pattern.test(text(node)));
+      if (!choice) continue;
+      const clickable = choice.querySelector("button, a, [role=option], label") || choice;
+      activateControl(clickable);
+      await sleep(3000);
+      const selectedText = text(container);
+      if (!pattern.test(selectedText)) {
+        const checked = choice.querySelector('input[type="checkbox"]')?.checked;
+        if (!checked) throw new Error(`GeM category "${query}" did not become selected.`);
+      }
+      location.hash = "page-1";
+      await sleep(2500);
+      return;
+    }
+    throw new Error(`GeM category matching "${query}" was not found.`);
+  }
+
+  async function scanOpportunityPages() {
+    if (syncing) throw new Error("A GeM bid sync is already running in this tab.");
+    syncing = true;
+    stopRequested = false;
+    let page = 1, saved = 0, checked = 0;
+    const rejected = { product: 0, pac: 0, location: 0, date: 0, expired: 0, over120: 0, detail: 0 };
+    try {
+      await progress("running", "Preparing the manually selected GeM category...", { page, saved });
+      await applyOpportunityFilters();
+      const visited = new Set();
+      while (true) {
+        const cards = await waitForBidCards(180000);
+        const signature = cards.map((item) => item.bidNo).join("|");
+        if (!signature || visited.has(signature)) throw new Error(`Selected category scan repeated/stalled at page ${page}.`);
+        visited.add(signature);
+        const eligible = [];
+        for (const { bidNo, card } of cards) {
+          stopIfRequested();
+          await waitWhilePaused({ page, saved });
+          checked += 1;
+          await progress("running", `Opening ${bidNo} to verify full bid details...`, { page, saved });
+          const row = await opportunityFromBidDetail(bidNo, card);
+          if (row?.eligible) eligible.push(row);
+          else if (row?.reject) rejected[row.reject] += 1;
+        }
+        if (eligible.length) {
+          const response = await runtimeMessage({ type: "SAVE_GEM_BID_OPPORTUNITIES", results: eligible });
+          saved += response.saved || 0;
+        }
+        await progress("running", `Selected category page ${page}: checked ${checked}, saved ${saved}; rejected detail ${rejected.detail}, product ${rejected.product}, PAC ${rejected.pac}, location ${rejected.location}, date ${rejected.date}, expired ${rejected.expired}, >120d ${rejected.over120}.`, { page, saved });
+        const advance = await advancePage(signature, page);
+        if (!advance.advanced) {
+          if (advance.reason !== "end") throw new Error(`Selected category pagination did not move after page ${page}.`);
+          break;
+        }
+        page += 1;
+      }
+      await progress("complete", `Selected category scan complete. Checked ${checked} bids; saved ${saved} eligible bids. Select the next category manually and scan again.`, { page, saved });
+    } catch (error) {
+      if (error.code === "GEM_SYNC_STOPPED") {
+        await progress(
+          "stopped",
+          `Opportunity scan stopped after ${checked} bids; saved ${saved}. Rejected: detail ${rejected.detail}, product ${rejected.product}, PAC ${rejected.pac}, location ${rejected.location}, date ${rejected.date}, expired ${rejected.expired}, >120d ${rejected.over120}.`,
+          { page, saved },
+        );
+        return;
+      }
+      await progress("failed", error.message || "GeM opportunity scan failed.", { page, saved });
       throw error;
     } finally {
       syncing = false;
@@ -918,7 +1258,7 @@
       sendResponse({ ok: true, resuming: syncing });
       return true;
     }
-    if (message.type !== "START_GEM_BID_SYNC") return undefined;
+    if (!["START_GEM_BID_SYNC", "START_GEM_OPPORTUNITY_SYNC"].includes(message.type)) return undefined;
     if (syncing) {
       sendResponse({ ok: false, error: "A GeM bid sync is already running in this tab." });
       return true;
@@ -926,7 +1266,9 @@
     const cardCount = currentCards().length;
     sendResponse({ ok: true, started: true, cardCount });
     window.setTimeout(() => {
-      scanAllPages().catch(async (error) => {
+      const runner = message.type === "START_GEM_OPPORTUNITY_SYNC" ? scanOpportunityPages : scanAllPages;
+      runner().catch(async (error) => {
+        if (error.code === "GEM_SYNC_STOPPED") return;
         console.error("Acxxel GeM bid sync failed:", error);
         try {
           await progress("failed", error.message || "GeM bid scanner stopped before processing the page.", { page: 0, saved: 0 });

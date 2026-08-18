@@ -6046,7 +6046,7 @@ def _get_year(request):
 
 def _get_admin_status_label(bid):
     """ Admin side ke liye status label:
-    - review_status = "reviewed" → admin ke liye "pending" (abhi review karna hai)
+    - review_status = "reviewed" means "pending" for the admin (awaiting review).
     - review_status = "approved" → admin ne approve kiya
     - review_status = "re-analyze" → admin ne wapas bheja
     """
@@ -6057,7 +6057,7 @@ def _get_admin_status_label(bid):
     return "pending"
 
 def _get_admin_base_queryset(year=None):
-    """ Admin ko sirf wo bids dikhni chahiye jo analyser ne final submit kar di hain.
+    """Show the admin only bids that the analyser has finally submitted.
     status="complete" AND review_status IN ("reviewed", "approved", "re-analyze")
     """
     qs = DesktopBid.objects.filter(

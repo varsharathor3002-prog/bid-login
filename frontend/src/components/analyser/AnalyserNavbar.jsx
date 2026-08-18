@@ -280,15 +280,20 @@ const AnalyserNavbar = () => {
   const location = useLocation();
 
   useEffect(() => {
-    const stored = localStorage.getItem("analyser_username");
+    if ((sessionStorage.getItem("role") || localStorage.getItem("role")) !== "analyser") {
+      navigate("/", { replace: true });
+      return;
+    }
+    const stored = sessionStorage.getItem("analyser_username") || localStorage.getItem("analyser_username");
     if (stored && stored !== "undefined" && stored !== "null" && stored.trim() !== "") {
       setUsername(stored.trim());
     }
-  }, []);
+  }, [navigate]);
 
   useEffect(() => connectGemExtension(), []);
 
   const handleLogout = () => {
+    sessionStorage.clear();
     localStorage.removeItem("analyser_username");
     localStorage.removeItem("role");
     localStorage.removeItem("username");
@@ -366,6 +371,18 @@ const AnalyserNavbar = () => {
           >
             <span className="text-lg text-red-400"><FaBan /></span>
             <span className="text-sm font-medium">Disqualified Bid</span>
+          </div>
+
+          <div
+            onClick={() => navigate("/analyser-dashboard/bid-not-participated")}
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-all duration-200 mb-2 focus:outline-none focus:ring-0 no-highlight select-none ${
+              location.pathname === "/analyser-dashboard/bid-not-participated"
+                ? "bg-gray-700/50 text-white"
+                : "hover:bg-gray-700/50 text-gray-200"
+            }`}
+          >
+            <span className="text-lg text-amber-400"><FaClipboardList /></span>
+            <span className="text-sm font-medium">Bid To Be Participated</span>
           </div>
 
           <div

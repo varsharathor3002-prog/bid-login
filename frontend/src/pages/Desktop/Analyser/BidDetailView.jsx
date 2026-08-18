@@ -704,7 +704,7 @@ export default function BidDetailView({ product = "desktop" }) {
   };
 
   const openGemAccountModal = async () => {
-    const token = localStorage.getItem("token") || "";
+    const token = sessionStorage.getItem("token") || localStorage.getItem("token") || "";
     if (!token) {
       setMsg("Your session needs to be refreshed. Please log out and log in again as Analyser.");
       return;
@@ -845,7 +845,7 @@ export default function BidDetailView({ product = "desktop" }) {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${localStorage.getItem("token") || ""}`,
+            "Authorization": `Bearer ${sessionStorage.getItem("token") || localStorage.getItem("token") || ""}`,
           },
           body: JSON.stringify({}),
         }
@@ -890,7 +890,7 @@ export default function BidDetailView({ product = "desktop" }) {
           }
         );
         await bridgeRequest("acxxel-gem-connect", "acxxel-gem-connect-result", {
-          token: data.extension_token || localStorage.getItem("token") || "",
+          token: data.extension_token || sessionStorage.getItem("token") || localStorage.getItem("token") || "",
           apiBase: import.meta.env.VITE_API_URL,
         });
         const startResult = await bridgeRequest(
@@ -916,7 +916,7 @@ export default function BidDetailView({ product = "desktop" }) {
     const loadJob = async () => {
       const response = await fetch(
         `${import.meta.env.VITE_API_URL}/gem/jobs/?bid_id=${form.id}`,
-        { headers: { "Authorization": `Bearer ${localStorage.getItem("token") || ""}` } }
+        { headers: { "Authorization": `Bearer ${sessionStorage.getItem("token") || localStorage.getItem("token") || ""}` } }
       );
       const data = await response.json().catch(() => []);
       if (!stopped && response.ok && Array.isArray(data) && data[0]) {

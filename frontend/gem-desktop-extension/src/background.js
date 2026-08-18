@@ -344,7 +344,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         body: JSON.stringify(message.report),
       }) };
     }
-    if (message.type === "START_GEM_BID_SYNC") {
+    if (["START_GEM_BID_SYNC", "START_GEM_OPPORTUNITY_SYNC"].includes(message.type)) {
       const saved = await settings();
       if (!saved.token) throw new Error("Open Acxxel and log in before syncing GeM bids.");
       const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -370,7 +370,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       let response;
       try {
         const sendStart = () => Promise.race([
-          chrome.tabs.sendMessage(tab.id, { type: "START_GEM_BID_SYNC" }),
+          chrome.tabs.sendMessage(tab.id, { type: message.type }),
           new Promise((_, reject) => setTimeout(
             () => reject(new Error("GeM bid scanner did not respond within 5 seconds.")),
             5000,
@@ -384,7 +384,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           }
           await chrome.scripting.executeScript({
             target: { tabId: tab.id },
-            files: ["src/gem-bid-sync.js"],
+            files: ["src/blocked-pins.js", "src/gem-bid-sync.js"],
           });
           await new Promise((resolve) => setTimeout(resolve, 500));
           response = await sendStart();
@@ -477,12 +477,39 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       });
       return { ok: true, saved: result.saved || 0 };
     }
+    if (message.type === "SAVE_GEM_BID_OPPORTUNITIES") {
+      const result = await api("/gem/bid-opportunities/", {
+        method: "POST",
+        body: JSON.stringify({ results: message.results || [] }),
+      });
+      return { ok: true, saved: result.saved || 0 };
+    }
+    if (message.type === "READ_GEM_BID_DETAIL") {
+      const detailUrl = String(message.url || "");
+      if (!/^https:\/\/[^/]*gem\.gov\.in\//i.test(detailUrl)) {
+        throw new Error("Invalid GeM bid detail URL.");
+      }
+      const response = await fetch(detailUrl, { credentials: "include" });
+      if (!response.ok) throw new Error(`GeM bid document returned HTTP ${response.status}.`);
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (bytes.length > 15 * 1024 * 1024) throw new Error("GeM bid document is larger than 15 MB.");
+      let binary = "";
+      for (let offset = 0; offset < bytes.length; offset += 32768) {
+        binary += String.fromCharCode(...bytes.subarray(offset, offset + 32768));
+      }
+      const parsed = await api("/gem/bid-opportunities/parse-pdf/", {
+        method: "POST",
+        body: JSON.stringify({ pdf_base64: btoa(binary) }),
+      });
+      return { ok: true, detailText: parsed.detail_text || "" };
+    }
     if (message.type === "GEM_BID_SYNC_PROGRESS") {
       const gemBidSync = {
         status: message.status || "running",
         message: message.message || "",
         page: message.page || 0,
         saved: message.saved || 0,
+        checked: message.checked || 0,
         updatedAt: Date.now(),
         extensionVersion: chrome.runtime.getManifest().version,
       };

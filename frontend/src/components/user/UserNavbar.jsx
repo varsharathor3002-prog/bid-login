@@ -9,6 +9,7 @@ import {
   FaSignOutAlt,
   FaChevronDown,
   FaUserCircle,
+  FaClipboardList,
 } from "react-icons/fa";
 
 const UserNavbar = () => {
@@ -18,7 +19,11 @@ const UserNavbar = () => {
   const location = useLocation();
 
   useEffect(() => {
-    const stored = localStorage.getItem("user_username");
+    if ((sessionStorage.getItem("role") || localStorage.getItem("role")) !== "user") {
+      navigate("/", { replace: true });
+      return;
+    }
+    const stored = sessionStorage.getItem("user_username") || localStorage.getItem("user_username");
     
     if (stored && stored !== "undefined" && stored !== "null" && stored.trim() !== "") {
       setUsername(stored.trim());
@@ -28,6 +33,7 @@ const UserNavbar = () => {
   }, [navigate]);
 
   const handleLogout = () => {
+    sessionStorage.clear();
         localStorage.removeItem("user_username");
     localStorage.removeItem("user_role");
     localStorage.removeItem("user_email");
@@ -109,6 +115,11 @@ const UserNavbar = () => {
         </div>
 
         <div className="flex-1 p-3 overflow-y-auto hide-scrollbar">
+          <div onClick={() => navigate("/user/bid-to-be-participated")}
+            className={`mb-3 flex cursor-pointer items-center gap-3 rounded-xl px-4 py-3 transition-all ${isActive("/user/bid-to-be-participated") ? "bg-gray-700/50 text-white" : "text-gray-300 hover:bg-gray-700/50 hover:text-white"}`}>
+            <FaClipboardList className="text-amber-400" />
+            <span className="text-sm font-medium">Bid To Be Participated</span>
+          </div>
           <button
             onClick={() => setOpen(!open)}
             className="flex items-center justify-between w-full px-4 py-3 bg-gray-800/50 hover:bg-gray-700/70 rounded-xl transition-all duration-200 border border-gray-700/30 hover:border-gray-600/50 focus:outline-none focus:ring-0 no-highlight select-none"

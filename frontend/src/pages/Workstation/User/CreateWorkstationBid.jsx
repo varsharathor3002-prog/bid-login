@@ -33,8 +33,8 @@ export default function CreateWorkstationBid() {
   const [step, setStep] = useState(1);
   const [allData, setAllData] = useState({ bid_id: null });
 
-  // sessionStarted = false means fresh open, Step1Form blank dikhega
-  // sessionStarted = true means user Step 1 submit kar chuka, back pe data dikhega
+  // sessionStarted = false means a fresh open; Step1Form will be blank.
+  // sessionStarted = true means Step 1 was submitted; data remains when navigating back.
   const [sessionStarted, setSessionStarted] = useState(false);
 
   // On mount: clear any leftover data from previous sessions
@@ -194,7 +194,7 @@ function Step1Form({ onNext, savedData }) {
     setError("");
 
     try {
-      // Agar Step 1 already submit ho chuka (back aaya hai), API dobara mat chalao
+      // Do not call the API again when returning after Step 1 was submitted.
       if (savedData?.bid_id) {
         onNext({ ...form, bid_id: savedData.bid_id });
         return;

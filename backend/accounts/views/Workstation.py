@@ -136,7 +136,7 @@ def create_workstation_bid(request):
         print(f"🔍 Received user_id: {user_id}, username: {username}")
 
         if not user_id and not username:
-            return JsonResponse({"error": "User ID ya Username required hai"}, status=400)
+            return JsonResponse({"error": "User ID or username is required."}, status=400)
 
         user = None
 
