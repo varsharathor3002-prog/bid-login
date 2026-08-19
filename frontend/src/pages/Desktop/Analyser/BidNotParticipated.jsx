@@ -194,7 +194,7 @@ export default function BidNotParticipated() {
       {error && <div className="m-5 border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
       {success && <div className="m-5 border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-700">{success}</div>}
       {assignedTo && <div className="border-b border-blue-100 bg-blue-50/40 px-5 py-4">
-        {selectedEmployeeBidIds.length > 0 && <button type="button" onClick={hideSelectedAssignedBids} className="mb-3 inline-flex items-center gap-2 rounded bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700"><FaTrash /> Delete Selected ({selectedEmployeeBidIds.length})</button>}
+        {selectedEmployeeBidIds.length > 0 && <button type="button" onClick={hideSelectedAssignedBids} className="mb-3 inline-flex min-h-9 items-center gap-2 rounded bg-red-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"><FaTrash aria-hidden="true" /> Delete Selected ({selectedEmployeeBidIds.length})</button>}
         <div className="overflow-x-auto rounded border border-blue-100 bg-white">
           <table className="min-w-[850px] w-full text-left text-sm">
             <thead className="bg-blue-100 text-xs uppercase text-blue-900"><tr>

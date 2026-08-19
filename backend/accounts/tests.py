@@ -7,8 +7,7 @@ from django.core import signing
 from django.test import TestCase
 from django.utils import timezone
 
-from .gem_crypto import decrypt_text, encrypt_text
-from .models import DesktopBid, GemAccount, GemBidResult, GemUploadJob, User
+from .models import DesktopBid, GemBidResult, GemUploadJob, User
 from .views.Desktop import _extract_motherboard_features_from_text
 
 
@@ -111,12 +110,6 @@ class GemAutomationApiTests(TestCase):
             username="bid-owner", email="owner@example.com",
             password="password", role="user",
         )
-        self.account = GemAccount.objects.create(
-            label="Delhi account",
-            username_encrypted=encrypt_text("seller-user"),
-            password_encrypted=encrypt_text("seller-password"),
-            created_by=self.admin,
-        )
         self.bid = DesktopBid.objects.create(
             user=self.bid_user, bid_no="GEM-001", dept_name="IT", qty=2,
             address="Delhi", pincode="110001", status="complete",
@@ -124,12 +117,6 @@ class GemAutomationApiTests(TestCase):
             os="Windows", monitor="Yes", cabinet="SFF", warranty="3",
             motherboard="Q670", date="2026-07-25", model_number="ACL-1060DS-25DE-TEST",
         )
-
-    def test_credentials_are_encrypted_and_round_trip(self):
-        self.assertNotIn("seller-user", self.account.username_encrypted)
-        self.assertNotIn("seller-password", self.account.password_encrypted)
-        self.assertEqual(decrypt_text(self.account.username_encrypted), "seller-user")
-        self.assertEqual(decrypt_text(self.account.password_encrypted), "seller-password")
 
     def test_motherboard_option_counts_are_extracted(self):
         cases = [
@@ -159,18 +146,6 @@ class GemAutomationApiTests(TestCase):
             for key, value in expected.items():
                 self.assertEqual(features[key], value, motherboard)
 
-    def test_analyser_account_picker_does_not_expose_credentials(self):
-        token = signing.dumps(
-            {"user_id": self.analyser.id, "role": self.analyser.role},
-            salt="gem-api-auth",
-        )
-        response = self.client.get(
-            "/api/gem/accounts/", HTTP_AUTHORIZATION=f"Bearer {token}"
-        )
-        self.assertEqual(response.status_code, 200)
-        payload = response.json()[0]
-        self.assertEqual(payload, {"id": self.account.id, "label": self.account.label})
-
     def test_analyser_can_queue_approved_desktop_job(self):
         token = signing.dumps(
             {"user_id": self.analyser.id, "role": self.analyser.role},
@@ -178,7 +153,7 @@ class GemAutomationApiTests(TestCase):
         )
         response = self.client.post(
             f"/api/desktop-bids/{self.bid.id}/gem-jobs/",
-            data=json.dumps({"account_id": self.account.id}),
+            data=json.dumps({}),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {token}",
         )
@@ -198,23 +173,22 @@ class GemAutomationApiTests(TestCase):
             "Entry Level",
         )
 
-    def test_admin_cannot_trigger_analyser_upload_action(self):
+    def test_admin_can_queue_approved_desktop_job(self):
         token = signing.dumps(
             {"user_id": self.admin.id, "role": self.admin.role},
             salt="gem-api-auth",
         )
         response = self.client.post(
             f"/api/desktop-bids/{self.bid.id}/gem-jobs/",
-            data=json.dumps({"account_id": self.account.id}),
+            data=json.dumps({}),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {token}",
         )
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, 201)
 
     def test_extension_can_claim_and_report_assigned_job_without_credentials(self):
         job = GemUploadJob.objects.create(
             bid=self.bid,
-            account=self.account,
             triggered_by=self.analyser,
             payload_snapshot={
                 "model_number": self.bid.model_number,
@@ -263,7 +237,7 @@ class GemAutomationApiTests(TestCase):
             password="password", role="analyser",
         )
         job = GemUploadJob.objects.create(
-            bid=self.bid, account=self.account, triggered_by=other,
+            bid=self.bid, triggered_by=other,
         )
         token = signing.dumps(
             {"user_id": self.analyser.id, "role": self.analyser.role},
@@ -309,7 +283,7 @@ class GemAutomationApiTests(TestCase):
         self.assertEqual(result.technical_status, "Disqualified")
         self.assertEqual(result.disqualified_at, disqualified_at)
 
-    def test_disqualified_audit_record_cannot_be_deleted(self):
+    def test_disqualified_record_can_be_permanently_deleted(self):
         result = GemBidResult.objects.create(
             bid_no="GEM/2026/B/PERMANENT",
             is_disqualified=True,
@@ -323,5 +297,28 @@ class GemAutomationApiTests(TestCase):
             f"/api/gem/bid-results/{result.id}/",
             HTTP_AUTHORIZATION=f"Bearer {token}",
         )
-        self.assertEqual(response.status_code, 409)
-        self.assertTrue(GemBidResult.objects.filter(pk=result.pk).exists())
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(GemBidResult.objects.filter(pk=result.pk).exists())
+
+    def test_multiple_disqualified_records_can_be_deleted_together(self):
+        rows = [
+            GemBidResult.objects.create(
+                bid_no=f"GEM/2026/B/BULK-{index}",
+                is_disqualified=True,
+                technical_status="Disqualified",
+            )
+            for index in range(2)
+        ]
+        token = signing.dumps(
+            {"user_id": self.analyser.id, "role": self.analyser.role},
+            salt="gem-api-auth",
+        )
+        response = self.client.delete(
+            "/api/gem/bid-results/",
+            data=json.dumps({"ids": [row.id for row in rows]}),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["deleted"], 2)
+        self.assertFalse(GemBidResult.objects.filter(id__in=[row.id for row in rows]).exists())

@@ -78,6 +78,7 @@ urlpatterns = [
 
 
     path("desktop-bids/list/", views.list_desktop_bids, name="list_desktop_bids"),
+    path("desktop-bids/bulk-delete/", views.bulk_delete_desktop_bids, name="bulk_delete_desktop_bids"),
 
 
     path("desktop-bids/<int:bid_id>/update/", views.update_desktop_bid, name="update_desktop_bid"),
@@ -85,8 +86,6 @@ urlpatterns = [
     path("desktop-bids/<int:bid_id>/", views.get_desktop_bid, name="get_desktop_bid"),
     path("desktop-bids/<int:bid_id>/review/", views.review_desktop_bid, name="review_desktop_bid"),
     path("desktop-bids/<int:bid_id>/admin-review/", views.admin_review_desktop_bid, name="admin_review_desktop_bid"),
-    path("gem/accounts/", views.gem_accounts, name="gem_accounts"),
-    path("gem/accounts/<int:account_id>/", views.gem_account_detail, name="gem_account_detail"),
     path("gem/jobs/", views.gem_jobs, name="gem_jobs"),
     path("gem/jobs/<int:job_id>/", views.gem_job_detail, name="gem_job_detail"),
     path("gem/extension/jobs/", views.extension_jobs, name="extension_jobs"),

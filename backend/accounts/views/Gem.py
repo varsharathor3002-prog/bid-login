@@ -14,10 +14,8 @@ from PyPDF2 import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 from reportlab.pdfbase.pdfmetrics import stringWidth
 
-from ..gem_crypto import decrypt_text, encrypt_text
 from ..models import (
     DesktopBid,
-    GemAccount,
     GemAuditLog,
     GemUploadJob,
     PrinterBid,
@@ -82,26 +80,6 @@ def _extension_token(user):
     )
 
 
-def _account_admin_data(account):
-    return {
-        "id": account.id,
-        "label": account.label,
-        "username": decrypt_text(account.username_encrypted),
-        "is_active": account.is_active,
-        "category_mapping": account.category_mapping or [],
-        "has_password": bool(account.password_encrypted),
-        "created_at": account.created_at.isoformat(),
-        "updated_at": account.updated_at.isoformat(),
-    }
-
-
-def _account_picker_data(account):
-    return {
-        "id": account.id,
-        "label": account.label,
-    }
-
-
 def _job_data(job, include_audit=False):
     related_bid = job.related_bid
     data = {
@@ -110,8 +88,8 @@ def _job_data(job, include_audit=False):
         "bid_id": related_bid.id if related_bid else None,
         "bid_no": related_bid.bid_no if related_bid else "",
         "model_number": (related_bid.model_number or "") if related_bid else "",
-        "account_id": job.account_id,
-        "account_label": job.account.label if job.account else "Manual GeM login",
+        "account_id": None,
+        "account_label": "Manual GeM login",
         "triggered_by": job.triggered_by.username if job.triggered_by else "",
         "status": job.status,
         "progress": job.progress,
@@ -141,72 +119,6 @@ def _job_data(job, include_audit=False):
     return data
 
 
-@csrf_exempt
-@require_http_methods(["GET", "POST"])
-def gem_accounts(request):
-    if request.method == "GET":
-        user, error = _require_role(request, {"admin", "analyser"})
-        if error:
-            return error
-        accounts = GemAccount.objects.filter(is_active=True)
-        if user.role == "admin" and request.GET.get("manage") == "1":
-            return JsonResponse([_account_admin_data(item) for item in accounts], safe=False)
-        return JsonResponse([_account_picker_data(item) for item in accounts], safe=False)
-
-    data = _json_body(request)
-    user, error = _require_role(request, {"admin"}, data)
-    if error:
-        return error
-    label = str(data.get("label") or "").strip()
-    username = str(data.get("username") or "").strip()
-    password = str(data.get("password") or "")
-    if not label or not username or not password:
-        return JsonResponse({"error": "Label, username and password are required."}, status=400)
-    if GemAccount.objects.filter(label__iexact=label).exists():
-        return JsonResponse({"error": "An account with this label already exists."}, status=409)
-    account = GemAccount.objects.create(
-        label=label,
-        username_encrypted=encrypt_text(username),
-        password_encrypted=encrypt_text(password),
-        category_mapping=data.get("category_mapping") or [],
-        created_by=user,
-    )
-    return JsonResponse(_account_admin_data(account), status=201)
-
-
-@csrf_exempt
-@require_http_methods(["PATCH", "DELETE"])
-def gem_account_detail(request, account_id):
-    data = _json_body(request)
-    user, error = _require_role(request, {"admin"}, data)
-    if error:
-        return error
-    account = GemAccount.objects.filter(id=account_id).first()
-    if not account:
-        return JsonResponse({"error": "GeM account not found."}, status=404)
-    if request.method == "DELETE":
-        if account.upload_jobs.filter(status__in=["queued", "ready_for_fill", "filled", "retrying"]).exists():
-            return JsonResponse({"error": "This account has active upload jobs."}, status=409)
-        account.is_active = False
-        account.save(update_fields=["is_active", "updated_at"])
-        return JsonResponse({"success": True})
-
-    if "label" in data:
-        account.label = str(data.get("label") or "").strip()
-    if "username" in data and str(data.get("username") or "").strip():
-        account.username_encrypted = encrypt_text(str(data["username"]).strip())
-    if data.get("password"):
-        account.password_encrypted = encrypt_text(str(data["password"]))
-        if hasattr(account, "session"):
-            account.session.delete()
-    if "category_mapping" in data:
-        account.category_mapping = data.get("category_mapping") or []
-    if "is_active" in data:
-        account.is_active = bool(data.get("is_active"))
-    account.save()
-    return JsonResponse(_account_admin_data(account))
-
-
 def _create_gem_upload_job(request, bid_id, product_type):
     bid_model, fk_attr, payload_builder = _PRODUCT_JOB_CONFIG[product_type]
     data = _json_body(request)
@@ -234,7 +146,6 @@ def _create_gem_upload_job(request, bid_id, product_type):
     with transaction.atomic():
         job = GemUploadJob.objects.create(
             product_type=product_type,
-            account=None,
             triggered_by=user,
             payload_snapshot=payload,
             next_attempt_at=timezone.now(),
@@ -281,7 +192,7 @@ def gem_jobs(request):
     if error:
         return error
     jobs = GemUploadJob.objects.select_related(
-        "bid", "printer_bid", "workstation_bid", "account", "triggered_by"
+        "bid", "printer_bid", "workstation_bid", "triggered_by"
     )
     product_type = request.GET.get("product_type")
     if product_type:
@@ -296,37 +207,16 @@ def gem_jobs(request):
 
 
 @csrf_exempt
-@require_http_methods(["GET", "PATCH"])
+@require_http_methods(["GET"])
 def gem_job_detail(request, job_id):
-    data = _json_body(request) if request.method == "PATCH" else None
-    user, error = _require_role(request, {"admin", "analyser"}, data)
+    user, error = _require_role(request, {"admin", "analyser"})
     if error:
         return error
     job = GemUploadJob.objects.select_related(
-        "bid", "account", "triggered_by"
+        "bid", "triggered_by"
     ).filter(id=job_id).first()
     if not job:
         return JsonResponse({"error": "Upload job not found."}, status=404)
-    if request.method == "PATCH":
-        if user.role != "admin":
-            return JsonResponse({"error": "Only Admin can change a job account."}, status=403)
-        account = GemAccount.objects.filter(
-            id=data.get("account_id"), is_active=True
-        ).first()
-        if not account:
-            return JsonResponse({"error": "Please select a valid GeM account."}, status=400)
-        job.account = account
-        job.status = "queued"
-        job.progress = "Account changed by Admin; waiting for extension"
-        job.error = ""
-        job.rejection_reason = ""
-        job.save(update_fields=[
-            "account", "status", "progress", "error", "rejection_reason", "updated_at",
-        ])
-        GemAuditLog.objects.create(
-            job=job, actor=user, event="account_changed",
-            message=f"Admin changed account to {account.label}.",
-        )
     return JsonResponse(_job_data(job, include_audit=True))
 
 
@@ -344,7 +234,7 @@ def extension_jobs(request):
     if error:
         return error
     jobs = GemUploadJob.objects.select_related(
-        "bid", "printer_bid", "workstation_bid", "account", "triggered_by"
+        "bid", "printer_bid", "workstation_bid", "triggered_by"
     ).filter(status__in=["queued", "ready_for_fill", "filled"])
     jobs = list(jobs[:25])
     for job in jobs:
@@ -364,7 +254,7 @@ def extension_claim_job(request, job_id):
     if error:
         return error
     job = GemUploadJob.objects.select_related(
-        "bid", "printer_bid", "workstation_bid", "account", "triggered_by"
+        "bid", "printer_bid", "workstation_bid", "triggered_by"
     ).filter(id=job_id).first()
     if not job:
         return JsonResponse({"error": "Upload job not found."}, status=404)
@@ -555,7 +445,7 @@ def extension_report_job(request, job_id):
     if error:
         return error
     job = GemUploadJob.objects.select_related(
-        "bid", "printer_bid", "workstation_bid", "account", "triggered_by"
+        "bid", "printer_bid", "workstation_bid", "triggered_by"
     ).filter(id=job_id).first()
     if not job:
         return JsonResponse({"error": "Upload job not found."}, status=404)

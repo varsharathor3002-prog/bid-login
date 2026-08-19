@@ -1,7 +1,7 @@
 from django.contrib import admin
 from .models import (
     User, CatalogueProduct, DesktopBid, WorkstationBid,
-    GemAccount, GemSession, GemUploadJob, GemAuditLog,
+    GemUploadJob, GemAuditLog,
 )
 
 
@@ -42,24 +42,10 @@ class WorkstationBidAdmin(admin.ModelAdmin):
     ordering = ("-created_at",)
 
 
-@admin.register(GemAccount)
-class GemAccountAdmin(admin.ModelAdmin):
-    list_display = ("id", "label", "is_active", "created_by", "updated_at")
-    search_fields = ("label",)
-    list_filter = ("is_active",)
-    exclude = ("username_encrypted", "password_encrypted")
-
-
-@admin.register(GemSession)
-class GemSessionAdmin(admin.ModelAdmin):
-    list_display = ("id", "account", "expires_at", "verified_at", "updated_at")
-    exclude = ("storage_state_encrypted",)
-
-
 @admin.register(GemUploadJob)
 class GemUploadJobAdmin(admin.ModelAdmin):
-    list_display = ("id", "bid", "account", "status", "attempts", "triggered_by", "updated_at")
-    list_filter = ("status", "account")
+    list_display = ("id", "bid", "status", "attempts", "triggered_by", "updated_at")
+    list_filter = ("status",)
     search_fields = ("bid__bid_no", "bid__model_number", "gem_product_id")
 
 

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { FaTrash } from "react-icons/fa";
 
 const API_MAP = {
    desktop: `${import.meta.env.VITE_API_URL}/desktop-bids/list/`,
@@ -20,11 +21,15 @@ export default function AnalyserDashboard({ product = "desktop" }) {
     const [reAnalyzeCount, setReAnalyzeCount] = useState(0);
     const [gemTransferCount, setGemTransferCount] = useState(0);
     const [currentPage, setCurrentPage] = useState(1);
+    const [selectedBidIds, setSelectedBidIds] = useState(new Set());
+    const [deletingId, setDeletingId] = useState(null);
+    const [bulkDeleting, setBulkDeleting] = useState(false);
 
     const navigate = useNavigate();
 
     useEffect(() => {
         setCurrentPage(1);
+        setSelectedBidIds(new Set());
         fetchBids();
     }, [product, activeTab]);
 
@@ -131,11 +136,59 @@ export default function AnalyserDashboard({ product = "desktop" }) {
 
     const isApprovedView = activeTab === "approved" || activeTab === "gem-transfer";
 
+    const deleteBid = async (bid) => {
+        if (!window.confirm(`Permanently delete bid ${bid.bid_no}?`)) return;
+        setDeletingId(bid.id);
+        try {
+            const response = await fetch(`${import.meta.env.VITE_API_URL}/desktop-bids/${bid.id}/delete/`, { method: "DELETE" });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data.error || "Bid could not be deleted.");
+            setBids((current) => current.filter((item) => item.id !== bid.id));
+            setSelectedBidIds((current) => {
+                const next = new Set(current);
+                next.delete(bid.id);
+                return next;
+            });
+            fetchReAnalyzeCount();
+            fetchGemTransferCount();
+        } catch (deleteError) {
+            setError(deleteError.message || "Bid could not be deleted.");
+        } finally {
+            setDeletingId(null);
+        }
+    };
+
+    const bulkDeleteBids = async () => {
+        const ids = [...selectedBidIds];
+        if (!ids.length) return;
+        if (!window.confirm(`Permanently delete ${ids.length} selected desktop bid(s)?`)) return;
+        setBulkDeleting(true);
+        setError("");
+        try {
+            const response = await fetch(`${import.meta.env.VITE_API_URL}/desktop-bids/bulk-delete/`, {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ ids }),
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data.error || "Selected bids could not be deleted.");
+            const deletedIds = new Set(data.deleted_ids || ids);
+            setBids((current) => current.filter((bid) => !deletedIds.has(bid.id)));
+            setSelectedBidIds(new Set());
+            fetchReAnalyzeCount();
+            fetchGemTransferCount();
+        } catch (deleteError) {
+            setError(deleteError.message || "Selected bids could not be deleted.");
+        } finally {
+            setBulkDeleting(false);
+        }
+    };
+
     return (
 
         <div className="w-full bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
 
-            <div className="flex gap-4 px-6 bg-gray-50 border-b border-gray-200 mt-4">
+            <div className="flex items-center gap-4 px-6 bg-gray-50 border-b border-gray-200 mt-4">
 
                 <button
                     onClick={() => setActiveTab("pending")}
@@ -195,6 +248,14 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                     )}
                 </button>
 
+                {activeTab === "approved" && selectedBidIds.size > 0 && (
+                    <button type="button" onClick={bulkDeleteBids} disabled={bulkDeleting}
+                        className="ml-auto inline-flex min-h-9 items-center gap-2 rounded bg-red-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50">
+                        <FaTrash aria-hidden="true" />
+                        {bulkDeleting ? "Deleting..." : `Delete Selected (${selectedBidIds.size})`}
+                    </button>
+                )}
+
             </div>
 
             {error && (
@@ -218,6 +279,7 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                         <col className={isApprovedView ? "w-[10%]" : "w-[13%]"} />
                         {isApprovedView && <col className="w-[14%]" />}
                         {isApprovedView && <col className="w-[15%]" />}
+                        {activeTab === "approved" && <col className="w-[8%]" />}
                     </colgroup>
 
                     <thead>
@@ -270,6 +332,22 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                                 </th>
                             )}
 
+                            {activeTab === "approved" && (
+                                <th className="px-2 py-4 text-[11px] font-bold uppercase tracking-wider text-white border-b border-l border-slate-700">
+                                    <div className="flex items-center justify-center gap-2">
+                                        <input type="checkbox" aria-label="Select all bids on this page"
+                                            checked={paginatedBids.length > 0 && paginatedBids.every((bid) => selectedBidIds.has(bid.id))}
+                                            onChange={(event) => setSelectedBidIds((current) => {
+                                                const next = new Set(current);
+                                                paginatedBids.forEach((bid) => event.target.checked ? next.add(bid.id) : next.delete(bid.id));
+                                                return next;
+                                            })}
+                                            className="h-4 w-4 accent-red-600" />
+                                        <span>Delete</span>
+                                    </div>
+                                </th>
+                            )}
+
                         </tr>
 
                     </thead>
@@ -279,7 +357,7 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                         {loading && (
                             <tr>
                                 <td
-                                    colSpan={isApprovedView ? 9 : 8}
+                                    colSpan={activeTab === "approved" ? 10 : isApprovedView ? 9 : 8}
                                     className="text-center py-16 text-gray-400 font-medium"
                                 >
                                     Loading bids...
@@ -290,7 +368,7 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                         {!loading && bids.length === 0 && (
                             <tr>
                                 <td
-                                    colSpan={isApprovedView ? 9 : 8}
+                                    colSpan={activeTab === "approved" ? 10 : isApprovedView ? 9 : 8}
                                     className="text-center py-16 text-gray-400 font-medium"
                                 >
                                     {activeTab === "gem-transfer"
@@ -389,6 +467,8 @@ export default function AnalyserDashboard({ product = "desktop" }) {
 
                                     <td className="px-5 py-4 border-b border-gray-100">
 
+                                        <div className="flex items-center gap-2">
+
                                         {bid.status === "approved" ? (
                                                 <button
                                                     onClick={() =>
@@ -427,6 +507,8 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                                             </button>
 
                                         )}
+
+                                        </div>
 
                                     </td>
 
@@ -471,6 +553,32 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                                         ) : (
                                             <span className="text-gray-400">—</span>
                                         )}
+                                    </td>
+                                    )}
+
+                                    {activeTab === "approved" && (
+                                    <td className="border-b border-l border-gray-100 px-2 py-4">
+                                        <div className="flex items-center justify-center gap-3">
+                                            <input type="checkbox" aria-label={`Select bid ${bid.bid_no}`}
+                                                checked={selectedBidIds.has(bid.id)}
+                                                onChange={(event) => setSelectedBidIds((current) => {
+                                                    const next = new Set(current);
+                                                    if (event.target.checked) next.add(bid.id); else next.delete(bid.id);
+                                                    return next;
+                                                })}
+                                                className="h-4 w-4 shrink-0 accent-red-600" />
+                                            <button type="button" onClick={() => deleteBid(bid)} disabled={deletingId === bid.id}
+                                                title="Permanently delete bid"
+                                                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-50">
+                                                {deletingId === bid.id ? (
+                                                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-red-200 border-t-red-600" />
+                                                ) : (
+                                                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                    </svg>
+                                                )}
+                                            </button>
+                                        </div>
                                     </td>
                                     )}
 

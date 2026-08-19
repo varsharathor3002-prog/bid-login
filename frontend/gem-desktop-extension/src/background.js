@@ -278,9 +278,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
     if (message.type === "GET_STATE") {
       const saved = await settings();
-      const jobs = saved.token ? await api("/gem/extension/jobs/") : [];
       const sync = await chrome.storage.local.get("gemBidSync");
-      return { ok: true, connected: Boolean(saved.token), jobs, gemBidSync: sync.gemBidSync || null };
+      return { ok: true, connected: Boolean(saved.token), gemBidSync: sync.gemBidSync || null };
     }
     if (message.type === "GET_GEM_BID_SYNC_STATE") {
       const sync = await chrome.storage.local.get("gemBidSync");

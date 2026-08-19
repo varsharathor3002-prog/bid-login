@@ -17,6 +17,9 @@ class User(models.Model):
     def __str__(self):
         return self.username
 
+    class Meta:
+        db_table = "app_users"
+
 
 
 
@@ -34,6 +37,7 @@ class CatalogueProduct(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        db_table = "product_catalogue"
         ordering = ["-created_at"]
 
     def __str__(self):
@@ -153,62 +157,8 @@ class DesktopBid(models.Model):
     def __str__(self):
         return f"{self.bid_no} - {self.dept_name}"
 
-
-class GemAccount(models.Model):
-    label = models.CharField(max_length=150, unique=True)
-    username_encrypted = models.TextField()
-    password_encrypted = models.TextField()
-    category_mapping = models.JSONField(default=list, blank=True)
-    is_active = models.BooleanField(default=True)
-    created_by = models.ForeignKey(
-        User, on_delete=models.SET_NULL, null=True, blank=True,
-        related_name="created_gem_accounts",
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
     class Meta:
-        ordering = ["label"]
-
-    def set_username(self, value):
-        from .gem_crypto import encrypt_text
-        self.username_encrypted = encrypt_text(value)
-
-    def get_username(self):
-        from .gem_crypto import decrypt_text
-        return decrypt_text(self.username_encrypted)
-
-    def set_password(self, value):
-        from .gem_crypto import encrypt_text
-        self.password_encrypted = encrypt_text(value)
-
-    def get_password(self):
-        from .gem_crypto import decrypt_text
-        return decrypt_text(self.password_encrypted)
-
-    def __str__(self):
-        return self.label
-
-
-class GemSession(models.Model):
-    account = models.OneToOneField(
-        GemAccount, on_delete=models.CASCADE, related_name="session"
-    )
-    storage_state_encrypted = models.TextField(blank=True, default="")
-    expires_at = models.DateTimeField(blank=True, null=True)
-    verified_at = models.DateTimeField(blank=True, null=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    def set_storage_state(self, value):
-        from .gem_crypto import encrypt_json
-        self.storage_state_encrypted = encrypt_json(value)
-
-    def get_storage_state(self):
-        from .gem_crypto import decrypt_json
-        return decrypt_json(self.storage_state_encrypted)
-
-    def __str__(self):
-        return f"GeM session: {self.account.label}"
+        db_table = "desktop_bid_details"
 
 
 class GemUploadJob(models.Model):
@@ -243,10 +193,6 @@ class GemUploadJob(models.Model):
         "WorkstationBid", on_delete=models.CASCADE, related_name="gem_upload_jobs",
         null=True, blank=True,
     )
-    account = models.ForeignKey(
-        GemAccount, on_delete=models.SET_NULL, null=True, blank=True,
-        related_name="upload_jobs"
-    )
     triggered_by = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, blank=True,
         related_name="triggered_gem_upload_jobs",
@@ -271,15 +217,12 @@ class GemUploadJob(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        db_table = "gem_product_upload_jobs"
         ordering = ["-created_at"]
         indexes = [
             models.Index(
                 fields=["status", "next_attempt_at"],
                 name="accounts_ge_status_804a8e_idx",
-            ),
-            models.Index(
-                fields=["account", "status"],
-                name="accounts_ge_account_276803_idx",
             ),
         ]
 
@@ -304,6 +247,7 @@ class GemAuditLog(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        db_table = "gem_upload_activity_logs"
         ordering = ["-created_at"]
 
     def __str__(self):
@@ -342,6 +286,7 @@ class GemBidResult(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        db_table = "gem_disqualified_bid_results"
         ordering = ["-disqualified_at", "-last_synced_at"]
         indexes = [
             models.Index(fields=["product_type", "is_disqualified"], name="accounts_ge_product_disq_idx"),
@@ -364,6 +309,7 @@ class GemBidEvaluationHistory(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        db_table = "gem_disqualification_details"
         ordering = ["-date_time", "-id"]
 
     def __str__(self):
@@ -384,6 +330,7 @@ class GemBidOpportunity(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        db_table = "gem_bids_to_be_participated"
         ordering = ["-bid_date", "-created_at"]
 
     def __str__(self):
@@ -417,6 +364,7 @@ class GemBidAssignment(models.Model):
     hidden_for_admin = models.BooleanField(default=False)
 
     class Meta:
+        db_table = "gem_bid_user_assignments"
         ordering = ["-assigned_at", "-id"]
         indexes = [
             models.Index(fields=["assigned_to", "status"], name="gem_assign_user_status_idx"),
@@ -445,6 +393,7 @@ class GemBidAssignmentHistory(models.Model):
     changed_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        db_table = "gem_bid_assignment_history"
         ordering = ["-changed_at", "-id"]
 
 
@@ -611,6 +560,9 @@ class WorkstationBid(models.Model):
     def __str__(self):
         return f"{self.bid_no} - {self.dept_name} (Workstation)"
 
+    class Meta:
+        db_table = "workstation_bid_details"
+
 
 class PrinterBid(models.Model):
 
@@ -742,6 +694,9 @@ class PrinterBid(models.Model):
     def __str__(self):
         return f"{self.bid_no} - {self.dept_name} (Printer)"
 
+    class Meta:
+        db_table = "printer_bid_details"
+
 
 class ComponentRate(models.Model):
     """Admin-managed price override for a product configuration option."""
@@ -753,6 +708,7 @@ class ComponentRate(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        db_table = "current_component_rates"
         constraints = [
             models.UniqueConstraint(
                 fields=["product", "category", "component_name"],
@@ -775,6 +731,7 @@ class ComponentRateHistory(models.Model):
     changed_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        db_table = "component_rate_history"
         ordering = ["changed_at", "id"]
 
     def __str__(self):

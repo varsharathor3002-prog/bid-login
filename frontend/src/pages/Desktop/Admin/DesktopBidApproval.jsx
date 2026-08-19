@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { FaTrash } from "react-icons/fa";
 import {
   PROCESSORS, RAMS, HDDS, SSDS, OS_OPTIONS, DVDS, WIFIS, MONITORS,
   CABINETS, KEYBOARDS, WARRANTIES, MOTHERBOARDS, getPriceFromLocalData,
@@ -423,6 +424,8 @@ export default function DesktopBidApproval() {
   const [msg, setMsg] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [deletingId, setDeletingId] = useState(null);
+  const [selectedBidIds, setSelectedBidIds] = useState(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const ROWS_PER_PAGE = 10;
   const MAX_PAGE_BTNS = 5;
 
@@ -430,6 +433,7 @@ export default function DesktopBidApproval() {
     fetchBids();
     fetchReAnalyzeCount();
     setCurrentPage(1);
+    setSelectedBidIds(new Set());
   }, [activeTab]);
 
   useEffect(() => {
@@ -506,12 +510,41 @@ export default function DesktopBidApproval() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Delete failed");
       setBids((prev) => prev.filter((b) => b.id !== bid.id));
+      setSelectedBidIds((current) => {
+        const next = new Set(current);
+        next.delete(bid.id);
+        return next;
+      });
       fetchReAnalyzeCount();
     } catch (error) {
       console.error("handleDelete error: ", error);
       alert(error.message || "Unable to delete bid.");
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    const ids = [...selectedBidIds];
+    if (!ids.length) return;
+    if (!window.confirm(`Permanently delete ${ids.length} selected desktop bid(s)?`)) return;
+    setBulkDeleting(true);
+    try {
+      const res = await fetch(`${API_BASE}/desktop-bids/bulk-delete/`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Selected bids could not be deleted.");
+      const deletedIds = new Set(data.deleted_ids || ids);
+      setBids((current) => current.filter((bid) => !deletedIds.has(bid.id)));
+      setSelectedBidIds(new Set());
+      fetchReAnalyzeCount();
+    } catch (error) {
+      alert(error.message || "Selected bids could not be deleted.");
+    } finally {
+      setBulkDeleting(false);
     }
   };
 
@@ -675,7 +708,7 @@ export default function DesktopBidApproval() {
         Back
       </button>
 
-      <div className="flex gap-3 px-6 pt-3 bg-gray-50 border-b border-gray-200 overflow-visible">
+      <div className="flex items-center gap-3 px-6 pt-3 bg-gray-50 border-b border-gray-200 overflow-visible">
         {TABS.map((tab) => (
           <button key={tab.id} onClick={() => setActiveTab(tab.id)}
             className={`min-h-[52px] px-4 py-3 text-sm font-semibold transition-all flex items-center gap-2 rounded-t-lg border-b-2 ${
@@ -692,6 +725,13 @@ export default function DesktopBidApproval() {
             )}
           </button>
         ))}
+        {activeTab === "approved" && selectedBidIds.size > 0 && (
+          <button type="button" onClick={handleBulkDelete} disabled={bulkDeleting}
+            className="mb-3 ml-auto inline-flex min-h-9 items-center gap-2 rounded bg-red-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50">
+            <FaTrash aria-hidden="true" />
+            {bulkDeleting ? "Deleting..." : `Delete Selected (${selectedBidIds.size})`}
+          </button>
+        )}
       </div>
 
       {loading ? (
@@ -706,7 +746,19 @@ export default function DesktopBidApproval() {
                 <tr className="bg-slate-800">
                   {TABLE_HEADS.map((head) => (
                     <th key={head.label} className={`${head.width} px-4 py-4 text-[11px] font-bold text-white uppercase tracking-wide text-center`}>
-                      {head.label}
+                      {head.label === "Action" && activeTab === "approved" ? (
+                        <div className="flex items-center justify-center gap-3">
+                          <input type="checkbox" aria-label="Select all bids on this page"
+                            checked={pageBids.length > 0 && pageBids.every((bid) => selectedBidIds.has(bid.id))}
+                            onChange={(event) => setSelectedBidIds((current) => {
+                              const next = new Set(current);
+                              pageBids.forEach((bid) => event.target.checked ? next.add(bid.id) : next.delete(bid.id));
+                              return next;
+                            })}
+                            className="h-4 w-4 accent-red-600" />
+                          <span>Action</span>
+                        </div>
+                      ) : head.label}
                     </th>
                   ))}
                 </tr>
@@ -727,6 +779,16 @@ export default function DesktopBidApproval() {
                     </td>
                     <td className="px-4 py-4 text-center">
                       <div className="flex justify-center items-center gap-2">
+                        {activeTab === "approved" && (
+                          <input type="checkbox" aria-label={`Select bid ${bid.bid_no}`}
+                            checked={selectedBidIds.has(bid.id)}
+                            onChange={(event) => setSelectedBidIds((current) => {
+                              const next = new Set(current);
+                              if (event.target.checked) next.add(bid.id); else next.delete(bid.id);
+                              return next;
+                            })}
+                            className="h-4 w-4 accent-red-600" />
+                        )}
                         <button type="button" onClick={() => openModal(bid)}
                           className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-xs font-semibold transition-colors">
                           View

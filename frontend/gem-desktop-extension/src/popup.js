@@ -1,6 +1,5 @@
 const state = document.getElementById("state");
 const message = document.getElementById("message");
-const jobs = document.getElementById("jobs");
 const syncButton = document.getElementById("sync-bids");
 const pauseSyncButton = document.getElementById("pause-sync");
 const stopSyncButton = document.getElementById("stop-sync");
@@ -145,23 +144,5 @@ chrome.runtime.sendMessage({ type: "GET_STATE" }, (result) => {
   if (!result.connected) {
     message.textContent = "Open the Acxxel app and connect the extension.";
     return;
-  }
-  if (!result.jobs.length) jobs.textContent = "No assigned Desktop jobs.";
-  for (const job of result.jobs) {
-    const row = document.createElement("div");
-    row.className = "job";
-    row.innerHTML = `<b>${job.model_number || job.bid_no}</b><span>${job.account_label} · ${job.status.replaceAll("_", " ")}</span>`;
-    const button = document.createElement("button");
-    button.textContent = job.status === "filled" ? "Filled" : "Fill current GeM tab";
-    button.disabled = job.status === "filled";
-    button.onclick = () => {
-      button.disabled = true;
-      chrome.runtime.sendMessage({ type: "START_JOB", jobId: job.id }, (response) => {
-        message.textContent = response?.ok ? "Form filled. Review it in GeM." : response?.error;
-        button.disabled = false;
-      });
-    };
-    row.appendChild(button);
-    jobs.appendChild(row);
   }
 });

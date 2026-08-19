@@ -4693,6 +4693,31 @@ def delete_desktop_bid(request, bid_id):
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=400)
 
+
+@csrf_exempt
+@require_http_methods(["DELETE"])
+def bulk_delete_desktop_bids(request):
+    try:
+        data = json.loads(request.body or "{}")
+        raw_ids = data.get("ids", [])
+        if not isinstance(raw_ids, list):
+            return JsonResponse({"error": "ids must be a list."}, status=400)
+        bid_ids = []
+        for value in raw_ids:
+            try:
+                bid_ids.append(int(value))
+            except (TypeError, ValueError):
+                continue
+        bid_ids = list(dict.fromkeys(bid_ids))
+        if not bid_ids:
+            return JsonResponse({"error": "Select at least one bid."}, status=400)
+        rows = DesktopBid.objects.filter(id__in=bid_ids)
+        deleted_ids = list(rows.values_list("id", flat=True))
+        rows.delete()
+        return JsonResponse({"deleted": len(deleted_ids), "deleted_ids": deleted_ids})
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=400)
+
 @csrf_exempt
 @require_http_methods(["PATCH"])
 def admin_review_desktop_bid(request, bid_id):

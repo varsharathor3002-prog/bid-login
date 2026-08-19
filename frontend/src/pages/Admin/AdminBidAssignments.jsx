@@ -55,7 +55,7 @@ export default function AdminBidAssignments() {
   return <div className="bg-white">
     <div className="border-b border-gray-200 p-5"><h2 className="text-lg font-bold text-slate-900">Bid Assignment Tracking</h2><p className="mt-1 text-xs text-slate-500">See which bid is assigned to which user and its current progress.</p>
       <div className="mt-4 flex gap-3"><select value={employee} onChange={(e) => setEmployee(e.target.value)} className="rounded border border-slate-300 px-3 py-2 text-sm"><option value="">All Users</option>{employees.map((u) => <option key={u.id} value={u.id}>{u.username} - {u.email} ({u.active_count} active)</option>)}</select>
-      {selectedIds.length > 0 && <button type="button" onClick={removeSelected} disabled={deletingId === "bulk"} className="inline-flex items-center gap-2 rounded bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-40"><FaTrash /> Delete Selected ({selectedIds.length})</button>}
+      {selectedIds.length > 0 && <button type="button" onClick={removeSelected} disabled={deletingId === "bulk"} className="inline-flex min-h-9 items-center gap-2 rounded bg-red-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"><FaTrash aria-hidden="true" /> Delete Selected ({selectedIds.length})</button>}
       </div>
     </div>
     {error && <div className="m-5 bg-red-50 p-3 text-red-700">{error}</div>}

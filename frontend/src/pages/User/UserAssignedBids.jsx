@@ -73,7 +73,7 @@ export default function UserAssignedBids() {
     <div className="border-b border-gray-200 p-5">
       <h2 className="text-lg font-bold text-slate-900">Bid To Be Participated</h2>
       <p className="mt-1 text-xs text-slate-500">Bids assigned to you by the analyser.</p>
-      {selectedIds.length > 0 && <button type="button" onClick={removeSelected} disabled={busyId === "bulk"} className="mt-4 inline-flex items-center gap-2 rounded bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-40"><FaTrash /> Delete Selected ({selectedIds.length})</button>}
+      {selectedIds.length > 0 && <button type="button" onClick={removeSelected} disabled={busyId === "bulk"} className="mt-4 inline-flex min-h-9 items-center gap-2 rounded bg-red-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"><FaTrash aria-hidden="true" /> Delete Selected ({selectedIds.length})</button>}
     </div>
     {error && <div className="m-5 border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
     <div className="overflow-x-auto"><table className="min-w-[1050px] w-full text-left text-sm">

@@ -1,8 +1,10 @@
 import json
 import re
-from datetime import timedelta
+import calendar
+from datetime import datetime, time, timedelta
 
 from django.db import transaction
+from django.db.models import Q
 from django.http import JsonResponse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -14,6 +16,24 @@ from .Gem import _require_role
 
 
 FINAL_STATUS_WORDS = ("disqualified", "qualified", "awarded", "cancelled", "closed")
+
+
+def _retention_cutoff():
+    """Start of the same calendar day one month ago in the local timezone."""
+    today = timezone.localdate()
+    year = today.year - (1 if today.month == 1 else 0)
+    month = 12 if today.month == 1 else today.month - 1
+    day = min(today.day, calendar.monthrange(year, month)[1])
+    cutoff_date = today.replace(year=year, month=month, day=day)
+    return timezone.make_aware(datetime.combine(cutoff_date, time.min))
+
+
+def _prune_old_disqualified_results():
+    cutoff = _retention_cutoff()
+    deleted, _ = GemBidResult.objects.filter(is_disqualified=True).filter(
+        Q(disqualified_at__lt=cutoff) | Q(disqualified_at__isnull=True)
+    ).delete()
+    return cutoff, deleted
 
 
 def _parse_datetime(value):
@@ -61,16 +81,20 @@ def _result_data(result):
 
 
 @csrf_exempt
-@require_http_methods(["GET", "POST"])
+@require_http_methods(["GET", "POST", "DELETE"])
 def gem_bid_results(request):
     user, error = _require_role(request, {"admin", "analyser"})
     if error:
         return error
 
     if request.method == "GET":
+        cutoff, _ = _prune_old_disqualified_results()
         results = GemBidResult.objects.prefetch_related("evaluation_history")
         if request.GET.get("status") == "disqualified":
-            results = results.filter(is_disqualified=True)
+            results = results.filter(
+                is_disqualified=True,
+                disqualified_at__gte=cutoff,
+            )
         year = request.GET.get("year", "").strip()
         if year.isdigit():
             results = results.filter(disqualified_at__year=int(year))
@@ -80,14 +104,17 @@ def gem_bid_results(request):
         product_type = request.GET.get("product", "").strip().lower()
         if product_type in dict(GemBidResult.PRODUCT_CHOICES):
             results = results.filter(product_type=product_type)
-        summary_scope = GemBidResult.objects.all()
+        summary_scope = GemBidResult.objects.filter(
+            is_disqualified=True,
+            disqualified_at__gte=cutoff,
+        )
         if product_type in dict(GemBidResult.PRODUCT_CHOICES):
             summary_scope = summary_scope.filter(product_type=product_type)
         total = summary_scope.count()
-        disqualified = summary_scope.filter(is_disqualified=True).count()
+        disqualified = summary_scope.count()
         urgent_cutoff = timezone.now() - timedelta(days=3)
         urgent = summary_scope.filter(
-            is_disqualified=True, disqualified_at__gte=urgent_cutoff
+            disqualified_at__gte=urgent_cutoff
         ).count()
         return JsonResponse({
             "summary": {
@@ -98,6 +125,28 @@ def gem_bid_results(request):
             },
             "results": [_result_data(item) for item in results[:2000]],
         })
+
+    if request.method == "DELETE":
+        try:
+            body = json.loads(request.body or "{}")
+        except (TypeError, ValueError):
+            return JsonResponse({"error": "Invalid JSON payload."}, status=400)
+        raw_ids = body.get("ids", [])
+        if not isinstance(raw_ids, list):
+            return JsonResponse({"error": "ids must be a list."}, status=400)
+        result_ids = []
+        for value in raw_ids:
+            try:
+                result_ids.append(int(value))
+            except (TypeError, ValueError):
+                continue
+        result_ids = list(dict.fromkeys(result_ids))
+        if not result_ids:
+            return JsonResponse({"error": "Select at least one bid."}, status=400)
+        rows = GemBidResult.objects.filter(id__in=result_ids, is_disqualified=True)
+        deleted_ids = list(rows.values_list("id", flat=True))
+        rows.delete()
+        return JsonResponse({"deleted": len(deleted_ids), "deleted_ids": deleted_ids})
 
     try:
         body = json.loads(request.body or "{}")
@@ -178,6 +227,7 @@ def gem_bid_results(request):
                     comment=str(event.get("comment", "")),
                 )
             saved.append(result.bid_no)
+        _prune_old_disqualified_results()
     return JsonResponse({"saved": len(saved), "bid_numbers": saved})
 
 
@@ -187,9 +237,12 @@ def delete_gem_bid_result(request, result_id):
     user, error = _require_role(request, {"admin", "analyser"})
     if error:
         return error
-    return JsonResponse({
-        "error": "Disqualified bid records are permanent audit data and cannot be deleted."
-    }, status=409)
+    result = GemBidResult.objects.filter(id=result_id, is_disqualified=True).first()
+    if not result:
+        return JsonResponse({"error": "Disqualified bid record not found."}, status=404)
+    bid_no = result.bid_no
+    result.delete()
+    return JsonResponse({"deleted": True, "bid_no": bid_no})
 
 
 @csrf_exempt
