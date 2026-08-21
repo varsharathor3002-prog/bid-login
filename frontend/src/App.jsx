@@ -23,12 +23,21 @@ import ApprovedBiddingDetails from "./pages/Desktop/Analyser/ApprovedBiddingDeta
 import AnalyserProductsPage from "./pages/Desktop/Analyser/AnalyserProductsPage";
 import AdminNavbar from "./components/Admin/AdminNavbar";
 
-import CreatePrinterBid from "./pages/Printer/User/CreatePrinterBid"; 
+import CreatePrinterBid from "./pages/Printer/User/CreatePrinterBid";
 import AnalyserPrinterDashboard from "./pages/Printer/Analyser/AnalyserPrinterDashboard";
 import PrinterBidDetailView from "./pages/Printer/Analyser/PrinterBidDetailView";
 import AnalyserPrinterDocument from "./pages/Printer/Analyser/AnalyserPrinterDocument";
 import PrinterApprovedBidDownloads from "./pages/Printer/Analyser/PrinterApprovedBidDownloads";
 import PrinterBidApproval from "./pages/Printer/Admin/PrinterBidApproval";
+
+import CreateAioBid from "./pages/AIO/User/CreateAioBid";
+import AioAnalyserDashboard from "./pages/AIO/Anlyser/AioAnalyserDashboard";
+import AioBidDetailView from "./pages/AIO/Anlyser/AioBidDetailView";
+import AioApprovedBiddingDetails from "./pages/AIO/Anlyser/AioApprovedBiddingDetails";
+import AioAnalyserDocument from "./pages/AIO/Anlyser/AioAnalyserDocument";
+import AioApprovedBidDownloads from "./pages/AIO/Anlyser/AioApprovedBidDownloads";
+import AioBidApproval from "./pages/AIO/Admin/AioBidApproval";
+
 import DocumentPrintView from "./pages/Documents/DocumentPrintView";
 import DisqualifiedBidsPanel from "./pages/Desktop/Analyser/DisqualifiedBidsPanel";
 import BidNotParticipated from "./pages/Desktop/Analyser/BidNotParticipated";
@@ -63,7 +72,6 @@ function App() {
         {}
         <Route path="/user" element={<UserNavbar />}>
           <Route index element={<div>Select a product</div>} />
-          <Route path="aio" element={<div>AIO Page Content</div>} />
           {}
           <Route path="toner" element={<div>Toner Content</div>} />
           <Route path="bid-to-be-participated" element={<UserAssignedBids />} />
@@ -71,6 +79,7 @@ function App() {
 
         {}
         <Route path="/user/desktop" element={<CreateDesktopBid />} />
+        <Route path="/user/aio" element={<CreateAioBid />} />
         <Route path="/user/workstation" element={<CreateWorkstationBid />} />
         <Route path="/user/printer" element={<CreatePrinterBid productMode="printer" />} /> {}
         <Route path="/user/multifunction-printer" element={<CreatePrinterBid productMode="multifunction" />} />
@@ -80,7 +89,9 @@ function App() {
           <Route path="desktop" element={<AnalyserDashboard product="desktop" />} />
           <Route path="desktop/bid/:id/downloads" element={<ApprovedBidDownloads />} />
           <Route path="desktop/bid/:id/approved-details" element={<ApprovedBiddingDetails />} />
-          <Route path="aio" element={<ComingSoon product="AIO" />} />
+          <Route path="aio" element={<AioAnalyserDashboard />} />
+          <Route path="aio/bid/:id/downloads" element={<AioApprovedBidDownloads />} />
+          <Route path="aio/bid/:id/approved-details" element={<AioApprovedBiddingDetails />} />
           <Route path="workstation" element={<WorkstationAnalyserDashboard />} />
           <Route path="workstation/bid/:id/downloads" element={<WorkstationApprovedBidDownloads />} />
           <Route path="printer" element={<AnalyserPrinterDashboard />} />
@@ -93,6 +104,8 @@ function App() {
         <Route path="/analyser-dashboard/product" element={<AnalyserProductsPage />} />
         <Route path="/analyser-dashboard/workstation/product" element={<AnalyserProductsPage />} />
         <Route path="/analyser-dashboard/desktop/bid/:id" element={<BidDetailView product="desktop" />} />
+        <Route path="/analyser-dashboard/aio/bid/:id" element={<AioBidDetailView />} />
+        <Route path="/analyser-dashboard/aio/document" element={<AioAnalyserDocument />} />
         <Route path="/analyser-dashboard/workstation/bid/:id" element={<WorkstationBidDetailView />} />
         <Route path="/analyser-dashboard/workstation/bid/:id/documents" element={<WorkstationAnalyserDocument />} />
         <Route path="/analyser-dashboard/printer/bid/:id" element={<PrinterBidDetailView />} />
@@ -119,9 +132,11 @@ function App() {
         </Route>
 
         <Route path="/admin-dashboard/desktop-bid-approval" element={<DesktopBidApproval />} />
+        <Route path="/admin-dashboard/aio-bid-approval" element={<AioBidApproval />} />
         <Route path="/admin-dashboard/workstation-bid-approval" element={<WorkstationBidApproval />} />
         <Route path="/admin-dashboard/printer-bid-approval" element={<PrinterBidApproval />} />
         <Route path="/desktop-bid-approval" element={<Navigate to="/admin-dashboard/desktop-bid-approval" replace />} />
+        <Route path="/aio-bid-approval" element={<Navigate to="/admin-dashboard/aio-bid-approval" replace />} />
         <Route path="/workstation-bid-approval" element={<Navigate to="/admin-dashboard/workstation-bid-approval" replace />} />
         <Route path="/printer-bid-approval" element={<Navigate to="/admin-dashboard/printer-bid-approval" replace />} />
         <Route path="/print-doc/:product/:bidId/:docType" element={<DocumentPrintView />} />

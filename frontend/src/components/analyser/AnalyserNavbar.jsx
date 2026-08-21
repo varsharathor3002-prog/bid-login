@@ -26,13 +26,13 @@ import {
 const API_BASE = "http://127.0.0.1:8000/api";
 const BID_PRODUCTS = [
   { key: "desktop", label: "Desktop", icon: <FaDesktop />, color: "#6366f1", ready: true },
-  { key: "aio", label: "AIO", icon: <FaLaptop />, color: "#8b5cf6", ready: false },
+  { key: "aio", label: "AIO", icon: <FaLaptop />, color: "#8b5cf6", ready: true },
   { key: "workstation", label: "Workstation", icon: <FaServer />, color: "#0ea5e9", ready: true },
   { key: "printer", label: "Printer", icon: <FaPrint />, color: "#10b981", ready: true },
   { key: "toner", label: "Toner", icon: <FaBox />, color: "#f59e0b", ready: false },
 ];
 const PRODUCTS = BID_PRODUCTS;
-const NAV_ENABLED_KEYS = new Set(["desktop", "workstation", "printer"]);
+const NAV_ENABLED_KEYS = new Set(["desktop", "aio", "workstation", "printer"]);
 const DASHBOARD_API_MAP = {
   desktop: {
     years: `${API_BASE}/desktop-bids/dashboard-years/`,

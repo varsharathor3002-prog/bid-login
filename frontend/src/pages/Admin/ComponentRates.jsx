@@ -3,6 +3,7 @@ import { FaArrowLeft, FaChevronDown, FaDownload, FaSave, FaSearch, FaUndo } from
 import { useNavigate, useParams } from "react-router-dom";
 import * as Desktop from "../Desktop/User/DesktopConfig";
 import * as Workstation from "../Workstation/User/WorkstationConfig";
+import * as Aio from "../Aio/User/AioConfig";
 import { API_BASE, fetchComponentRates, rateKey, ratesToMap } from "../../utils/componentRates";
 
 const desktopCategories = [
@@ -30,7 +31,22 @@ const workstationCategories = [
   ["warranty", "Warranty", Workstation.WARRANTIES],
 ];
 
-const catalogs = { desktop: desktopCategories, aio: desktopCategories, workstation: workstationCategories };
+// AIO has its own catalogue (see AioConfig.jsx) — it used to just reuse
+// desktopCategories here, which showed Desktop's option lists (and Desktop
+// fields AIO doesn't even have, like Cabinet/Monitor) on AIO's own Component
+// Rate screen instead of the real AIO-specific ones (screen_size in place of
+// monitor, no cabinet, the exact RAM/SSD/OS/WiFi/Keyboard/Motherboard values
+// from aio_bid_create.php).
+const aioCategories = [
+  ["processor", "Processor", Desktop.PROCESSORS], ["ram", "RAM", Aio.AIO_RAMS],
+  ["hdd", "HDD", Aio.AIO_HDDS], ["ssd", "SSD", Aio.AIO_SSDS],
+  ["motherboard", "Motherboard", Aio.AIO_MOTHERBOARDS], ["os", "Operating System", Aio.AIO_OS_OPTIONS],
+  ["dvd", "DVD", Desktop.DVDS], ["wifi", "Wi-Fi / Bluetooth", Aio.AIO_WIFIS],
+  ["screen_size", "Screen Size", Aio.AIO_SCREEN_SIZES],
+  ["keyboard", "Keyboard & Mouse", Aio.AIO_KEYBOARDS], ["warranty", "Warranty", Desktop.WARRANTIES],
+];
+
+const catalogs = { desktop: desktopCategories, aio: aioCategories, workstation: workstationCategories };
 const productNames = { desktop: "Desktop", workstation: "Workstation", aio: "AIO" };
 const money = (value) => value === "" || value == null ? "—" : `₹${Number(value).toLocaleString("en-IN")}`;
 
@@ -101,16 +117,16 @@ export default function ComponentRates() {
         method: "DELETE", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ product: safeProduct, category: row.category, name: row.name }),
       });
-      if (!response.ok) throw new Error("The original price could not be restored.");
+      if (!response.ok) throw new Error("Original price restore nahi hua.");
       setOverrides((old) => { const next = { ...old }; delete next[key]; return next; });
       setInputs((old) => ({ ...old, [key]: "" }));
       setRateDates((old) => { const next = { ...old }; delete next[key]; return next; });
-      setMessage(`The original price for ${row.name} has been restored.`);
+      setMessage(`${row.name} ka original price restore ho gaya.`);
     } catch (error) { setMessage(error.message); } finally { setBusy(""); }
   };
 
   const downloadPdf = async () => {
-    setMessage("Generating PDF…");
+    setMessage("PDF ban raha hai…");
     try {
       const response = await fetch(`${API_BASE}/component-rates/pdf/`, {
         method: "POST", headers: { "Content-Type": "application/json" },
