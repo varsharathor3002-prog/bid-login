@@ -31,6 +31,7 @@ const TITLES = {
 const OMIT_FIELDS = new Set([
   "id", "user", "created_at", "updated_at", "status", "review_status", "admin_note",
   "selected_general_docs", "selected_general_doc_labels", "atc_special_document",
+  "gstin_number", "gst_number", "gstin",
 ]);
 
 function Recipient({ bid }) {
@@ -39,7 +40,6 @@ function Recipient({ bid }) {
       <strong>To,</strong>
       <strong>{bid.dept_name || ""}</strong>
       <strong>{bid.organization || ""}</strong>
-      {bid.gstin_number && <strong>GSTIN Number: {bid.gstin_number}</strong>}
       <strong>{bid.address || ""}{bid.pincode ? `, ${bid.pincode}` : ""}</strong>
     </div>
   );

@@ -12,6 +12,8 @@ from .views.Workstation import (
     save_workstation_model_number,
     match_workstation_catalogue_models,
     list_workstation_catalogue_products,
+    delete_workstation_bid,
+    bulk_delete_workstation_bids,
 )
 
 
@@ -128,6 +130,8 @@ urlpatterns = [
     path("workstation-bids/<int:bid_id>/match-catalogue/", match_workstation_catalogue_models, name="match_workstation_catalogue_models"),
     path("workstation-bids/<int:bid_id>/save-model-number/", save_workstation_model_number, name="save_workstation_model_number"),
     path("workstation-bids/list/", list_workstation_bids, name="list_workstation_bids"),
+    path("workstation-bids/bulk-delete/", bulk_delete_workstation_bids, name="bulk_delete_workstation_bids"),
+    path("workstation-bids/<int:bid_id>/delete/", delete_workstation_bid, name="delete_workstation_bid"),
     path("workstation-bids/<int:bid_id>/", get_workstation_bid, name="get_workstation_bid"),
     path("workstation-bids/<int:bid_id>/review/", review_workstation_bid, name="review_workstation_bid"),
     path("workstation-bids/<int:bid_id>/admin-review/", admin_review_workstation_bid, name="admin_review_workstation_bid"),

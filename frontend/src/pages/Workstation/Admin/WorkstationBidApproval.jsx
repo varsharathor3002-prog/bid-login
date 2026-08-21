@@ -35,7 +35,7 @@ const optionsFor = (name, form) => ({
 
 const FIELDS = [
   ["bid_no", "Bid Number"], ["model_number", "Model Number"], ["dept_name", "Department"],
-  ["organization", "Organization"], ["qty", "Quantity"], ["pincode", "Pincode"], ["date", "Bid End Date", "date"],
+  ["organization", "Organization"], ["qty", "Quantity"], ["pincode", "Buyer Pincode"], ["date", "Bid End Date", "date"],
   ["processor", "Processor"], ["processor_price", "Processor Price"], ["ram", "RAM"], ["ram_price", "RAM Price"],
   ["hdd", "HDD"], ["hdd_price", "HDD Price"], ["ssd1", "SSD 1"], ["ssd1_price", "SSD 1 Price"],
   ["ssd2", "SSD 2"], ["ssd2_price", "SSD 2 Price"], ["graphics", "Graphics Card"], ["graphics_price", "Graphics Price"],
@@ -608,7 +608,7 @@ export default function WorkstationBidApproval() {
                 ["dept_name", "Department"],
                 ["organization", "Organization"],
                 ["qty", "Quantity"],
-                ["pincode", "Pincode"],
+                ["pincode", "Buyer Pincode"],
               ].map(([name, label]) => (
                 <div key={name}>
                   <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>

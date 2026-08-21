@@ -1,10 +1,14 @@
 import React, { useState } from "react";
 
-const API_BASE = "http://127.0.0.1:8000/api";
+const API_BASE = import.meta.env.VITE_API_URL;
 
 // General documents list
 const GENERAL_DOCS = [
   { id: "manufacturer_auth", label: "MANUFACTURER AUTHORIZATION CERTIFICATE" },
+  { id: "experience_certificate", label: "EXPERIENCE CERTIFICATE" },
+  { id: "past_performance", label: "PAST PERFORMANCE" },
+  { id: "oem_annual_turnover", label: "OEM ANNUAL TURNOVER" },
+  { id: "atc_acceptance_letter", label: "ATC ACCEPTANCE LETTER" },
   { id: "bidder_financial", label: "BIDDER FINANCIAL UNDERSTANDINGS" },
   { id: "non_obsolete", label: "NON OBSOLETE" },
   { id: "non_malicious", label: "NON MALICIOUS CODE" },
@@ -195,15 +199,6 @@ export default function WorkstationDocument({ bidData, onSuccess, onBack, submit
           {/* ── Header ── */}
           <div style={{ padding: "20px 24px", borderBottom: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "space-between", background: "linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              {onBack && !analyserMode && (
-                <button
-                  type="button"
-                  onClick={onBack}
-                  style={{ border: "1px solid #cbd5e1", background: "#fff", color: "#334155", borderRadius: 8, padding: "7px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
-                >
-                  Back
-                </button>
-              )}
               <div style={{ width: 36, height: 36, borderRadius: 10, background: "linear-gradient(135deg, #1d4ed8, #3b82f6)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <svg width="18" height="18" fill="none" stroke="#fff" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />

@@ -792,6 +792,40 @@ def get_workstation_bid(request, bid_id):
 
 
 @csrf_exempt
+@require_http_methods(["DELETE"])
+def delete_workstation_bid(request, bid_id):
+    bid = WorkstationBid.objects.filter(id=bid_id).first()
+    if not bid:
+        return JsonResponse({"error": "Bid not found"}, status=404)
+    bid.delete()
+    return JsonResponse({"message": "Bid deleted successfully"})
+
+
+@csrf_exempt
+@require_http_methods(["DELETE"])
+def bulk_delete_workstation_bids(request):
+    try:
+        raw_ids = json.loads(request.body or "{}").get("ids", [])
+        if not isinstance(raw_ids, list):
+            return JsonResponse({"error": "ids must be a list."}, status=400)
+        bid_ids = []
+        for value in raw_ids:
+            try:
+                bid_ids.append(int(value))
+            except (TypeError, ValueError):
+                continue
+        bid_ids = list(dict.fromkeys(bid_ids))
+        if not bid_ids:
+            return JsonResponse({"error": "Select at least one bid."}, status=400)
+        rows = WorkstationBid.objects.filter(id__in=bid_ids)
+        deleted_ids = list(rows.values_list("id", flat=True))
+        rows.delete()
+        return JsonResponse({"deleted": len(deleted_ids), "deleted_ids": deleted_ids})
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+
+
+@csrf_exempt
 @require_http_methods(["PATCH"])
 def review_workstation_bid(request, bid_id):
     try:
@@ -900,7 +934,7 @@ def generate_workstation_certificates(request, bid_id):
         doc_type = body.get("doc_type", "")
 
         cert_page_ranges = {
-            "manufacturer_auth": (2, 3),
+            "manufacturer_auth": (2, 4),
             "make_in_india": (5, 5),
             "warranty": (6, 6),
             "bidder_financial": (7, 7),
@@ -915,17 +949,94 @@ def generate_workstation_certificates(request, bid_id):
             "preloaded_os": (22, 22),
         }
         static_documents = {
-            "experience_certificate": "experience_certificate.pdf",
-            "past_performance": "past_performance.pdf",
+            "experience_certificate": "workstation_experience_certificate.pdf",
+            "past_performance": "workstation_past_performance.pdf",
             "oem_annual_turnover": "oem_annual_turnover.pdf",
             "atc_acceptance_letter": "atc_acceptance_letter.pdf",
         }
+        def number_pages_from_one(document):
+            for local_number, page in enumerate(document, 1):
+                for block in page.get_text("dict").get("blocks", []):
+                    if block.get("type") != 0:
+                        continue
+                    for line in block.get("lines", []):
+                        text = " ".join(span.get("text", "") for span in line.get("spans", [])).strip()
+                        if re.search(r"\bGST(?:IN)?(?:\s+(?:Number|No\.?))?\b", text, re.IGNORECASE):
+                            page.add_redact_annot(fitz.Rect(line["bbox"]) + (-3, -2, 3, 2), fill=(1, 1, 1))
+                            continue
+                        if line["bbox"][1] > page.rect.height - 60 and re.fullmatch(r"(?:Page\s*)?\d+", text, re.IGNORECASE):
+                            page.add_redact_annot(fitz.Rect(line["bbox"]) + (-3, -2, 3, 2), fill=(1, 1, 1))
+                page.apply_redactions(images=0, graphics=0)
+                page.insert_textbox(
+                    fitz.Rect(page.rect.width - 60, page.rect.height - 28, page.rect.width - 18, page.rect.height - 8),
+                    str(local_number), fontsize=9, fontname="hebo", align=2,
+                )
         approved_bundles = {"approved_atc_documents", "approved_all_documents"}
         if doc_type in approved_bundles and bid.review_status != "approved":
             return JsonResponse({"error": "Only approved bids can be downloaded"}, status=403)
 
         out_dir = os.path.join(settings.MEDIA_ROOT, "generated_docs")
         os.makedirs(out_dir, exist_ok=True)
+
+        if doc_type == "atc_acceptance_letter":
+            source_path = os.path.join(
+                settings.MEDIA_ROOT,
+                "templates",
+                "static_documents",
+                "atc_acceptance_letter.pdf",
+            )
+            if not os.path.exists(source_path):
+                return JsonResponse({"error": "ATC Acceptance Letter template not found"}, status=404)
+
+            document = fitz.open(source_path)
+            page = document[0]
+            page.add_redact_annot(fitz.Rect(65, 96, 535, 235), fill=(1, 1, 1))
+            page.apply_redactions(images=0, graphics=0)
+
+            bid_date = str(bid.date or "")
+            if re.fullmatch(r"\d{4}-\d{2}-\d{2}", bid_date):
+                year, month, day = bid_date.split("-")
+                bid_date = f"{day}-{month}-{year}"
+
+            address = re.sub(
+                r"\bGST(?:IN)?(?:\s+(?:Number|No\.?))?\s*:?\s*[A-Z0-9-]+\s*[,;]?",
+                "",
+                str(bid.address or "").strip(),
+                flags=re.IGNORECASE,
+            ).strip(" ,;-")
+            pincode = str(bid.pincode or "").strip()
+            if pincode and pincode not in address:
+                address = f"{address} - {pincode}" if address else pincode
+
+            recipient_lines = [
+                "To,",
+                str(bid.dept_name or "").strip(),
+                str(bid.organization or "").strip(),
+            ]
+            recipient_lines.extend(
+                line.strip() for line in re.split(r"[\r\n]+", address) if line.strip()
+            )
+            recipient_lines.extend([
+                "",
+                f"Bid No:- {str(bid.bid_no or '').strip()}            Dated:- {bid_date}",
+            ])
+            page.insert_textbox(
+                fitz.Rect(72, 102, 525, 235),
+                "\n".join(line for line in recipient_lines if line is not None),
+                fontsize=10.5,
+                fontname="hebo",
+                lineheight=1.28,
+                align=0,
+            )
+
+            filename = f"workstation_{bid.id}_atc_acceptance_letter.pdf"
+            number_pages_from_one(document)
+            document.save(os.path.join(out_dir, filename))
+            document.close()
+            return JsonResponse({
+                "success": True,
+                "pdf_url": request.build_absolute_uri(f"/media/generated_docs/{filename}"),
+            })
 
         if doc_type in static_documents:
             source_path = os.path.join(settings.MEDIA_ROOT, "templates", "static_documents", static_documents[doc_type])
@@ -934,6 +1045,7 @@ def generate_workstation_certificates(request, bid_id):
             filename = f"workstation_{bid.id}_{doc_type}.pdf"
             output_path = os.path.join(out_dir, filename)
             static_doc = fitz.open(source_path)
+            number_pages_from_one(static_doc)
             static_doc.save(output_path)
             static_doc.close()
             return JsonResponse({"success": True, "pdf_url": request.build_absolute_uri(f"/media/generated_docs/{filename}")})
@@ -951,17 +1063,20 @@ def generate_workstation_certificates(request, bid_id):
                 child_path = os.path.join(out_dir, f"workstation_{bid.id}_{child_type}.pdf")
                 if os.path.exists(child_path):
                     child = fitz.open(child_path)
+                    number_pages_from_one(child)
                     merged.insert_pdf(child)
                     child.close()
             for template_name in static_documents.values():
                 child_path = os.path.join(settings.MEDIA_ROOT, "templates", "static_documents", template_name)
                 if os.path.exists(child_path):
                     child = fitz.open(child_path)
+                    number_pages_from_one(child)
                     merged.insert_pdf(child)
                     child.close()
             if bid.atc_special_document and os.path.exists(bid.atc_special_document.path):
                 try:
                     child = fitz.open(bid.atc_special_document.path)
+                    number_pages_from_one(child)
                     merged.insert_pdf(child)
                     child.close()
                 except Exception:
@@ -989,8 +1104,18 @@ def generate_workstation_certificates(request, bid_id):
         organization = (bid.organization or "").strip()
         bid_no = (bid.bid_no or "").strip()
         address = (bid.address or "").strip()
+        address = re.sub(
+            r"\bGST(?:IN)?(?:\s+(?:Number|No\.?))?\s*:?\s*[A-Z0-9-]+\s*[,;]?",
+            "",
+            address,
+            flags=re.IGNORECASE,
+        ).strip(" ,;-")
         pincode = (bid.pincode or "").strip()
         full_address = f"{address} - {pincode}" if pincode else address
+        service_recipient = [
+            re.sub(r"\s+", " ", value).strip().upper()
+            for value in (dept_name, organization, full_address)
+        ]
         model_number = (body.get("model_number") or body.get("model") or bid.model_number or "").strip()
         warranty_text = str(body.get("warranty") or bid.warranty or "").strip()
         local_content = str(body.get("local_content") or body.get("localContent") or "").strip()
@@ -1161,7 +1286,7 @@ def generate_workstation_certificates(request, bid_id):
                 return
             area = fitz.Rect(rect)
             page.add_redact_annot(area, fill=(1, 1, 1))
-            page.apply_redactions()
+            page.apply_redactions(images=0, graphics=0)
             page.insert_textbox(
                 fitz.Rect(area.x0 + 3, area.y0 + 2, area.x1 - 3, area.y1 - 2),
                 text,
@@ -1179,7 +1304,7 @@ def generate_workstation_certificates(request, bid_id):
                 return False
             for area in areas:
                 page.add_redact_annot(fitz.Rect(area.x0 - 2, area.y0 - 2, area.x1 + 90, area.y1 + 3), fill=(1, 1, 1))
-            page.apply_redactions()
+            page.apply_redactions(images=0, graphics=0)
             if str(new):
                 for area in areas:
                     page.insert_text((area.x0, area.y1 - 2), str(new), fontsize=fontsize, fontname="hebo", color=(0, 0, 0))
@@ -1221,7 +1346,7 @@ def generate_workstation_certificates(request, bid_id):
                         break
                 for rect in erase_rects:
                     page.add_redact_annot(rect, fill=(1, 1, 1))
-                page.apply_redactions()
+                page.apply_redactions(images=0, graphics=0)
                 break
 
         def remove_tender_no_date_lines(page):
@@ -1237,22 +1362,49 @@ def generate_workstation_certificates(request, bid_id):
                     ):
                         bbox = fitz.Rect(line["bbox"])
                         page.add_redact_annot(fitz.Rect(bbox.x0 - 3, bbox.y0 - 3, page.rect.width - 36, bbox.y1 + 4), fill=(1, 1, 1))
-            page.apply_redactions()
+            page.apply_redactions(images=0, graphics=0)
 
         def replace_service_support_contact(page):
-            replace_exact(page, "Saurabh Singh - 9918200467", "Madhuri Pal - 9519598884", fontsize=11)
+            replacement = "Madhuri Pal - 9519598884"
+            matches = page.search_for("Saurabh Singh - 9918200467")
+            if not matches:
+                return
+            for area in matches:
+                page.add_redact_annot(
+                    fitz.Rect(area.x0 - 1, area.y0 - 1, area.x1 + 1, area.y1 + 1),
+                    fill=False,
+                )
+            page.apply_redactions(images=0, graphics=0)
+            for area in matches:
+                page.insert_text(
+                    (area.x0, area.y1 - 1),
+                    replacement,
+                    fontsize=10.2,
+                    fontname="hebo",
+                    color=(0.12, 0.11, 0.28),
+                )
 
         def replace_service_support_heading(page):
             areas = page.search_for("ACXXEL SERVICE PARTNERS")
             if not areas:
                 return
+            drawings = page.get_drawings()
+            header_rects = []
             for area in areas:
+                candidates = []
+                center = (area.x0 + area.x1) / 2, (area.y0 + area.y1) / 2
+                for drawing in drawings:
+                    rect = fitz.Rect(drawing["rect"])
+                    if rect.contains(center) and rect.width > area.width + 50 and rect.height > area.height + 5:
+                        candidates.append(rect)
+                header_rects.append(min(candidates, key=lambda rect: rect.get_area()) if candidates else None)
+            for area, header_rect in zip(areas, header_rects):
                 page.add_redact_annot(
                     fitz.Rect(area.x0 - 2, area.y0 - 1, area.x1 + 2, area.y1 - 0.8),
                     fill=(1, 1, 0),
                 )
-            page.apply_redactions()
-            for area in areas:
+            page.apply_redactions(images=0, graphics=0)
+            for area, header_rect in zip(areas, header_rects):
                 page.insert_textbox(
                     fitz.Rect(92, area.y0 - 1, page.rect.width - 92, area.y1 + 6),
                     "List Of acxxel Service Center In Major City",
@@ -1261,6 +1413,45 @@ def generate_workstation_certificates(request, bid_id):
                     color=(0, 0, 0),
                     align=1,
                 )
+                if header_rect:
+                    page.draw_rect(header_rect, color=(0, 0, 0), width=0.9, overlay=True)
+
+        def add_service_support_table_note(page):
+            prefix = "Note: For other locations, please email us at "
+            email_text = "support@acxxel.com"
+            middle = " or visit our website "
+            website_text = "acxxel.com"
+            suffix = "."
+            note = f"{prefix}{email_text}{middle}{website_text}{suffix}"
+            if note in page.get_text("text").replace("\n", " "):
+                return
+
+            font_name, font_size = "hebo", 11
+            note_x, note_y = 42, 520
+            prefix_width = fitz.get_text_length(prefix, fontname=font_name, fontsize=font_size)
+            email_width = fitz.get_text_length(email_text, fontname=font_name, fontsize=font_size)
+            middle_width = fitz.get_text_length(middle, fontname=font_name, fontsize=font_size)
+            website_width = fitz.get_text_length(website_text, fontname=font_name, fontsize=font_size)
+
+            email_x = note_x + prefix_width
+            middle_x = email_x + email_width
+            website_x = middle_x + middle_width
+
+            page.insert_text((note_x, note_y), prefix, fontsize=font_size, fontname=font_name, color=(0, 0, 0))
+            page.insert_text((email_x, note_y), email_text, fontsize=font_size, fontname=font_name, color=(0, 0, 1))
+            page.insert_text((middle_x, note_y), middle, fontsize=font_size, fontname=font_name, color=(0, 0, 0))
+            page.insert_text((website_x, note_y), f"{website_text}{suffix}", fontsize=font_size, fontname=font_name, color=(0, 0, 1))
+
+            page.insert_link({
+                "kind": fitz.LINK_URI,
+                "from": fitz.Rect(email_x, note_y - 12, email_x + email_width, note_y + 3),
+                "uri": "mailto:support@acxxel.com",
+            })
+            page.insert_link({
+                "kind": fitz.LINK_URI,
+                "from": fitz.Rect(website_x, note_y - 12, website_x + website_width, note_y + 3),
+                "uri": "https://acxxel.com",
+            })
 
         def remove_to_whomsoever_line(page):
             lines = []
@@ -1289,13 +1480,13 @@ def generate_workstation_certificates(request, bid_id):
             if heading is None:
                 return
             page.add_redact_annot(fitz.Rect(heading.x0 - 4, heading.y0 - 3, page.rect.width - 36, heading.y1 + 3), fill=(1, 1, 1))
-            page.apply_redactions()
+            page.apply_redactions(images=0, graphics=0)
             if has_to:
                 return
 
             x = next_line.x0 if next_line else 48
             y = heading.y0
-            for value in ["To,", dept_name, organization, full_address]:
+            for value in ["To,", *service_recipient]:
                 if value:
                     page.insert_text((x, y), value, fontsize=11 if value == "To," else 12, fontname="hebo", color=(0, 0, 0))
                     y += 14
@@ -1317,7 +1508,7 @@ def generate_workstation_certificates(request, bid_id):
                     if re.search(r"TO\s+WHOM\S*\s+IT\s+MAY\s+CONCERN", normalized):
                         bbox = fitz.Rect(line["bbox"])
                         page.add_redact_annot(fitz.Rect(bbox.x0 - 8, bbox.y0 - 5, page.rect.width - 36, bbox.y1 + 8), fill=(1, 1, 1))
-            page.apply_redactions()
+            page.apply_redactions(images=0, graphics=0)
 
             lines = []
             for block in page.get_text("dict").get("blocks", []):
@@ -1332,19 +1523,30 @@ def generate_workstation_certificates(request, bid_id):
             escalation = next((bbox for bbox, text in lines if "Escalation matrix" in text), None)
             if escalation:
                 page.add_redact_annot(fitz.Rect(68, 132, page.rect.width - 36, escalation.y0 - 10), fill=(1, 1, 1))
-                page.apply_redactions()
+                page.add_redact_annot(
+                    fitz.Rect(escalation.x0 - 2, escalation.y0 - 2, page.rect.width - 36, escalation.y1 + 2),
+                    fill=(1, 1, 1),
+                )
+                page.apply_redactions(images=0, graphics=0)
                 y = 148
-                for value in ["To,", dept_name, organization, full_address]:
+                for value in ["To,", *service_recipient]:
                     if value:
                         page.insert_text((72, y), value, fontsize=11.5, fontname="hebo", color=(0, 0, 0))
                         y += 15
                 page.insert_textbox(
-                    fitz.Rect(72, 203, page.rect.width - 52, 232),
+                    fitz.Rect(72, 213, page.rect.width - 52, 252),
                     "This is certifying that acxxel Workstation offers on-site comprehensive warranty as said in bid document.",
-                    fontsize=9.5,
+                    fontsize=10.8,
                     fontname="helv",
                     color=(0, 0, 0),
                     align=0,
+                )
+                page.insert_text(
+                    (escalation.x0, escalation.y1 + 14),
+                    "Escalation matrix below reference:",
+                    fontsize=10.8,
+                    fontname="helv",
+                    color=(0, 0, 0),
                 )
                 return
 
@@ -1367,23 +1569,21 @@ def generate_workstation_certificates(request, bid_id):
                 y0 = min(rect.y0 for rect, _ in erase_lines)
                 y1 = max(rect.y1 for rect, _ in erase_lines)
                 page.add_redact_annot(fitz.Rect(x0 - 2, y0 - 2, page.rect.width - 36, y1 + 4), fill=(1, 1, 1))
-                page.apply_redactions()
+                page.apply_redactions(images=0, graphics=0)
 
                 y = y0 + 11
-                for value in [dept_name, organization, full_address]:
+                for value in service_recipient:
                     if value:
                         page.insert_text((x0, y), value, fontsize=11.5, fontname="hebo", color=(0, 0, 0))
                         y += 15
 
         def fix_service_support_page_30(page):
             page.add_redact_annot(fitz.Rect(68, 150, 360, 220), fill=(1, 1, 1))
-            page.apply_redactions()
+            page.apply_redactions(images=0, graphics=0)
             y = 166
             for value in [
                 "To,",
-                dept_name,
-                organization,
-                full_address,
+                *service_recipient,
                 f"Bid No: {bid_no}" if bid_no else "",
             ]:
                 if value:
@@ -1391,7 +1591,9 @@ def generate_workstation_certificates(request, bid_id):
                     y += 15
 
             page.add_redact_annot(fitz.Rect(68, 404, page.rect.width - 42, 526), fill=(1, 1, 1))
-            page.apply_redactions()
+            # Preserve the signature image below: its internal image bounds can
+            # overlap this paragraph even though its visible ink does not.
+            page.apply_redactions(images=0, graphics=0)
             page.insert_textbox(
                 fitz.Rect(72, 407, page.rect.width - 52, 522),
                 "The product offered in the bid will be serviced on-site at the location of the buyer. "
@@ -1423,28 +1625,44 @@ def generate_workstation_certificates(request, bid_id):
         def fix_non_return_hdd_page(page):
             # The template paragraph is desktop-specific; rewrite only the body,
             # leaving header, subject, and signature block intact.
-            body_rect = fitz.Rect(86, 258, page.rect.width - 52, 328)
+            body_rect = fitz.Rect(86, 258, page.rect.width - 52, 360)
             write_x = 90
             write_y = 274
             page.add_redact_annot(body_rect, fill=(1, 1, 1))
-            page.apply_redactions()
+            page.apply_redactions(images=0, graphics=0)
             page.insert_text((write_x, write_y), "Dear Sir,", fontsize=11, fontname="hebo", color=(0, 0, 0))
             paragraph = (
-                "We undertake that as per Data Security Policy, faulty Hard Disk of "
-                "Workstation supplied under this bid shall not be returned back to the OEM/supplier."
+                "We undertake that, as per Buyer Organization's Security Policy, Faulty Hard Disk of "
+                "Servers / Desktop Computers / Laptops / Workstation / AIO / Printer / Toner etc. will not be "
+                "returned back to the OEM/supplier against warranty replacement."
             )
             page.insert_textbox(
-                fitz.Rect(write_x, write_y + 24, page.rect.width - 52, write_y + 80),
+                fitz.Rect(write_x, write_y + 24, page.rect.width - 52, write_y + 100),
                 paragraph,
                 fontsize=10.5,
-                fontname="hebo",
+                fontname="helv",
                 color=(0, 0, 0),
                 align=0,
+                lineheight=1.15,
             )
 
         def fix_preloaded_os_page(page):
             os_text = clean_text(body.get("os") or bid.os or "Windows 11 Professional")
             page.add_redact_annot(fitz.Rect(68, 336, page.rect.width - 42, 383), fill=(1, 1, 1))
+            footer_lines = (
+                "Please do feel free to write / call undersign for any clarification.",
+                "Thank you,",
+            )
+            footer_positions = []
+            for footer_text in footer_lines:
+                matches = page.search_for(footer_text)
+                if matches:
+                    rect = matches[0]
+                    footer_positions.append((rect, footer_text))
+                    page.add_redact_annot(
+                        fitz.Rect(rect.x0 - 2, rect.y0 - 2, page.rect.width - 42, rect.y1 + 2),
+                        fill=(1, 1, 1),
+                    )
             page.apply_redactions()
             paragraph = (
                 "You may kindly take reference of the above bid for procurement of Workstation. "
@@ -1452,13 +1670,21 @@ def generate_workstation_certificates(request, bid_id):
                 f"offered with factory preloaded Microsoft {os_text} license."
             )
             page.insert_textbox(
-                fitz.Rect(72, 341, page.rect.width - 52, 384),
+                fitz.Rect(72, 341, page.rect.width - 52, 414),
                 paragraph,
-                fontsize=9.2,
-                fontname="hebo",
+                fontsize=10.8,
+                fontname="helv",
                 color=(0, 0, 0),
                 align=0,
             )
+            for rect, footer_text in footer_positions:
+                page.insert_text(
+                    (rect.x0, rect.y1),
+                    footer_text,
+                    fontsize=10.8,
+                    fontname="helv",
+                    color=(0, 0, 0),
+                )
 
         def replace_right_of_label(page, label, value, fontsize=9.5):
             value = clean_text(value)
@@ -1479,12 +1705,14 @@ def generate_workstation_certificates(request, bid_id):
             return False
 
         def force_tender_no_date(page):
-            tender_text = f"Bid No: {bid_no} Dated: {bid_date_formatted}".strip()
+            tender_text = f"Bid No: {bid_no}            Dated: {bid_date_formatted}".strip()
             if not tender_text:
                 return
             tender_line_rects = []
             first_rect = None
             subject_rect = None
+            address_rect = None
+            to_rect = None
             for block in page.get_text("dict").get("blocks", []):
                 if block.get("type") != 0:
                     continue
@@ -1493,8 +1721,17 @@ def generate_workstation_certificates(request, bid_id):
                     if not line_text:
                         continue
                     bbox = fitz.Rect(line["bbox"])
+                    if line_text.strip().rstrip(", ").upper() == "TO":
+                        to_rect = bbox
                     if subject_rect is None and re.search(r"\bSubject\b|Subject-", line_text, re.IGNORECASE):
                         subject_rect = bbox
+                    if (
+                        to_rect
+                        and pincode
+                        and pincode in line_text
+                        and to_rect.y0 < bbox.y0 < to_rect.y0 + 120
+                    ):
+                        address_rect = bbox
                     if (
                         re.search(r"(Tender|Bid)\s*No", line_text, re.IGNORECASE)
                         or re.search(r"GEM/\d{4}/[A-Z]/\d+", line_text)
@@ -1504,12 +1741,18 @@ def generate_workstation_certificates(request, bid_id):
                         if first_rect is None:
                             first_rect = bbox
 
+            if address_rect and subject_rect and address_rect.y0 >= subject_rect.y0:
+                address_rect = None
+
             if tender_line_rects:
                 for rect in tender_line_rects:
                     page.add_redact_annot(rect, fill=(1, 1, 1))
                 page.apply_redactions()
                 page.insert_text(
-                    (first_rect.x0, first_rect.y1 - 2),
+                    (
+                        address_rect.x0 if address_rect else first_rect.x0,
+                        address_rect.y1 + 14 if address_rect else first_rect.y1 - 2,
+                    ),
                     tender_text,
                     fontsize=11,
                     fontname="hebo",
@@ -1524,8 +1767,9 @@ def generate_workstation_certificates(request, bid_id):
             for old in old_values:
                 replace_exact(page, old, bid_no if old.startswith("GEM/") else bid_date_formatted, fontsize=10)
             if "Bid No" not in page.get_text("text") and "Tender No" not in page.get_text("text"):
-                insert_y = subject_rect.y0 - 28 if subject_rect else 118
-                page.insert_text((72, insert_y), tender_text, fontsize=11, fontname="hebo", color=(0, 0, 0))
+                insert_x = address_rect.x0 if address_rect else 72
+                insert_y = address_rect.y1 + 14 if address_rect else (subject_rect.y0 - 28 if subject_rect else 118)
+                page.insert_text((insert_x, insert_y), tender_text, fontsize=11, fontname="hebo", color=(0, 0, 0))
 
         def force_customer_block(page):
             lines = []
@@ -1919,6 +2163,25 @@ def generate_workstation_certificates(request, bid_id):
             page_from, page_to = (8, 13)
         else:
             page_from, page_to = cert_page_ranges[doc_type]
+        service_signature_block = None
+        service_signature_rect = None
+        if doc_type == "service_support" and len(source_doc) >= 30:
+            source_signature_page = source_doc[24]
+            auth_areas = source_signature_page.search_for("Auth. Signatory")
+            contact_areas = source_signature_page.search_for("Contact No.:- 9918200166")
+            service_signature_rect = fitz.Rect(58, 540, 365, 735)
+            if auth_areas and contact_areas:
+                service_signature_rect = fitz.Rect(
+                    max(0, auth_areas[0].x0 - 5),
+                    max(0, auth_areas[0].y0 - 5),
+                    min(source_signature_page.rect.width - 10, max(330, contact_areas[0].x1 + 20)),
+                    min(source_signature_page.rect.height - 5, contact_areas[-1].y1 + 8),
+                )
+            service_signature_block = source_signature_page.get_pixmap(
+                matrix=fitz.Matrix(2, 2),
+                clip=service_signature_rect,
+                alpha=False,
+            ).tobytes("png")
         doc = fitz.open()
         doc.insert_pdf(source_doc, from_page=page_from - 1, to_page=page_to - 1)
         source_doc.close()
@@ -1937,10 +2200,12 @@ def generate_workstation_certificates(request, bid_id):
                     break
             full_doc.close()
 
-        def lowercase_acxxel(page):
+        def lowercase_acxxel(page, min_y=None):
             matches = []
             for word in page.get_text("words"):
                 text = word[4]
+                if min_y is not None and word[1] < min_y:
+                    continue
                 lowered = re.sub(r"acxxel", "acxxel", text, flags=re.IGNORECASE)
                 if lowered != text:
                     matches.append((fitz.Rect(word[:4]), lowered))
@@ -1951,7 +2216,7 @@ def generate_workstation_certificates(request, bid_id):
                     fitz.Rect(area.x0 - 0.5, area.y0 - 0.5, area.x1 + 0.5, area.y1 + 0.5),
                     fill=(1, 1, 1),
                 )
-            page.apply_redactions()
+            page.apply_redactions(images=0, graphics=0)
             for area, text in matches:
                 fontsize = max(7, min(12, area.height * 0.82))
                 page.insert_text(
@@ -1971,13 +2236,37 @@ def generate_workstation_certificates(request, bid_id):
                 continue
             if doc_type == "service_support":
                 fix_service_support_page(page)
+                if original_page == 29:
+                    add_service_support_table_note(page)
                 if original_page == 30:
                     fix_service_support_page_30(page)
+                    if service_signature_block and service_signature_rect:
+                        page.add_redact_annot(
+                            fitz.Rect(55, 500, min(380, page.rect.width - 20), min(735, page.rect.height - 5)),
+                            fill=(1, 1, 1),
+                        )
+                        page.apply_redactions()
+                        target_rect = fitz.Rect(
+                            service_signature_rect.x0,
+                            540,
+                            service_signature_rect.x1,
+                            540 + service_signature_rect.height,
+                        )
+                        page.insert_image(
+                            target_rect,
+                            stream=service_signature_block,
+                            keep_proportion=False,
+                            overlay=True,
+                        )
                 remove_urls_and_config_links(page)
-                lowercase_acxxel(page)
+                lowercase_acxxel(page, min_y=230)
                 continue
 
-            if original_page in suppress_tender_pages or doc_type in suppress_tender_docs:
+            if (
+                original_page in suppress_tender_pages
+                or doc_type in suppress_tender_docs
+                or (doc_type == "manufacturer_auth" and page_index > 0)
+            ):
                 remove_tender_no_date_lines(page)
             else:
                 force_tender_no_date(page)
@@ -1998,7 +2287,9 @@ def generate_workstation_certificates(request, bid_id):
             if doc_type == "manufacturer_auth" and original_page == 2:
                 fix_manufacturer_auth_page(page)
             if doc_type == "manufacturer_auth":
-                lowercase_acxxel(page)
+                # Keep buyer/department names exactly as entered. Brand-name
+                # normalization is only intended for the certificate body.
+                lowercase_acxxel(page, min_y=230)
             if doc_type == "data_sheet":
                 fill_data_sheet_page(page, page_index)
                 if page_index == len(doc) - 1:
@@ -2110,10 +2401,21 @@ def generate_workstation_certificates(request, bid_id):
             for page in doc:
                 force_customer_block(page)
 
+        if doc_type not in {"service_support", "data_sheet", "technical_compliance"}:
+            for page_index, page in enumerate(doc):
+                original_page = page_from + page_index
+                if (
+                    original_page in suppress_tender_pages
+                    or (doc_type == "manufacturer_auth" and page_index > 0)
+                ):
+                    continue
+                force_tender_no_date(page)
+
         out_dir = os.path.join(settings.MEDIA_ROOT, "generated_docs")
         os.makedirs(out_dir, exist_ok=True)
         filename = f"workstation_{bid.id}_{doc_type}.pdf"
         path = os.path.join(out_dir, filename)
+        number_pages_from_one(doc)
         doc.save(path)
         doc.close()
         return JsonResponse({

@@ -318,7 +318,7 @@ const normalizeInitialForm = (source = {}) => {
 };
 
 
-export default function WorkstationConfig({ bidData, onNext, onBack }) {
+export default function WorkstationConfig({ bidData, onNext }) {
   const bid_id = bidData?.bid_id;
   useEffect(() => {
     fetchComponentRates("workstation").then((rates) => {
@@ -377,19 +377,6 @@ export default function WorkstationConfig({ bidData, onNext, onBack }) {
     [form.processor]
   );
 
-
-  const handleBackClick = () => {
-    try {
-      localStorage.setItem(draftKey, JSON.stringify(form));
-    } catch (error) {
-      console.warn("Unable to save workstation configuration draft before going back", error);
-    }
-    if (onBack) {
-      onBack({ ...form });
-    } else {
-      window.history.back();
-    }
-  };
 
   const handleChange = async (e) => {
     const { name, value } = e.target;
@@ -482,13 +469,13 @@ export default function WorkstationConfig({ bidData, onNext, onBack }) {
           <span className="text-red-500 text-[11px] font-normal">*Optional</span>
         )}
       </div>
-      <div className="flex gap-2">
+      <div className="flex min-w-0 gap-2">
         <select
           name={name}
           value={form[name]}
           onChange={handleChange}
           required={required}
-          className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-700"
+          className="min-w-0 flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-700"
         >
           <option value="">Select</option>
           {options.map((opt) => (
@@ -504,7 +491,7 @@ export default function WorkstationConfig({ bidData, onNext, onBack }) {
           readOnly
           disabled
           placeholder="Price"
-          className="w-24 border border-gray-200 rounded-md px-2 py-2 text-sm text-gray-500 bg-gray-50 cursor-not-allowed"
+          className="w-24 shrink-0 border border-gray-200 rounded-md px-2 py-2 text-sm text-gray-500 bg-gray-50 cursor-not-allowed"
         />
       </div>
     </div>
@@ -530,23 +517,6 @@ export default function WorkstationConfig({ bidData, onNext, onBack }) {
   return (
     <div className="container mx-auto px-4 mt-4 max-w-6xl">
       <div className="flex items-center gap-3 mb-4 pt-2 border-b pb-2">
-        <button
-          type="button"
-          onClick={handleBackClick}
-          className="flex items-center gap-1 text-sm font-medium text-gray-600 hover:text-blue-600 hover:bg-blue-50 border border-gray-300 hover:border-blue-400 px-3 py-1.5 rounded-md transition-all"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-4 w-4"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-          </svg>
-          Back
-        </button>
         <h5 className="text-lg font-semibold text-gray-800">Create Workstation Configuration</h5>
       </div>
 
@@ -572,12 +542,12 @@ export default function WorkstationConfig({ bidData, onNext, onBack }) {
                 <span className="text-[11px] text-gray-500 font-medium mb-1 uppercase">
                   Intel / Xeon Processor
                 </span>
-                <div className="flex gap-2">
+                <div className="flex min-w-0 gap-2">
                   <select
                     name="processor"
                     value={getGroupValue(form.processor, intelProcessors)}
                     onChange={handleChange}
-                    className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="min-w-0 flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">Select Intel / Xeon</option>
                     {intelProcessors.map((p) => (
@@ -597,7 +567,7 @@ export default function WorkstationConfig({ bidData, onNext, onBack }) {
                     readOnly
                     disabled
                     placeholder="Price"
-                    className="w-24 border border-gray-200 rounded-md px-2 py-2 text-sm text-gray-500 bg-gray-50"
+                    className="w-24 shrink-0 border border-gray-200 rounded-md px-2 py-2 text-sm text-gray-500 bg-gray-50"
                   />
                 </div>
               </div>
@@ -605,12 +575,12 @@ export default function WorkstationConfig({ bidData, onNext, onBack }) {
                 <span className="text-[11px] text-gray-500 font-medium mb-1 uppercase">
                   AMD / Threadripper Processor
                 </span>
-                <div className="flex gap-2">
+                <div className="flex min-w-0 gap-2">
                   <select
                     name="processor"
                     value={getGroupValue(form.processor, amdProcessors)}
                     onChange={handleChange}
-                    className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="min-w-0 flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">Select AMD / Threadripper</option>
                     {amdProcessors.map((p) => (
@@ -630,7 +600,7 @@ export default function WorkstationConfig({ bidData, onNext, onBack }) {
                     readOnly
                     disabled
                     placeholder="Price"
-                    className="w-24 border border-gray-200 rounded-md px-2 py-2 text-sm text-gray-500 bg-gray-50"
+                    className="w-24 shrink-0 border border-gray-200 rounded-md px-2 py-2 text-sm text-gray-500 bg-gray-50"
                   />
                 </div>
               </div>
@@ -643,9 +613,11 @@ export default function WorkstationConfig({ bidData, onNext, onBack }) {
           </div>
 
          
-          <SelectField label="Ram" name="ram" options={filteredRams} required />
-          <SelectField label="Hard Disk Drive" name="hdd" options={HDDS} required />
-          <SelectField label="Graphics Card" name="graphics" options={GRAPHICS_CARDS} required />
+          <div className="col-span-1 grid grid-cols-1 gap-x-6 gap-y-4 md:col-span-2 md:grid-cols-2 lg:col-span-3 lg:grid-cols-3">
+            <SelectField label="Ram" name="ram" options={filteredRams} required />
+            <SelectField label="Hard Disk Drive" name="hdd" options={HDDS} required />
+            <SelectField label="Graphics Card" name="graphics" options={GRAPHICS_CARDS} required />
+          </div>
 
         
           <div className="col-span-1">
@@ -701,7 +673,7 @@ export default function WorkstationConfig({ bidData, onNext, onBack }) {
           <SelectField label="SSD 2" name="ssd2" options={SSDS} />
           <SelectField label="OS" name="os" options={OS_OPTIONS} required />
           <SelectField label="DVD" name="dvd" options={DVDS} />
-          <SelectField label="Wi-Fi Bluetooth" name="wifi" options={WIFIS} />
+          <SelectField label="Wi-FI Bluetooth" name="wifi" options={WIFIS} />
           <SelectField label="Monitor" name="monitor" options={MONITORS} required />
           <SelectField label="Cabinet" name="cabinet" options={CABINETS} required />
           <SelectField label="Keyboard & Mouse" name="keyboard" options={KEYBOARDS} required />
@@ -756,12 +728,34 @@ export default function WorkstationConfig({ bidData, onNext, onBack }) {
             />
           </div>
 
-         =
+          <div className="col-span-1">
+            <label className="block text-sm font-medium text-gray-700 mb-1">HDD Return Option</label>
+            <div className="flex gap-2">
+              <select
+                name="hddreturnable"
+                value={form.hddreturnable}
+                onChange={handleChange}
+                className="flex-1 min-w-0 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              >
+                <option value="Yes">Yes</option>
+                <option value="None">None</option>
+              </select>
+              <input
+                type="text"
+                name="hddreturnable_price"
+                value={form.hddreturnable_price}
+                onChange={handleChange}
+                placeholder="Price"
+                className="w-24 shrink-0 border border-gray-300 rounded-md px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+
           <div className="col-span-1 md:col-span-2 lg:col-span-3">
             <label className="block text-sm font-medium text-gray-700 mb-2 underline">
               Motherboard Selection
             </label>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Intel Motherboard Section */}
               <div className="flex flex-col">
                 <span className="text-[11px] text-gray-500 font-medium mb-1 uppercase">
@@ -842,33 +836,11 @@ export default function WorkstationConfig({ bidData, onNext, onBack }) {
                 </div>
               </div>
 
-              <div className="flex flex-col">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  HDD Return Option
-                </label>
-                <div className="flex gap-2">
-                  <select
-                    name="hddreturnable"
-                    value={form.hddreturnable}
-                    onChange={handleChange}
-                    className="flex-1 min-w-0 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                  >
-                    <option value="Yes">Yes</option>
-                    <option value="None">None</option>
-                  </select>
-                  <input
-                    type="text"
-                    name="hddreturnable_price"
-                    value={form.hddreturnable_price}
-                    onChange={handleChange}
-                    placeholder="Price"
-                    className="w-24 shrink-0 border border-gray-300 rounded-md px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-              </div>
+            </div>
+          </div>
 
-              <div className="col-span-1 md:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
+          <div className="col-span-1 grid grid-cols-1 gap-6 md:col-span-2 md:grid-cols-2 lg:col-span-3">
+            <div>
                   <div className="flex items-center gap-2 mb-1">
                     <label className="block text-sm font-medium text-gray-700">
                       Motherboard Description
@@ -883,9 +855,9 @@ export default function WorkstationConfig({ bidData, onNext, onBack }) {
                     className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                     placeholder="Technical details..."
                   />
-                </div>
+            </div>
 
-                <div>
+            <div>
                   <div className="flex items-center gap-2 mb-1">
                     <label className="block text-sm font-medium text-gray-700">
                       Extra Requirements
@@ -900,8 +872,6 @@ export default function WorkstationConfig({ bidData, onNext, onBack }) {
                     className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                     placeholder="e.g. Height adjustable stand, Dual Gigabit NIC, TCO 9.0, etc."
                   />
-                </div>
-              </div>
             </div>
           </div>
         </div>
@@ -911,9 +881,16 @@ export default function WorkstationConfig({ bidData, onNext, onBack }) {
           <button
             type="submit"
             disabled={saving}
-            className="mt-8 mb-10 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold px-12 py-2.5 rounded-md text-sm transition shadow-lg active:scale-95"
+            className="mt-8 mb-10 flex items-center gap-2 whitespace-nowrap rounded-md bg-blue-600 px-8 py-2.5 text-sm font-semibold text-white shadow-lg transition hover:bg-blue-700 active:scale-95 disabled:bg-blue-400"
           >
-            {saving ? "Saving..." : "Next"}
+            {saving ? "Saving..." : (
+              <>
+                View Bid Products at a Glance
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                </svg>
+              </>
+            )}
           </button>
         </div>
       </form>

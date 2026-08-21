@@ -101,15 +101,17 @@ def _daily(request, product, role):
     date_map = {row["date"]: row for row in result}
     analyser = request.GET.get("analyser") if role == "admin" else None
     queryset = _base_queryset(product, role, analyser=analyser).filter(
-        updated_at__date__gte=sunday,
-        updated_at__date__lte=today,
+        created_at__date__gte=sunday,
+        created_at__date__lte=today,
     )
     label_for = _admin_label if role == "admin" else _analyser_label
     for bid in queryset:
         label = label_for(bid)
-        if not bid.updated_at or label not in status_keys:
+        if not bid.created_at or label not in status_keys:
             continue
-        key = timezone.localtime(bid.updated_at).date().isoformat()
+        # updated_at changes for review/approval and must not move an old bid
+        # into today's activity chart.
+        key = timezone.localtime(bid.created_at).date().isoformat()
         if key in date_map:
             date_map[key]["total"] += 1
             date_map[key][label] += 1

@@ -11,6 +11,7 @@ import CreateDesktopBid from "./pages/Desktop/User/CreateDesktopBid";
 import CreateWorkstationBid from "./pages/Workstation/User/CreateWorkstationBid";
 import WorkstationAnalyserDashboard from "./pages/Workstation/Analyser/WorkstationAnalyserDashboard";
 import WorkstationBidDetailView from "./pages/Workstation/Analyser/WorkstationBidDetailView";
+import WorkstationAnalyserDocument from "./pages/Workstation/Analyser/WorkstationAnalyserDocument";
 import WorkstationApprovedBidDownloads from "./pages/Workstation/Analyser/WorkstationApprovedBidDownloads";
 import WorkstationBidApproval from "./pages/Workstation/Admin/WorkstationBidApproval";
 
@@ -93,6 +94,7 @@ function App() {
         <Route path="/analyser-dashboard/workstation/product" element={<AnalyserProductsPage />} />
         <Route path="/analyser-dashboard/desktop/bid/:id" element={<BidDetailView product="desktop" />} />
         <Route path="/analyser-dashboard/workstation/bid/:id" element={<WorkstationBidDetailView />} />
+        <Route path="/analyser-dashboard/workstation/bid/:id/documents" element={<WorkstationAnalyserDocument />} />
         <Route path="/analyser-dashboard/printer/bid/:id" element={<PrinterBidDetailView />} />
         <Route path="/analyser-dashboard/printer/document" element={<AnalyserPrinterDocument />} />
 

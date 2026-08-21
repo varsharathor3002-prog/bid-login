@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import WorkstationDocument from "../User/WorkstationDocument";
 import {
   INTEL_PROCESSORS, INTEL_XEON_PROCESSORS, AMD_THREADRIPPER_PROCESSORS,
   INTEL_MOTHERBOARDS, INTEL_XEON_MOTHERBOARDS, AMD_MOTHERBOARDS,
@@ -15,7 +14,7 @@ const SAVE_MODEL_API = (id) => `${API_BASE}/workstation-bids/${id}/save-model-nu
 
 const FIELDS = [
   ["bid_no", "Bid Number"], ["model_number", "Model Number"], ["dept_name", "Department"],
-  ["organization", "Organization"], ["qty", "Quantity"], ["pincode", "Pincode"],
+  ["organization", "Organization"], ["qty", "Quantity"], ["pincode", "Buyer Pincode"],
   ["processor", "Processor"], ["processor_price", "Processor Price"],
   ["ram", "RAM"], ["ram_price", "RAM Price"], ["hdd", "HDD"], ["hdd_price", "HDD Price"],
   ["ssd1", "SSD 1"], ["ssd1_price", "SSD 1 Price"], ["ssd2", "SSD 2"], ["ssd2_price", "SSD 2 Price"],
@@ -70,16 +69,10 @@ const REQUIRED_FIELDS = [
 const CONDITIONAL_FIELDS = ["pro_descp", "motherboard_descp", "gp", "software1", "extra_requirements"];
 
 const TEXT_FIELDS = [
-  ["address", "Address"], ["atc", "ATC"], ["pro_descp", "Processor Description"],
-  ["motherboard_descp", "Motherboard Description"], ["gp", "Graphics Description"],
-  ["software1", "Additional Software"], ["extra_requirements", "Extra Requirements"],
+  ["address", "Address"], ["atc", "ATC (Additional Terms & Conditions)"], ["pro_descp", "Processor Description"],
+  ["software1", "Additional Software"], ["gp", "Graphics Description"],
+  ["motherboard_descp", "Motherboard Description"], ["extra_requirements", "Extra Requirements"],
   ["optional_ports", "Optional Ports"], 
-];
-
-const ANALYSER_DOCS = [
-  { id: "warranty", label: "WARRANTY" },
-  { id: "technical_compliance", label: "TECHNICAL COMPLIANCE" },
-  { id: "data_sheet", label: "DATA SHEET" },
 ];
 
 const USER_DOCS = [
@@ -114,12 +107,15 @@ const AdminNoteBanner = ({ note }) => {
   );
 };
 
-const VerifiedField = ({ name, label, required, verifiedFields, readOnly, onToggle, children }) => {
+const VerifiedField = ({ name, label, optional, required, verifiedFields, readOnly, onToggle, children }) => {
   const checked = !!verifiedFields[name];
   return (
     <div className="relative">
       <div className="flex items-center justify-between mb-1">
-        <label className="block text-sm font-medium text-gray-700">{label}</label>
+        <label className="block text-sm font-medium text-gray-700">
+          {label}
+          {optional && <span className="ml-1 text-[11px] font-normal text-red-500">*Optional</span>}
+        </label>
         {!readOnly && (
           <input type="checkbox" checked={checked} onChange={() => onToggle(name)}
             title={required ? "Required - must verify" : "Optional"}
@@ -309,7 +305,6 @@ export default function WorkstationBidDetailView() {
   const showGemUpload = location.state?.showGemUpload === true;
   const [form, setForm] = useState(location.state?.bid || {});
   const [readOnly] = useState(!!location.state?.readOnly);
-  const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState("");
   const [modelSearching, setModelSearching] = useState(false);
@@ -409,7 +404,7 @@ export default function WorkstationBidDetailView() {
   const handleFindModel = async () => {
     setModelSearching(true);
     setModelMatches([]);
-    setShowModelResult(true);
+    setShowModelResult(false);
     setNoMatchFound(false);
     setNewModelInput("");
     try {
@@ -433,10 +428,12 @@ export default function WorkstationBidDetailView() {
       if (!item?.model_no) {
         setModelMatches([]);
         setNoMatchFound(true);
+        setShowModelResult(false);
         if (data.best_failed_match) console.log("Best failed workstation match:", data.best_failed_match);
         return;
       }
       setModelMatches([{ modelNo: item.model_no, product_id: item.product_id, category: item.category }]);
+      setShowModelResult(true);
     } catch (error) {
       alert(error.message || "Network error - unable to connect to the server.");
     } finally {
@@ -453,7 +450,7 @@ export default function WorkstationBidDetailView() {
   };
 
   const handleCreateNewModel = async () => {
-    const trimmed = newModelInput.trim();
+    const trimmed = modelInputValue.trim();
     if (!trimmed) {
       alert("Please enter a model number.");
       return;
@@ -501,7 +498,9 @@ export default function WorkstationBidDetailView() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Review save failed.");
-      setStep(2);
+      navigate(`/analyser-dashboard/workstation/bid/${id}/documents`, {
+        state: { bidData: { ...updatedBidData, ...payload, bid_id: id } },
+      });
     } catch (err) {
       setMsg(err.message || "Something went wrong.");
     } finally {
@@ -509,57 +508,52 @@ export default function WorkstationBidDetailView() {
     }
   };
 
-  if (step === 2) {
-    return (
-      <WorkstationDocument
-        bidData={{ ...form, bid_id: id }}
-        onBack={() => setStep(1)}
-        onSuccess={() => navigate("/analyser-dashboard/workstation")}
-        submitLabel="Forward to Admin"
-        analyserMode
-        docOptions={ANALYSER_DOCS}
-      />
-    );
-  }
-
   const isReAnalyze = form?.status === "re-analyze" || form?.status === "re_analyze" || form?.review_status === "re-analyze";
   const isReviewed = form?.status === "reviewed" || form?.review_status === "reviewed";
   const isApproved = form?.status === "approved" || form?.review_status === "approved";
-  const isPending = !isReAnalyze && !isReviewed;
+  const isPending = !isReAnalyze && !isReviewed && !isApproved;
   const conditionalRequired = CONDITIONAL_FIELDS.filter((name) => String(form?.[name] || "").trim());
   const activeRequiredFields = [...REQUIRED_FIELDS, ...conditionalRequired];
   const verifiedCount = activeRequiredFields.filter((name) => verifiedFields[name]).length;
   const allVerified = activeRequiredFields.every((name) => verifiedFields[name]);
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-      <div className="flex items-center justify-between px-6 py-4 border-b bg-gray-50 rounded-t-xl">
+    <div className="container mx-auto px-4 mt-4 max-w-6xl pb-10 bg-white">
+      <div className="flex items-center justify-between mb-6 pt-2 border-b pb-4">
         <div className="flex items-center gap-4">
-          <button type="button" onClick={() => navigate(-1)} className="px-3 py-1.5 rounded border text-sm font-semibold hover:bg-slate-800 hover:text-white">Back</button>
-          <div>
-            <h2 className="text-lg font-bold text-gray-800">Review Workstation Bid</h2>
-            <p className="text-sm text-gray-500">Bid No: <span className="font-semibold text-blue-600">{form.bid_no || "-"}</span></p>
-          </div>
+          <button type="button" onClick={() => navigate(-1)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-gray-300 bg-white text-gray-700 text-sm font-semibold hover:bg-slate-800 hover:text-white hover:border-slate-800 transition-all duration-200 shadow-sm">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+            </svg>
+            Back
+          </button>
+          <h5 className="text-xl font-bold text-gray-800">
+            {readOnly
+              ? "✅ View Reviewed Workstation Bid"
+              : isReAnalyze
+              ? "⚠️ Re-Analyze Workstation Bid"
+              : "⌛ Review & Accept Workstation Bid"}
+          </h5>
         </div>
-        <div className="flex items-center gap-2">
           {isReAnalyze && (
-            <span className="px-3 py-1 rounded-full bg-rose-100 text-rose-700 text-xs font-bold border border-rose-300">Re-Analyze Required</span>
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-700 border border-rose-300">⚠️ Re-Analyze Required</span>
           )}
           {isPending && (
-            <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-700 text-xs font-bold border border-amber-300">Pending</span>
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-700 border border-amber-300">⌛ Pending</span>
           )}
           {readOnly && isReviewed && (
-            <span className="px-3 py-1 rounded-full bg-green-100 text-green-700 text-xs font-bold border border-green-300">Reviewed</span>
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700 border border-green-300">✅ Reviewed</span>
           )}
-          {readOnly && <span className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold">Read Only</span>}
-        </div>
+          {readOnly && isApproved && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700 border border-green-300">✅ Approved</span>
+          )}
       </div>
 
       {isReAnalyze && form?.admin_note && <AdminNoteBanner note={form.admin_note} />}
 
-      {msg && <div className="mx-6 mt-4 p-3 rounded bg-red-50 text-red-700 text-sm border border-red-200">{msg}</div>}
+      {msg && <div className="mb-4 px-4 py-2 rounded bg-red-50 text-red-700 text-sm font-medium border border-red-200">{msg}</div>}
 
-      <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4 ${isPending ? "[&_label]:!font-semibold [&_label]:!text-slate-800 [&_input]:!border-blue-300 [&_input]:!text-slate-900 [&_input]:placeholder:!text-slate-500 [&_select]:!border-blue-300 [&_select]:!text-slate-900 [&_textarea]:!border-blue-300 [&_textarea]:!text-slate-900" : ""}`}>
         {TOP_FIELDS.map(([name, label, type]) => (
           <VerifiedField key={name} name={name} label={label} required verifiedFields={verifiedFields} readOnly={readOnly} onToggle={toggleVerification}>
             <input
@@ -573,18 +567,20 @@ export default function WorkstationBidDetailView() {
           </VerifiedField>
         ))}
 
-        <div className="md:col-span-2 lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="contents">
           {TEXT_FIELDS.filter(([name]) => name === "address" || name === "atc").map(([name, label]) => (
-            <VerifiedField key={name} name={name} label={label} required verifiedFields={verifiedFields} readOnly={readOnly} onToggle={toggleVerification}>
-              <textarea
-                name={name}
-                value={form[name] || ""}
-                onChange={handleChange}
-                readOnly={readOnly}
-                rows={2}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm resize-none outline-none focus:ring-2 focus:ring-blue-500 read-only:bg-gray-50"
-              />
-            </VerifiedField>
+            <div key={name} className="md:col-span-2 lg:col-span-3">
+              <VerifiedField name={name} label={label} required verifiedFields={verifiedFields} readOnly={readOnly} onToggle={toggleVerification}>
+                <textarea
+                  name={name}
+                  value={form[name] || ""}
+                  onChange={handleChange}
+                  readOnly={readOnly}
+                  rows={2}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm resize-none outline-none focus:ring-2 focus:ring-blue-500 read-only:bg-gray-50"
+                />
+              </VerifiedField>
+            </div>
           ))}
         </div>
 
@@ -644,9 +640,9 @@ export default function WorkstationBidDetailView() {
           );
         })}
 
-        <div className="md:col-span-2 lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-4">
-          {TEXT_FIELDS.filter(([name]) => name !== "address" && name !== "atc").map(([name, label]) => (
-            <VerifiedField key={name} name={name} label={label} required={conditionalRequired.includes(name)} verifiedFields={verifiedFields} readOnly={readOnly} onToggle={toggleVerification}>
+        <div className="md:col-span-2 lg:col-span-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {TEXT_FIELDS.filter(([name]) => name !== "address" && name !== "atc" && name !== "optional_ports").map(([name, label]) => (
+            <VerifiedField key={name} name={name} label={label} optional required={conditionalRequired.includes(name)} verifiedFields={verifiedFields} readOnly={readOnly} onToggle={toggleVerification}>
               <textarea
                 name={name}
                 value={form[name] || ""}
@@ -658,6 +654,17 @@ export default function WorkstationBidDetailView() {
             </VerifiedField>
           ))}
         </div>
+
+        <VerifiedField name="optional_ports" label="Optional Ports" optional required={false} verifiedFields={verifiedFields} readOnly={readOnly} onToggle={toggleVerification}>
+          <textarea
+            name="optional_ports"
+            value={form.optional_ports || ""}
+            onChange={handleChange}
+            readOnly={readOnly}
+            rows={2}
+            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm resize-none outline-none focus:ring-2 focus:ring-blue-500 read-only:bg-gray-50"
+          />
+        </VerifiedField>
 
         {readOnly && isApproved && (
           <div className="md:col-span-2 lg:col-span-3 rounded-lg border border-slate-300 bg-slate-50 p-4 shadow-sm">
@@ -687,32 +694,36 @@ export default function WorkstationBidDetailView() {
             </div>
           </div>
         )}
-      </div>
-
-      <div className="px-6 pb-4">
-        <div className="relative flex items-center gap-2 bg-gray-50 p-2 rounded-lg border border-gray-300 w-fit">
+      <div className={isPending ? "min-w-0" : "md:col-start-2 md:row-start-3 lg:col-start-3 lg:row-start-2"}>
+        <div className={`relative flex items-center gap-2 rounded-lg border p-2 ${isPending ? "w-fit border-blue-300 bg-blue-50/60 shadow-sm" : "h-full border-gray-300 bg-gray-50"}`}>
           <div className="flex flex-col">
-            <label className="text-[10px] font-bold text-gray-500 uppercase ml-1">Assigned Model</label>
+            <label className={`mb-1 text-sm font-bold ${isPending ? "text-blue-900" : "text-gray-700"}`}>Assigned Model</label>
             <input
               type="text"
               name="model_number"
               value={modelInputValue}
               onChange={handleModelInputChange}
-              placeholder={readOnly ? "No model assigned" : "Search model..."}
-              disabled={readOnly}
-              className="border border-gray-300 rounded px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 outline-none w-64 font-semibold disabled:bg-gray-100 disabled:text-gray-600"
+              placeholder={readOnly ? "No model assigned" : noMatchFound ? "Enter model number manually..." : "Search model..."}
+              disabled={readOnly || modelSearching || showModelResult}
+              className="border border-blue-300 rounded px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none w-64 font-semibold text-slate-900 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500"
             />
           </div>
 
           {!readOnly && (
             <button
               type="button"
-              onClick={handleFindModel}
-              disabled={modelSearching || modelSaving}
-              className="mt-4 bg-slate-700 hover:bg-slate-800 disabled:bg-slate-400 text-white px-3 py-1.5 rounded text-xs font-bold transition shadow-sm"
+              onClick={noMatchFound ? handleCreateNewModel : handleFindModel}
+              disabled={modelSearching || modelSaving || showModelResult}
+              className={`mt-4 whitespace-nowrap ${noMatchFound ? "bg-blue-600 hover:bg-blue-700" : "bg-slate-700 hover:bg-slate-800"} disabled:bg-slate-400 text-white px-3 py-1.5 rounded text-xs font-bold transition shadow-sm`}
             >
-              {modelSearching ? "Searching..." : form?.model_number ? "Change Model" : "Find Model"}
+              {modelSaving ? "Saving..." : modelSearching ? "Searching..." : noMatchFound ? "Save Model" : form?.model_number ? "Change Model" : "Find Model"}
             </button>
+          )}
+
+          {noMatchFound && !readOnly && !showModelResult && (
+            <div className="ml-1 w-52 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs leading-4 text-amber-800">
+              <span className="font-bold">No matching model found.</span>{" "}Please create a new model number.
+            </div>
           )}
 
           {showModelResult && !readOnly && (
@@ -777,17 +788,49 @@ export default function WorkstationBidDetailView() {
           )}
         </div>
       </div>
+      </div>
 
-      <div className="px-6 pb-6 flex gap-3">
+      <div className="mt-5 mb-10 flex gap-3 items-center flex-wrap">
         {!readOnly && (
-          <div className="flex items-center gap-3">
-            <button type="button" disabled={loading || modelSaving || !allVerified} onClick={handleSave} className="px-8 py-2.5 rounded bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white text-sm font-semibold">
-              {loading || modelSaving ? "Saving..." : "Next"}
-            </button>
-            <span className={`text-xs font-semibold ${allVerified ? "text-green-700" : "text-amber-700"}`}>Verified {verifiedCount}/{activeRequiredFields.length}</span>
-          </div>
+          <button
+            type="button"
+            disabled={loading || modelSaving || !allVerified}
+            onClick={handleSave}
+            className={`order-2 flex items-center gap-2 rounded-md px-8 py-2.5 text-sm font-semibold transition ${
+              allVerified
+                ? "bg-blue-600 text-white shadow-md hover:bg-blue-700"
+                : "cursor-not-allowed bg-gray-200 text-gray-400"
+            }`}
+          >
+            {loading || modelSaving ? (
+              "Saving..."
+            ) : !allVerified ? (
+              <>
+                <span>Next</span>
+                <span className="rounded-full border border-gray-300 bg-gray-100 px-2 py-0.5 text-[10px] text-gray-500">
+                  {verifiedCount} / {activeRequiredFields.length} Verified
+                </span>
+              </>
+            ) : (
+              <>
+                <span>Next</span>
+                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                </svg>
+              </>
+            )}
+          </button>
         )}
-        <button type="button" onClick={() => navigate(-1)} className="px-8 py-2.5 rounded bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm font-semibold">Cancel</button>
+        <button
+          type="button"
+          onClick={() => navigate(-1)}
+          className={`${readOnly ? "" : "order-1"} flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-8 py-2.5 text-sm font-semibold text-gray-700 shadow-sm transition-all duration-200 hover:border-slate-800 hover:bg-slate-800 hover:text-white`}
+        >
+          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+          </svg>
+          {readOnly ? "Back" : "Cancel"}
+        </button>
       </div>
     </div>
   );

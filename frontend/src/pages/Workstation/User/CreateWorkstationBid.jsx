@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from "react";
 import WorkstationConfig from "./WorkstationConfig";
 import WorkstationDocument from "./WorkstationDocument";
+import WorkstationBidSummary from "./WorkstationBidSummary";
 
 
-const API_BASE = "http://127.0.0.1:8000/api";
+const API_BASE = import.meta.env.VITE_API_URL;
 
 const Label = ({ children, optional }) => (
   <label className="block text-sm font-normal text-gray-800 mb-1">
@@ -30,19 +31,31 @@ const clearBidStorage = () => {
 export default function CreateWorkstationBid() {
 
   // Always start fresh — no localStorage prefill
-  const [step, setStep] = useState(1);
-  const [allData, setAllData] = useState({ bid_id: null });
+  const [step, setStep] = useState(() => {
+    const savedStep = Number(localStorage.getItem("workstation_bid_step"));
+    return savedStep >= 1 && savedStep <= 4 ? savedStep : 1;
+  });
+  const [allData, setAllData] = useState(() => {
+    try {
+      const saved = localStorage.getItem("workstation_bid_data");
+      return saved ? JSON.parse(saved) : { bid_id: null };
+    } catch {
+      return { bid_id: null };
+    }
+  });
 
   // sessionStarted = false means a fresh open; Step1Form will be blank.
   // sessionStarted = true means Step 1 was submitted; data remains when navigating back.
-  const [sessionStarted, setSessionStarted] = useState(false);
+  const [sessionStarted, setSessionStarted] = useState(() => {
+    try {
+      const saved = localStorage.getItem("workstation_bid_data");
+      return Boolean(saved && JSON.parse(saved)?.bid_id);
+    } catch {
+      return false;
+    }
+  });
 
   // On mount: clear any leftover data from previous sessions
-  useEffect(() => {
-    clearBidStorage();
-    setSessionStarted(false);
-  }, []);
-
   // Save step to localStorage only while navigating between steps
   useEffect(() => {
     localStorage.setItem("workstation_bid_step", step);
@@ -97,6 +110,11 @@ export default function CreateWorkstationBid() {
     setStep(3);
   };
 
+  const handleSummaryNext = (summaryData) => {
+    setAllData((prev) => ({ ...prev, ...summaryData }));
+    setStep(4);
+  };
+
   // Step 3 final submit → success
   const handleStep3Success = () => {
     alert("Bid Created Successfully ✅");
@@ -119,18 +137,15 @@ export default function CreateWorkstationBid() {
               onClick={handleHeaderBack}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-gray-300 bg-white text-gray-700 text-sm font-semibold hover:bg-slate-800 hover:text-white hover:border-slate-800 transition-all duration-200 shadow-sm"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
-              </svg>
               Back
             </button>
 
             <span className="text-lg font-black text-gray-900 tracking-tight">
-              Create New Workstation Bid
+              Create New Bid
             </span>
             <div className="h-6 w-[1px] bg-gray-200"></div>
             <span className="text-blue-600 font-bold text-sm">
-              Step {step} of 3
+              Step {step} of 4
             </span>
           </div>
 
@@ -138,7 +153,7 @@ export default function CreateWorkstationBid() {
           <div className="w-1/3 h-[6px] bg-gray-100 rounded-full overflow-hidden">
             <div
               className="h-full bg-blue-600 transition-all duration-500 ease-out"
-              style={{ width: `${(step / 3) * 100}%` }}
+              style={{ width: `${(step / 4) * 100}%` }}
             ></div>
           </div>
         </div>
@@ -156,11 +171,17 @@ export default function CreateWorkstationBid() {
           <WorkstationConfig bidData={allData} onNext={handleStep2Submit} onBack={() => setStep(1)} />
         )}
         {step === 3 && (
-          <WorkstationDocument  
-          
+          <WorkstationBidSummary
+            bidData={allData}
+            onNext={handleSummaryNext}
+            onBack={() => setStep(2)}
+          />
+        )}
+        {step === 4 && (
+          <WorkstationDocument
             bidData={allData}
             onSuccess={handleStep3Success}
-            onBack={() => setStep(2)}
+            onBack={() => setStep(3)}
           />
         )}
       </div>
@@ -324,12 +345,15 @@ function Step1Form({ onNext, savedData }) {
             />
           </div>
           <div>
-            <Label>Pin Code</Label>
+            <Label>Buyer Pincode</Label>
             <Input
-              type="number"
-              placeholder="Enter PIN Code"
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={6}
+              placeholder="Enter Buyer Pincode"
               value={form.pincode}
-              onChange={(e) => handleChange("pincode", e.target.value)}
+              onChange={(e) => handleChange("pincode", e.target.value.replace(/\D/g, "").slice(0, 6))}
               required
             />
           </div>

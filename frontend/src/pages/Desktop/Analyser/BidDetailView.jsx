@@ -478,7 +478,7 @@ export default function BidDetailView({ product = "desktop" }) {
 
     setModelSearching(true);
     setModelMatches([]);
-    setShowModelResult(true);
+    setShowModelResult(false);
     setNoMatchFound(false);
     setNewModelInput("");
 
@@ -520,6 +520,7 @@ export default function BidDetailView({ product = "desktop" }) {
       if (!item?.model_no) {
         setModelMatches([]);
         setNoMatchFound(true);
+        setShowModelResult(false);
         return;
       }
 
@@ -531,6 +532,7 @@ export default function BidDetailView({ product = "desktop" }) {
 
       setModelMatches([singleModel]);
       setNoMatchFound(false);
+      setShowModelResult(true);
     } catch (error) {
       console.error(error);
       alert("Network error — unable to connect to the server.");
@@ -592,7 +594,7 @@ export default function BidDetailView({ product = "desktop" }) {
   };
 
   const handleCreateNewModel = async () => {
-    const trimmed = newModelInput.trim();
+    const trimmed = modelInputValue.trim();
     if (!trimmed) { alert("Please enter a model number."); return; }
     const updatedData = await saveModelNumberToDB(trimmed);
     if (!updatedData) return;
@@ -769,7 +771,7 @@ export default function BidDetailView({ product = "desktop" }) {
         if (!startResult.result?.tabId) {
           throw new Error("Chrome did not confirm that the GeM login tab was opened.");
         }
-        setMsg("GeM login opened. Log in manually, then open Add New Offering.");
+        setMsg("");
       }
     } catch (error) {
       setMsg(error.message || "Unable to queue GeM upload.");
@@ -864,7 +866,7 @@ export default function BidDetailView({ product = "desktop" }) {
   );
 
   return (
-    <div className="container mx-auto px-4 mt-4 max-w-6xl pb-10">
+    <div className="container mx-auto px-4 mt-4 max-w-6xl pb-10 bg-white">
       <div className="flex items-center justify-between mb-6 pt-2 border-b pb-4">
         <div className="flex items-center gap-4">
           <HeaderBackButton />
@@ -906,7 +908,12 @@ export default function BidDetailView({ product = "desktop" }) {
         </div>
       )}
 
-      <form onSubmit={handleSubmit}>
+      <form
+        onSubmit={handleSubmit}
+        className={isPending
+          ? "[&_label]:!font-semibold [&_label]:!text-slate-800 [&_input]:!border-blue-300 [&_input]:!text-slate-900 [&_input]:placeholder:!text-slate-500 [&_select]:!border-blue-300 [&_select]:!text-slate-900 [&_textarea]:!border-blue-300 [&_textarea]:!text-slate-900 [&_textarea]:placeholder:!text-slate-500"
+          : ""}
+      >
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4">
 
           <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="bid_no" label="Bid Number">
@@ -1079,86 +1086,69 @@ export default function BidDetailView({ product = "desktop" }) {
             </div>
           </VerifiedInputWrapper>
 
-          <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="optional_ports" label="Optional Ports" optional>
-            <textarea name="optional_ports" value={form?.optional_ports || ""} onChange={handleChange} disabled={readOnly} rows={2} className={textareaCls} placeholder="e.g. Serial Port, Display Port, USB Type-C" />
-          </VerifiedInputWrapper>
+          <div className={isPending ? "grid min-w-0 grid-cols-1" : "md:col-span-2 lg:col-span-3 grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6"}>
+            <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="optional_ports" label="Optional Ports" optional>
+              <textarea name="optional_ports" value={form?.optional_ports || ""} onChange={handleChange} disabled={readOnly} rows={2} className={textareaCls} placeholder="e.g. Serial Port, Display Port, USB Type-C" />
+            </VerifiedInputWrapper>
 
-          {showGemUpload && readOnly && isApproved && (
-            <div className="md:col-span-2 lg:col-span-3 rounded-lg border border-slate-300 bg-slate-50 p-4 shadow-sm">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <label className="block text-sm font-semibold text-slate-800">Total Approved Price</label>
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-slate-700">₹</span>
+            {showGemUpload && readOnly && isApproved && (
+              <div className="col-span-1 relative">
+                <div className="mb-1 h-5" aria-hidden="true" />
+                <div className="relative flex items-center">
+                  <span className="pointer-events-none absolute left-3 z-10 text-sm font-bold text-gray-700">
+                    Total Approved Price
+                  </span>
                   <input
                     type="text"
                     value={
                       Number(form?.total_price) > 0
-                        ? Number(form.total_price).toLocaleString("en-IN", {
+                        ? `₹ ${Number(form.total_price).toLocaleString("en-IN", {
                             minimumFractionDigits: 2,
                             maximumFractionDigits: 2,
-                          })
+                          })}`
                         : ""
                     }
                     readOnly
                     disabled
                     placeholder="0.00"
-                    className="w-48 rounded-md border border-slate-300 bg-slate-100 px-3 py-2 text-right text-lg font-semibold text-slate-800"
+                    className="h-[58px] min-w-0 flex-1 rounded-md border border-gray-300 bg-gray-100 py-2 pl-44 pr-3 text-right text-base font-semibold text-slate-800"
                   />
                 </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
-          {readOnly && isApproved && (
-            <div className="md:col-span-2 lg:col-span-3 border border-indigo-200 bg-indigo-50 p-4 rounded-lg">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                <div className="flex-1">
-                  <label className="block text-sm font-semibold text-indigo-950 mb-1">GeM upload</label>
-                  <div className="w-full border border-indigo-200 bg-white rounded-md px-3 py-2 text-sm text-slate-700">
-                    Manual login in the GeM tab
-                  </div>
-                  <p className="text-xs text-indigo-700 mt-2">
-                    Status: <span className="font-semibold">{String(form?.gem_status || "not_started").replaceAll("_", " ")}</span>
-                    {form?.gem_error ? ` - ${form.gem_error}` : ""}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleGemJobUpload}
-                  disabled={gemStarting}
-                  className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white font-semibold px-6 py-2.5 rounded-md text-sm transition"
-                >
-                  Upload to GeM
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="mt-8 mb-4">
-          <div className="relative flex items-center gap-2 bg-gray-50 p-2 rounded-lg border border-gray-300 w-fit">
+        <div className={isPending ? "min-w-0" : "md:col-start-2 md:row-start-3 lg:col-start-3 lg:row-start-2"}>
+          <div className={`relative flex items-center gap-2 rounded-lg border p-2 ${isPending ? "w-fit border-blue-300 bg-blue-50/60 shadow-sm" : "h-full border-gray-300 bg-gray-50"}`}>
             <div className="flex flex-col">
-              <label className="text-[10px] font-bold text-gray-500 uppercase ml-1">Assigned Model</label>
+              <label className={`mb-1 text-sm font-bold ${isPending ? "text-blue-900" : "text-gray-700"}`}>Assigned Model</label>
               <input
                 type="text"
                 name="model_number"
                 value={modelInputValue}
                 onChange={handleModelInputChange}
-                placeholder={readOnly ? "No model assigned" : "Search model..."}
-                disabled={readOnly}
-                className="border border-gray-300 rounded px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 outline-none w-64 font-semibold disabled:bg-gray-100 disabled:text-gray-600"
+                placeholder={readOnly ? "No model assigned" : noMatchFound ? "Enter model number manually..." : "Search model..."}
+                disabled={readOnly || modelSearching || showModelResult}
+                className={`rounded border px-3 py-1.5 text-sm outline-none w-64 font-semibold focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500 ${isPending ? "border-blue-300 bg-white text-slate-900 placeholder:text-slate-500" : "border-gray-300 text-gray-800"}`}
               />
             </div>
 
             {!readOnly && (
               <button
                 type="button"
-                onClick={handleFindModel}
-                disabled={modelSearching || modelSaving}
-                className={`mt-4 ${isReAnalyze && hasExistingModel ? 'bg-amber-600 hover:bg-amber-700' : 'bg-slate-700 hover:bg-slate-800'} disabled:bg-slate-400 text-white px-3 py-1.5 rounded text-xs font-bold transition shadow-sm`}
+                onClick={noMatchFound ? handleCreateNewModel : handleFindModel}
+                disabled={modelSearching || modelSaving || showModelResult}
+                className={`mt-4 whitespace-nowrap ${noMatchFound ? 'bg-blue-600 hover:bg-blue-700' : isReAnalyze && hasExistingModel ? 'bg-amber-600 hover:bg-amber-700' : 'bg-slate-700 hover:bg-slate-800'} disabled:bg-slate-400 text-white px-3 py-1.5 rounded text-xs font-bold transition shadow-sm`}
               >
-                {modelSearching ? "Searching..." : (isReAnalyze && hasExistingModel) ? "Change Model" : "Find Model"}
+                {modelSaving ? "Saving..." : modelSearching ? "Searching..." : noMatchFound ? "Save Model" : (isReAnalyze && hasExistingModel) ? "Change Model" : "Find Model"}
               </button>
+            )}
+
+            {noMatchFound && !readOnly && !showModelResult && (
+              <div className="ml-1 w-52 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs leading-4 text-amber-800">
+                <span className="font-bold">No matching model found.</span>{" "}
+                Please create a new model number.
+              </div>
             )}
 
             {readOnly && isReAnalyze && hasExistingModel && (
@@ -1241,14 +1231,15 @@ export default function BidDetailView({ product = "desktop" }) {
             )}
           </div>
         </div>
+        </div>
 
-        <div className="mb-10 flex gap-3 items-center flex-wrap">
+        <div className="mt-5 mb-10 flex gap-3 items-center flex-wrap">
           {!readOnly && (
             <button
               type="button"
               disabled={!allVerified || submitting || modelSaving}
               onClick={handleNextClick}
-              className={`font-semibold px-8 py-2.5 rounded-md text-sm transition flex items-center gap-2 ${
+              className={`order-2 font-semibold px-8 py-2.5 rounded-md text-sm transition flex items-center gap-2 ${
                 allVerified ? "bg-blue-600 hover:bg-blue-700 text-white shadow-md" : "bg-gray-200 text-gray-400 cursor-not-allowed"
               }`}
             >
@@ -1273,13 +1264,27 @@ export default function BidDetailView({ product = "desktop" }) {
           <button
             type="button"
             onClick={() => navigate(-1)}
-            className="flex items-center gap-1.5 bg-white border border-gray-300 hover:bg-slate-800 hover:text-white hover:border-slate-800 text-gray-700 font-semibold px-8 py-2.5 rounded-md text-sm transition-all duration-200 shadow-sm"
+            className={`${readOnly ? "" : "order-1"} flex items-center gap-1.5 bg-white border border-gray-300 hover:bg-slate-800 hover:text-white hover:border-slate-800 text-gray-700 font-semibold px-8 py-2.5 rounded-md text-sm transition-all duration-200 shadow-sm`}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
             </svg>
             {readOnly ? "Back" : "Cancel"}
           </button>
+
+          {readOnly && isApproved && (
+            <button
+              type="button"
+              onClick={handleGemJobUpload}
+              disabled={gemStarting}
+              className="ml-auto inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-indigo-600 via-violet-600 to-purple-600 px-7 py-2.5 text-sm font-bold text-white shadow-lg shadow-indigo-200 transition-all duration-200 hover:-translate-y-0.5 hover:from-indigo-700 hover:via-violet-700 hover:to-purple-700 hover:shadow-xl disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.25" d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 15v4a1 1 0 001 1h12a1 1 0 001-1v-4" />
+              </svg>
+              {gemStarting ? "Opening GeM..." : "Upload to GeM"}
+            </button>
+          )}
         </div>
       </form>
     </div>
