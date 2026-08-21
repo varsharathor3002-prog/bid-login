@@ -175,6 +175,21 @@ const WORKSTATION_SECTIONS = [
   },
 ];
 
+// AIO's catalogue rows come straight from aio_specs.xlsx (see backend's
+// import_aio_products.py) — only these fields actually exist for them.
+// Falling through to GEM_SECTIONS (Desktop's ~80-field taxonomy: PCIe slots,
+// cabinet bays, DIMM slots...) showed AIO products full of blank fields that
+// don't apply to an All-in-One PC at all.
+const AIO_SECTIONS = [
+  { title: "PROCESSOR", fields: ["Processor Number"] },
+  { title: "MEMORY (RAM)", fields: ["RAM"] },
+  { title: "STORAGE", fields: ["SSD"] },
+  { title: "OPERATING SYSTEM", fields: ["Operating System"] },
+  { title: "DISPLAY", fields: ["Screen Size"] },
+  { title: "CONNECTIVITY & PORTS", fields: ["WiFi / Bluetooth", "Ports"] },
+  { title: "INPUT DEVICES", fields: ["Keyboard & Mouse"] },
+];
+
 const PRINTER_SECTIONS = [
   {
     title: "GENERAL PRODUCT INFO",
@@ -681,6 +696,25 @@ function getExtraSpecs(product) {
   return normalizedSpecs;
 }
 
+function isAioProduct(product) {
+  return String(product?.category || "").toLowerCase() === "aio" ||
+    String(product?.id || "").toLowerCase().startsWith("aio-");
+}
+
+function getAioSpecs(product) {
+  const raw = getRawExtraSpecs(product);
+  return {
+    "Processor Number": cleanDisplayValue(raw["Processor Number"] || product?.processor),
+    "RAM": cleanDisplayValue(raw.RAM || product?.ram),
+    "SSD": cleanDisplayValue(raw.SSD || product?.storage),
+    "Operating System": cleanDisplayValue(raw["Operating System"] || product?.os),
+    "Screen Size": cleanDisplayValue(raw["Screen Size"]),
+    "WiFi / Bluetooth": cleanDisplayValue(raw["WiFi Bluetooth"]),
+    "Ports": cleanDisplayValue(raw["Motherboard Ports"]),
+    "Keyboard & Mouse": cleanDisplayValue(raw["Keyboard Mouse"]),
+  };
+}
+
 function isWorkstationProduct(product) {
   return String(product?.category || "").toLowerCase() === "workstation" ||
     String(product?.id || "").toLowerCase().startsWith("workstation-");
@@ -795,7 +829,7 @@ async function parseJsonResponse(res) {
   const text = await res.text();
 
   if (!contentType.includes("application/json")) {
-    throw new Error(`The backend did not return JSON. Status: ${res.status}`);
+    throw new Error(`Backend JSON nahi de raha. Status: ${res.status}`);
   }
 
   const data = text ? JSON.parse(text) : {};
@@ -811,16 +845,21 @@ function ProductDetailsModal({ product, onClose, onDeleted, onEdited }) {
 
   const workstation = isWorkstationProduct(product);
   const printer = isPrinterProduct(product);
+  const aio = isAioProduct(product);
   const specs = printer
     ? getPrinterSpecs(product)
     : workstation
       ? getWorkstationSpecs(product)
-      : getExtraSpecs(product);
+      : aio
+        ? getAioSpecs(product)
+        : getExtraSpecs(product);
   const sections = printer
     ? PRINTER_SECTIONS
     : workstation
       ? WORKSTATION_SECTIONS
-      : GEM_SECTIONS;
+      : aio
+        ? AIO_SECTIONS
+        : GEM_SECTIONS;
 
   const deleteProduct = async () => {
     setDeleting(true);

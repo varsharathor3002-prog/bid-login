@@ -32,6 +32,29 @@ from .views.Printer import (
     generate_printer_certificates,
 )
 from .views import ProductDashboard as product_dashboard
+from .views.Aio import (
+    create_aio_bid,
+    update_aio_bid,
+    list_aio_bids,
+    get_aio_bid,
+    review_aio_bid,
+    admin_review_aio_bid,
+    delete_aio_bid,
+    generate_aio_documents,
+    update_aio_docs,
+    match_aio_catalogue_models,
+    save_aio_model_number,
+)
+from .views.AioGem import (
+    create_aio_gem_upload_job,
+    aio_gem_jobs,
+    aio_gem_job_detail,
+    extension_aio_jobs,
+    extension_aio_claim_job,
+    extension_aio_report_job,
+    retry_aio_gem_job,
+    update_aio_gem_status,
+)
 
 
 
@@ -88,6 +111,9 @@ urlpatterns = [
     path("desktop-bids/<int:bid_id>/", views.get_desktop_bid, name="get_desktop_bid"),
     path("desktop-bids/<int:bid_id>/review/", views.review_desktop_bid, name="review_desktop_bid"),
     path("desktop-bids/<int:bid_id>/admin-review/", views.admin_review_desktop_bid, name="admin_review_desktop_bid"),
+    # gem/accounts/ routes removed with the GemAccount model
+    # (migration 0053_remove_gemaccount) — no view functions for them exist
+    # anymore, this repo's own urls.py (post-refactor) never re-added them.
     path("gem/jobs/", views.gem_jobs, name="gem_jobs"),
     path("gem/jobs/<int:job_id>/", views.gem_job_detail, name="gem_job_detail"),
     path("gem/extension/jobs/", views.extension_jobs, name="extension_jobs"),
@@ -123,6 +149,27 @@ urlpatterns = [
     path("admin/desktop-bids/monthly-performance/", views.admin_desktop_monthly_performance, name="admin_desktop_monthly_performance"),
     path("admin/desktop-bids/daily-activity/", views.admin_desktop_daily_activity, name="admin_desktop_daily_activity"),
     path("admin/desktop-bids/stats/", views.admin_desktop_stats, name="admin_desktop_stats"),
+
+
+    path("aio-bids/create/", create_aio_bid, name="create_aio_bid"),
+    path("aio-bids/list/", list_aio_bids, name="list_aio_bids"),
+    path("aio-bids/<int:bid_id>/update/", update_aio_bid, name="update_aio_bid"),
+    path("aio-bids/<int:bid_id>/review/", review_aio_bid, name="review_aio_bid"),
+    path("aio-bids/<int:bid_id>/admin-review/", admin_review_aio_bid, name="admin_review_aio_bid"),
+    path("aio-bids/<int:bid_id>/delete/", delete_aio_bid, name="delete_aio_bid"),
+    path("aio-bids/<int:bid_id>/match-catalogue/", match_aio_catalogue_models, name="match_aio_catalogue_models"),
+    path("aio-bids/<int:bid_id>/save-model-number/", save_aio_model_number, name="save_aio_model_number"),
+    path("aio-bids/<int:bid_id>/generate-docs/", generate_aio_documents, name="generate_aio_documents"),
+    path("aio-bids/<int:bid_id>/update-docs/", update_aio_docs, name="update_aio_docs"),
+    path("aio-bids/<int:bid_id>/gem-jobs/", create_aio_gem_upload_job, name="create_aio_gem_upload_job"),
+    path("aio-bids/<int:bid_id>/gem-status/", update_aio_gem_status, name="update_aio_gem_status"),
+    path("gem/aio-jobs/", aio_gem_jobs, name="aio_gem_jobs"),
+    path("gem/aio-jobs/<int:job_id>/", aio_gem_job_detail, name="aio_gem_job_detail"),
+    path("gem/extension/aio-jobs/", extension_aio_jobs, name="extension_aio_jobs"),
+    path("gem/extension/aio-jobs/<int:job_id>/claim/", extension_aio_claim_job, name="extension_aio_claim_job"),
+    path("gem/extension/aio-jobs/<int:job_id>/report/", extension_aio_report_job, name="extension_aio_report_job"),
+    path("gem/aio-jobs/<int:job_id>/retry/", retry_aio_gem_job, name="retry_aio_gem_job"),
+    path("aio-bids/<int:bid_id>/", get_aio_bid, name="get_aio_bid"),
 
 
     path("workstation-bids/create/", create_workstation_bid, name="create_workstation_bid"),
