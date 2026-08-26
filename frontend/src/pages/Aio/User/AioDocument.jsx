@@ -88,7 +88,16 @@ export default function AioDocument({ bidData, onSuccess }) {
       const data = await response.json();
 
       if (data.pdf_url) {
-        window.open(data.pdf_url, "_blank");
+        // Fetch fresh bytes (bypassing any HTTP/browser cache) and open as a
+        // blob URL instead of window.open(data.pdf_url) directly — otherwise
+        // a previously-viewed doc_type at a stale URL can render cached
+        // content in the new tab even though the server just generated
+        // fresh output.
+        const fileResponse = await fetch(data.pdf_url, { cache: "no-store" });
+        if (!fileResponse.ok) throw new Error("No PDF URL received");
+        const blob = await fileResponse.blob();
+        const blobUrl = window.URL.createObjectURL(blob);
+        window.open(blobUrl, "_blank");
       } else {
         throw new Error("No PDF URL received");
       }

@@ -44,6 +44,7 @@ from .views.Aio import (
     update_aio_docs,
     match_aio_catalogue_models,
     save_aio_model_number,
+    list_aio_catalogue_products,
 )
 from .views.AioGem import (
     create_aio_gem_upload_job,
@@ -158,6 +159,7 @@ urlpatterns = [
     path("aio-bids/<int:bid_id>/admin-review/", admin_review_aio_bid, name="admin_review_aio_bid"),
     path("aio-bids/<int:bid_id>/delete/", delete_aio_bid, name="delete_aio_bid"),
     path("aio-bids/<int:bid_id>/match-catalogue/", match_aio_catalogue_models, name="match_aio_catalogue_models"),
+    path("aio-catalogue/", list_aio_catalogue_products, name="list_aio_catalogue_products"),
     path("aio-bids/<int:bid_id>/save-model-number/", save_aio_model_number, name="save_aio_model_number"),
     path("aio-bids/<int:bid_id>/generate-docs/", generate_aio_documents, name="generate_aio_documents"),
     path("aio-bids/<int:bid_id>/update-docs/", update_aio_docs, name="update_aio_docs"),

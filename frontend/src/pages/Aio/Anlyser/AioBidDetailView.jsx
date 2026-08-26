@@ -150,7 +150,15 @@ function GeneralDocsViewPopup({ form }) {
     setGeneratingDocs((prev) => ({ ...prev, [docId]: true }));
     try {
       const pdfUrl = await getGeneratedPdfUrl(docId);
-      window.open(pdfUrl, "_blank", "noopener,noreferrer");
+      // Fetch fresh bytes (bypassing any HTTP/browser cache) and open as a
+      // blob URL instead of window.open(pdfUrl) directly — otherwise a
+      // previously-viewed doc_type at a stale URL can render cached content
+      // in the new tab even though the server just generated fresh output.
+      const response = await fetch(pdfUrl, { cache: "no-store" });
+      if (!response.ok) throw new Error("Unable to open document.");
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      window.open(blobUrl, "_blank", "noopener,noreferrer");
     } catch (error) {
       alert(error.message || "Unable to open document.");
     } finally {
@@ -612,14 +620,14 @@ export default function AioBidDetailView() {
   const priceCls = "w-20 shrink-0 border border-gray-200 rounded-md px-1 py-2 text-xs text-center text-gray-500 bg-gray-50 cursor-not-allowed";
   const textareaCls = "w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none disabled:bg-gray-100 bg-white";
 
-  const PriceSelect = ({ name, options }) => {
+  const PriceSelect = ({ name, options, hideNone }) => {
     const priceField = name === "screen_size" ? "screen_price" : `${name}_price`;
     return (
       <div className="flex w-full min-w-0 gap-2">
         <select name={name} value={form[name] || ""} onChange={handleChange} disabled={readOnly} className={flexInputCls}>
           <option value="">Select</option>
           {options.map((option) => <option key={option.name} value={option.name}>{option.name}</option>)}
-          <option value="None">None</option>
+          {!hideNone && <option value="None">None</option>}
         </select>
         <input type="text" value={form[priceField] || ""} readOnly disabled placeholder="Price" className={priceCls} />
       </div>
@@ -672,7 +680,7 @@ export default function AioBidDetailView() {
           <input type="number" name="qty" value={form.qty || ""} onChange={handleChange} disabled={readOnly} className={inputCls} />
         </VerifiedInputWrapper>
 
-        <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="pincode" label="Pincode">
+        <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="pincode" label="Buyer Pincode">
           <input type="text" name="pincode" value={form.pincode || ""} onChange={handleChange} disabled={readOnly} className={inputCls} />
         </VerifiedInputWrapper>
 
@@ -743,7 +751,7 @@ export default function AioBidDetailView() {
         </VerifiedInputWrapper>
 
         <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="motherboard" label="Motherboard">
-          <PriceSelect name="motherboard" options={AIO_MOTHERBOARDS} />
+          <PriceSelect name="motherboard" options={AIO_MOTHERBOARDS} hideNone />
         </VerifiedInputWrapper>
 
         <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="pro_descp" label="Processor Description" optional required={conditionalRequiredFields.includes("pro_descp")}>
@@ -951,7 +959,7 @@ export default function AioBidDetailView() {
         </div>
 
       {!readOnly && (
-        <div className="mt-6 border-t pt-6">
+        <div className="mt-6 pt-6">
           {/* Same to same as Desktop's BidDetailView: Next first, then
               Cancel, left-aligned — Desktop's step 1 has no Reject button at
               all (only Admin can reject/re-analyze a bid). */}
@@ -1001,7 +1009,7 @@ export default function AioBidDetailView() {
       )}
 
       {readOnly && (
-        <div className="mb-10 mt-8 border-t pt-6 flex justify-end">
+        <div className="mb-10 mt-4 flex justify-start">
           <button type="button" onClick={() => navigate(-1)}
             className="flex items-center gap-1.5 bg-white border border-gray-300 hover:bg-slate-800 hover:text-white hover:border-slate-800 text-gray-700 font-semibold px-8 py-2.5 rounded-md text-sm transition-all duration-200 shadow-sm">
             Back
