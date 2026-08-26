@@ -1,4 +1,4 @@
-import json, os, re, shutil
+import json, os, re, shutil, time
 from django.conf import settings
 from django.db import connection, models
 from django.http import JsonResponse
@@ -9,7 +9,7 @@ from ..models import User, CatalogueProduct
 # helpers, no DesktopBid dependency) so AIO's model search behaves the same way.
 from .Desktop import (
     _match_is_blank, _values_overlap_score, _catalogue_values_for_keys,
-    _monitor_size_match, _keyboard_match, _catalogue_extra_specs,
+    _monitor_size_match, _keyboard_match, _catalogue_extra_specs, _match_clean,
 )
 from django.db import IntegrityError, transaction
 
@@ -197,6 +197,37 @@ def admin_review_aio_bid(r,bid_id):
 def delete_aio_bid(r,bid_id):
     _ensure_table();n,_=AioBid.objects.filter(id=bid_id).delete();return JsonResponse({"message":"AIO bid deleted"} if n else {"error":"AIO bid not found"},status=200 if n else 404)
 
+# ---- Analyser's Catalogue Products page: same pattern as
+# list_workstation_catalogue_products/list_printer_catalogue_products
+# (Workstation.py) — a dedicated endpoint that hands back RAW extra_specs
+# instead of routing through Desktop's list_catalogue_products, whose
+# _catalogue_product_data/_normalize_extra_specs rebuilds extra_specs against
+# Desktop's own fixed spec-field list and silently drops anything not on it
+# (Screen Size, WiFi Bluetooth, Motherboard Ports, etc. — every AIO-only key).
+def list_aio_catalogue_products(r):
+    search=(r.GET.get("search") or "").strip().lower()
+    products=[]
+    for cp in CatalogueProduct.objects.filter(category__iexact="aio").order_by("-created_at"):
+        extra_specs=_catalogue_extra_specs(cp)
+        product={
+            "id":f"aio-catalogue-{cp.id}","catalogue_id":cp.id,"model_no":cp.model_no or "",
+            "category":cp.category or "aio",
+            "processor":cp.processor or extra_specs.get("Processor Number",""),
+            "ram":cp.ram or extra_specs.get("RAM",""),
+            "storage":cp.storage or extra_specs.get("Storage",""),
+            "os":cp.os or extra_specs.get("Operating System",""),
+            "screen_size":extra_specs.get("Screen Size",""),
+            "wifi":extra_specs.get("WiFi Bluetooth",""),
+            "motherboard":extra_specs.get("Motherboard Ports",""),
+            "keyboard":extra_specs.get("Keyboard Mouse",""),
+            "description":cp.description or "All in One PC",
+            "extra_specs":extra_specs,"source":"catalogue",
+        }
+        products.append(product)
+    if search:
+        products=[p for p in products if search in p["model_no"].lower() or search in p["description"].lower()]
+    return JsonResponse(products,safe=False,status=200)
+
 # ---- Catalogue model matching ("Find Model"), same approach as Desktop but
 # scoped to AIO's own aio_specs.xlsx catalogue (CatalogueProduct category="aio").
 AIO_CATALOGUE_FIELD_MAP={
@@ -209,12 +240,44 @@ AIO_CATALOGUE_FIELD_MAP={
 }
 MIN_STRONG_MATCH_FIELDS_AIO=4
 
+def _aio_storage_gb(value):
+    # aio_specs.xlsx always spells 1TB-class drives out as "1024 GB" (binary),
+    # never "1 TB" — but Desktop's shared _storage_to_gb treats "1 TB" as a
+    # decimal 1000, so a bid built from AIO_SSDS's "1 TB NVMe" option would
+    # never line up with the catalogue's "1024 GB NVMe" (1000 != 1024) and
+    # silently kill the whole match. This mirrors _storage_to_gb but uses
+    # 1024 for the TB conversion to match aio_specs.xlsx's own convention.
+    text=_match_clean(value)
+    if not text:return None
+    m_tb=re.search(r"(\d+(?:\.\d+)?)\s*tb",text)
+    if m_tb:return int(float(m_tb.group(1))*1024)
+    m_gb=re.search(r"(\d+(?:\.\d+)?)\s*gb",text)
+    if m_gb:return int(float(m_gb.group(1)))
+    return None
+
+def _aio_ssd_match(bid_value,product,catalogue_keys):
+    if _match_is_blank(bid_value):return None
+    b_gb=_aio_storage_gb(bid_value)
+    candidates=[]
+    if product.storage:candidates.append(("ssd (catalogue summary)",str(product.storage)))
+    candidates.extend(_catalogue_values_for_keys(product,catalogue_keys))
+    if not candidates:return False,"","",-1
+    best_key=best_value="";best_score=-1
+    for key_label,value in candidates:
+        c_gb=_aio_storage_gb(value)
+        score=2200 if (b_gb is not None and c_gb is not None and b_gb==c_gb) else _values_overlap_score(bid_value,value)
+        if score>best_score:best_score,best_key,best_value=score,key_label,value
+    return best_score>=100,best_key,best_value,best_score
+
 def _best_catalogue_match_aio(bid_key,bid_value,product,catalogue_keys):
     if _match_is_blank(bid_value):return None,"","",-1
     if bid_key=="screen_size":
         m=_monitor_size_match(bid_value,product,catalogue_keys)
         if m is not None:return m
     if bid_key=="keyboard":return _keyboard_match(bid_value,product,catalogue_keys)
+    if bid_key=="ssd":
+        m=_aio_ssd_match(bid_value,product,catalogue_keys)
+        if m is not None:return m
     direct_map={"processor":product.processor or "","ram":product.ram or "","ssd":product.storage or "","os":product.os or ""}
     candidates=[]
     direct_value=direct_map.get(bid_key,"")
@@ -294,7 +357,12 @@ def save_aio_model_number(r,bid_id):
         "Processor Number":b.processor or "","RAM":b.ram or "","Storage":storage,
         "Operating System":b.os or "","Screen Size":b.screen_size or "",
         "WiFi Bluetooth":b.wifi or "","Keyboard Mouse":b.keyboard or "",
-        "Ports":b.motherboard or "","Optical Drive":b.dvd or "",
+        # Key must be "Motherboard Ports", not "Ports" — the Analyser's
+        # catalogue product detail view (AnalyserProductsPage.jsx) reads
+        # raw["Motherboard Ports"] for the CONNECTIVITY & PORTS section;
+        # the mismatched key was silently showing "NA" for every bid-derived
+        # (non aio_specs.xlsx) catalogue entry.
+        "Motherboard Ports":b.motherboard or "","Optical Drive":b.dvd or "",
         "On Site OEM Warranty (in Year)":b.warranty or "",
     }
     try:
@@ -330,6 +398,22 @@ _AIO_WORDING_FIXES=[
     (re.compile(r'\bAcxxel\s+Desktops\b',re.I),'Acxxel All in One PCs'),
     (re.compile(r'\bdesktop\s+computer\b',re.I),'All in One PC'),
     (re.compile(r'\bSince\s+desktop\s+has\b',re.I),'Since All in One PC has'),
+    # Wherever the template's own baked-in text still shouts "ACXXEL" in all
+    # caps (brand mentions, trademark lines, section headings...), lowercase
+    # it to match the brand's actual styling used everywhere else in these
+    # documents — case-sensitive on purpose, so "Acxxel" (title case) is left
+    # alone and only the literal all-caps spelling is touched.
+    (re.compile(r'\bACXXEL\b'),'acxxel'),
+    # Non-Obsolete certificate's residual-market-life guarantee — only appears
+    # on that one page in the template.
+    (re.compile(r'\b3\s*\(Three\)',re.I),'5 (Five)'),
+    # Service Support certificate's escalation-matrix intro line — only
+    # appears on that one page in the template.
+    (re.compile(r'\bEscalation matrix below reference\s*:',re.I),'Escalation matrix for service support is as follows:'),
+    # Non Return of Hard Disk certificate's device list — only appears on
+    # that one page in the template. Keep the original Desktop/Laptop
+    # wording as-is, just add All in One Computers to the list alongside them.
+    (re.compile(r'Desktop\s+Computers\s*/\s*Laptops',re.I),'Desktop Computers/ Laptops/ All in One Computers'),
 ]
 def _fix_aio_product_wording(page,fitz):
     edits=[]
@@ -340,13 +424,46 @@ def _fix_aio_product_wording(page,fitz):
                 if not text.strip():continue
                 new_text=text
                 for pat,repl in _AIO_WORDING_FIXES:new_text=pat.sub(repl,new_text)
-                if new_text!=text:edits.append((fitz.Rect(span["bbox"]),new_text,span.get("size",10.5)))
+                if new_text!=text:
+                    is_bold=bool(span.get("flags",0)&16)
+                    edits.append((fitz.Rect(span["bbox"]),text,new_text,span.get("size",10.5),is_bold))
     if not edits:return
-    for rect,_,_ in edits:
-        page.add_redact_annot(fitz.Rect(rect.x0-1,rect.y0-1,min(page.rect.width-36,rect.x1+90),rect.y1+2),fill=(1,1,1))
+    # Buffer is sized to how much LONGER the replacement text is, not a flat
+    # amount — a same-length swap like "ACXXEL"->"acxxel" needs none at all,
+    # and a flat +90 here was over-redacting to the right of short spans
+    # sitting mid-sentence, wiping out neighbouring spans' text (a different
+    # span on the same line) that this pass never reinserts because it never
+    # matched anything itself.
+    for rect,old_text,new_text,size,is_bold in edits:
+        extra=max(0,len(new_text)-len(old_text))*size*0.6
+        # No vertical padding: adjacent lines in these templates can sit as
+        # little as ~0.1pt apart (see the "ACXXEL SERVICE PARTNERS" / "TOLL
+        # FREE No..." pair on the service_support page), so even +1/+2pt of
+        # slop here clips the top of whatever line comes right after.
+        redact_rect=fitz.Rect(rect.x0,rect.y0,min(page.rect.width-36,rect.x1+extra),rect.y1)
+        # Most of these spans sit on a plain white page (the vast majority of
+        # AIO's ACXXEL/wording fixes), so redacting to white is right almost
+        # everywhere — but a few (the "ACXXEL SERVICE PARTNERS" yellow banner
+        # on the service_support page) sit on a solid colour block, and
+        # redacting those to white punches a visible white hole in it.
+        bg=(1,1,1)
+        try:
+            for dwg in page.get_drawings():
+                if not dwg.get("fill"):continue
+                drect=fitz.Rect(dwg["rect"])
+                if drect.get_area()<=100 or not drect.intersects(redact_rect):continue
+                fill=dwg["fill"]
+                if fill and len(fill)>=3 and not (fill[0]>0.97 and fill[1]>0.97 and fill[2]>0.97):
+                    bg=fill;break
+        except Exception:pass
+        page.add_redact_annot(redact_rect,fill=bg)
     page.apply_redactions()
-    for rect,text,size in edits:
-        page.insert_text((rect.x0,rect.y1-2),text,fontsize=size,fontname="helv",color=(0,0,0))
+    for rect,old_text,new_text,size,is_bold in edits:
+        # Match the original span's weight (the template's own embedded fonts
+        # can't be referenced directly by name here, but at least keeping
+        # bold-vs-regular consistent avoids a jarring font/weight mismatch
+        # against the surrounding untouched text on the same line).
+        page.insert_text((rect.x0,rect.y1-2),new_text,fontsize=size,fontname="hebo" if is_bold else "helv",color=(0,0,0))
 
 # These same narrative certificates carry a sample "To," recipient block
 # (a leftover real department/GSTIN from whoever's bid the template was last
@@ -427,6 +544,238 @@ def _force_tender_no_date(page,fitz,bid_no,date):
         insert_x,insert_y=128,(subject_rect.y0-28 if subject_rect else 330)
     page.insert_text((insert_x,insert_y),tender_text,fontsize=11,fontname="hebo",color=(0,0,0))
 
+# The MAF/AUTHORIZATIONLETTER page's body paragraph (between "Dear Sir/Madam,"
+# and the "Auth. Signatory" signature block) is replaced wholesale with the
+# fixed MAF wording below — same approach as the Warranty/Make in India
+# paragraph rewrites: redact the old block (including the old signature
+# block), draw the new longer text, then redraw the signature block (and its
+# signature image, extracted before the redaction wipes it) further down to
+# make room.
+def _fill_manufacturer_auth_body(page,fitz):
+    def _lines():
+        out=[]
+        for block in page.get_text("dict").get("blocks",[]):
+            if block.get("type")!=0:continue
+            for line in block.get("lines",[]):
+                text=" ".join(s["text"] for s in line.get("spans",[]))
+                out.append((line["bbox"],text.strip()))
+        out.sort(key=lambda lx:lx[0][1]);return out
+
+    lines=_lines()
+    dear_idx=next((i for i,(b,t) in enumerate(lines) if t.rstrip(",").strip().lower()=="dear sir/madam"),None)
+    if dear_idx is None:return
+    body_start=dear_idx+1
+    contact_idx=next((i for i in range(body_start,len(lines)) if re.search(r"contact\s*no",lines[i][1],re.I)),None)
+    if contact_idx is None:return
+
+    region_x0=min(b[0] for b,t in lines[body_start:contact_idx+1] if t)
+    region_y0=lines[body_start][0][1]
+    region_x1=page.rect.width-42
+    region_y1=lines[contact_idx][0][3]+4
+
+    # Pull the signature stamp image out before it gets whited out, so it can
+    # be redrawn lower down alongside the pushed-down signature block.
+    sig_bytes=sig_w=sig_h=None
+    for img in page.get_images(full=True):
+        for r in page.get_image_rects(img[0]):
+            if r.y0>=region_y0-20 and r.y1<=region_y1+10 and (r.x1-r.x0)<300:
+                sig_bytes=page.parent.extract_image(img[0]).get("image")
+                sig_w,sig_h=r.x1-r.x0,r.y1-r.y0
+                break
+        if sig_bytes:break
+
+    page.add_redact_annot(fitz.Rect(region_x0-2,region_y0-2,region_x1,region_y1+2),fill=(1,1,1))
+    page.apply_redactions()
+
+    fontsize=10.5;line_height=14.5;x=region_x0;max_width=region_x1-x-4
+    y=region_y0+9
+    y=_draw_inline_paragraph(page,x,y,line_height,max_width,[
+        ("This is to confirm that we, ",False),("Laps N Tabs Technology Pvt. Ltd",True),
+        (", are Brand Holder of Brand ",False),("\"acxxel\"",True),(" and manufacturer of All in One Computer.",False),
+    ],fitz,fontsize=fontsize)
+    y+=line_height*1.4
+    for item in ["i. All in one Computer","ii. Desktop Computer","iii. Workstation Computer","iv. Multi Function Laser Printer","v. Laser Printer","vi. Printer Toner"]:
+        page.insert_text((x+16,y),item,fontsize=fontsize,fontname="helv",color=(0,0,0))
+        y+=line_height
+    y+=line_height*0.4
+    y=_draw_inline_paragraph(page,x,y,line_height,max_width,[
+        ("All above products are listed on Gem under ",False),("Brand \"acxxel\"",True),(".",False),
+    ],fitz,fontsize=fontsize)
+    y+=line_height*1.4
+    y=_draw_inline_paragraph(page,x,y,line_height,max_width,[
+        ("Being OEM of the above products, we are directly participating. OEM are not required to "
+         "furnish any authorization. The copy of the Brand Registration Certificate is attached.",False),
+    ],fitz,fontsize=fontsize)
+    y+=line_height*1.7
+
+    page.insert_text((x,y),"Auth. Signatory",fontsize=10.5,fontname="hebo",color=(0,0,0));y+=line_height
+    page.insert_text((x,y),"For Laps N Tabs Technology Pvt. Ltd.",fontsize=10.5,fontname="hebo",color=(0,0,0))
+    sig_y=y+8
+    if sig_bytes:
+        page.insert_image(fitz.Rect(x+1.5,sig_y,x+1.5+(sig_w or 141),sig_y+(sig_h or 43)),stream=sig_bytes,keep_proportion=False)
+        y=sig_y+(sig_h or 43)+10
+    else:
+        y=sig_y+10
+    page.insert_text((x,y),"Name:-DevankRastogi",fontsize=10.5,fontname="hebo",color=(0,0,0));y+=line_height
+    page.insert_text((x,y),"Designation:- Director",fontsize=10.5,fontname="hebo",color=(0,0,0));y+=line_height
+    page.insert_text((x,y),"Email:- lapsntabs123@gmail.com",fontsize=10.5,fontname="hebo",color=(0,0,0));y+=line_height
+    page.insert_text((x,y),"Contact No.:- 9918200166",fontsize=10.5,fontname="hebo",color=(0,0,0))
+
+# The Service Support certificate's escalation-matrix table (Level 1/2/3, all
+# static company contacts — nothing here comes from the bid) is redrawn from
+# scratch with a 4th row inserted, rather than patched in place like the
+# earlier single-line "Saurabh Singh -> Madhuri Pal" swap used to do, since
+# adding a row means every row below it has to move down too.
+def _fill_service_support_escalation(page,fitz):
+    lines=[]
+    for block in page.get_text("dict").get("blocks",[]):
+        for line in block.get("lines",[]):
+            t=" ".join(s.get("text","") for s in line.get("spans",[])).strip()
+            if t:lines.append((fitz.Rect(line["bbox"]),t))
+    lines.sort(key=lambda x:x[0].y0)
+    if not any(t=="Level 1" for _,t in lines):return
+
+    # The new table is taller than the old 3-row one (a 4th row, and Level 4's
+    # value needs 3 wrapped lines to fit two email addresses) — so the
+    # signature block below it (Auth. Signatory / company line / signature
+    # image / Name-Designation-Email-Contact) has to move down to make room,
+    # not just the table itself. Redact and redraw the whole thing as one unit.
+    x0,x1=71.4,524.4;col_bounds=[71.4,184.32,302.4,524.4]
+    table_top=301;block_bottom=565
+
+    sig_bytes=sig_w=sig_h=None
+    for img in page.get_images(full=True):
+        for r in page.get_image_rects(img[0]):
+            if r.y0>=table_top and r.y1<=block_bottom and (r.x1-r.x0)<250:
+                sig_bytes=page.parent.extract_image(img[0]).get("image")
+                sig_w,sig_h=r.x1-r.x0,r.y1-r.y0
+                break
+        if sig_bytes:break
+
+    page.add_redact_annot(fitz.Rect(x0-2,table_top-2,x1+2,block_bottom),fill=(1,1,1))
+    page.apply_redactions()
+
+    rows=[
+        ("Level 1","Toll free number","1800-313-9020",29,11),
+        ("Level 2","Technical Support","9918200554",29,11),
+        ("Level 3","Service Head","Madhuri Pal - 9519598884",29,11),
+        ("Level 4","Director","Devank Rastogi -\ndevank.devlok@gmail.com,\ndevesh.rastogi@gmail.com",56,9),
+    ]
+    gap=3;y=table_top
+    for level,label,value,row_height,value_fontsize in rows:
+        for ci in range(3):
+            page.draw_rect(fitz.Rect(col_bounds[ci],y,col_bounds[ci+1],y+row_height),fill=(0.847,0.847,0.847),color=None)
+        page.insert_textbox(fitz.Rect(col_bounds[0],y,col_bounds[1],y+row_height),level,fontsize=11,fontname="hebo",align=1,color=(0,0,0))
+        page.insert_textbox(fitz.Rect(col_bounds[1]+10,y,col_bounds[2]-4,y+row_height),label,fontsize=11,fontname="hebo",align=0,color=(0,0,0))
+        value_box_h=len(value.split("\n"))*(value_fontsize+3)
+        value_y=y+(row_height-value_box_h)/2
+        page.insert_textbox(fitz.Rect(col_bounds[2]+6,value_y,col_bounds[3]-6,value_y+value_box_h+4),value,fontsize=value_fontsize,fontname="hebo",align=1,lineheight=1.2,color=(0,0,0))
+        y+=row_height+gap
+
+    y+=15
+    page.insert_text((x0,y),"Auth. Signatory",fontsize=11,fontname="hebo",color=(0,0,0));y+=13.4
+    page.insert_text((x0,y),"For Laps N Tabs Technology Pvt. Ltd.",fontsize=11,fontname="hebo",color=(0,0,0))
+    sig_y=y+9
+    if sig_bytes:
+        page.insert_image(fitz.Rect(x0+1.5,sig_y,x0+1.5+(sig_w or 141),sig_y+(sig_h or 43)),stream=sig_bytes,keep_proportion=False)
+        y=sig_y+(sig_h or 43)+9
+    else:
+        y=sig_y+9
+    page.insert_text((x0,y),"Name:- Devank Rastogi",fontsize=11,fontname="hebo",color=(0,0,0));y+=13.4
+    page.insert_text((x0,y),"Designation:- Director",fontsize=11,fontname="hebo",color=(0,0,0));y+=13.4
+    page.insert_text((x0,y),"Email:- lapsntabs123@gmail.com",fontsize=11,fontname="hebo",color=(0,0,0));y+=13.4
+    page.insert_text((x0,y),"Contact No.:- 9918200166",fontsize=11,fontname="hebo",color=(0,0,0))
+
+def _fill_service_support_availability(page,fitz):
+    # Last page of the Service Support cert — adds the "authorized service
+    # center" intro line the template was missing, and swaps the old
+    # "Since desktop has onsite warranty..." close for the buyer-facing
+    # on-site paragraph. Uses the real Trebuchet MS (Bold/Regular) system
+    # fonts since the template's embedded subset only covers the glyphs its
+    # own original wording used.
+    heading_top=block_bottom=None
+    for block in page.get_text("dict").get("blocks",[]):
+        for line in block.get("lines",[]):
+            t=" ".join(s.get("text","") for s in line.get("spans",[])).strip()
+            if t.startswith("Service & Support"):heading_top=line["bbox"][1]
+            if t.startswith("Contact No.:-"):block_bottom=line["bbox"][3]
+    if heading_top is None or block_bottom is None:return
+
+    sig_bytes=sig_w=sig_h=None
+    for img in page.get_images(full=True):
+        for r in page.get_image_rects(img[0]):
+            if r.width<250 and r.y0>400:
+                sig_bytes=page.parent.extract_image(img[0]).get("image")
+                sig_w,sig_h=r.width,r.height
+                break
+        if sig_bytes:break
+
+    x0=72.0;max_width=471.0;fontsize=12;line_h=16.2;color=(0,0,0)
+    try:
+        bold_font=fitz.Font(fontfile="C:/Windows/Fonts/trebucbd.ttf")
+        bold_buf=open("C:/Windows/Fonts/trebucbd.ttf","rb").read()
+        reg_buf=open("C:/Windows/Fonts/trebuc.ttf","rb").read()
+    except Exception:return
+
+    def wrap(text,font,fontsize,max_width):
+        words=text.split(" ");lines=[];cur=""
+        for w in words:
+            trial=(cur+" "+w).strip()
+            if font.text_length(trial,fontsize=fontsize)<=max_width:cur=trial
+            else:
+                if cur:lines.append(cur)
+                cur=w
+        if cur:lines.append(cur)
+        return lines
+
+    # Wide enough on the right to also sweep up any overflow left behind by
+    # _fix_aio_product_wording's un-wrapped single-line replacement on the
+    # old "Since desktop has..." sentence (it can draw past the paragraph's
+    # normal right margin when the swapped-in wording is longer).
+    page.add_redact_annot(fitz.Rect(x0-4,heading_top-2,page.rect.width-20,block_bottom+4),fill=(1,1,1))
+    page.apply_redactions()
+
+    page.insert_font(fontname="ssbold",fontbuffer=bold_buf)
+    page.insert_font(fontname="ssreg",fontbuffer=reg_buf)
+
+    y=heading_top+11
+    intro="As per the Buyer ATC 'Service and Support' clause in the availability guidance, the authorized service center is as follows"
+    for ln in wrap(intro,bold_font,fontsize,max_width):
+        page.insert_text((x0,y),ln,fontsize=fontsize,fontname="ssbold",color=color);y+=line_h
+    y+=10
+
+    quote=("\u201cAvailability of Service Centres: Bidder/OEM must have a Functional Service Centre "
+           "in the State of each Consignee's Location in case of carry-in warranty. (Not applicable "
+           "in case of goods having on-site warranty). If service center is not already there at the "
+           "time of bidding, successful bidder/ OEM shall have to establish one within 30 days of "
+           "award of contract. Payment shall be released only after submission of documentary "
+           "evidence of having Functional Service Centre\u201d.")
+    for ln in wrap(quote,bold_font,fontsize,max_width):
+        page.insert_text((x0,y),ln,fontsize=fontsize,fontname="ssbold",color=color);y+=line_h
+    y+=10
+
+    closing=("The product offered in the bid will be serviced on-site at the location of the buyer. "
+             "The above clause is not applicable to this bid. We also undertake that once the order is "
+             "released, we shall appoint a service center within the prescribed time, in case the "
+             "location of the buyer is not already covered by an existing service center.")
+    for ln in wrap(closing,bold_font,fontsize,max_width):
+        page.insert_text((x0,y),ln,fontsize=fontsize,fontname="ssbold",color=color);y+=line_h
+    y+=26
+
+    sig_fontsize=9.94
+    page.insert_text((x0,y),"Auth. Signatory",fontsize=sig_fontsize,fontname="ssreg",color=color);y+=13.4
+    page.insert_text((x0,y),"For Laps N Tabs Technology Pvt. Ltd.",fontsize=sig_fontsize,fontname="ssreg",color=color)
+    sig_y=y+8
+    if sig_bytes:
+        page.insert_image(fitz.Rect(x0+1.5,sig_y,x0+1.5+(sig_w or 141),sig_y+(sig_h or 43)),stream=sig_bytes,keep_proportion=False)
+        y=sig_y+(sig_h or 43)+8
+    else:
+        y=sig_y+8
+    page.insert_text((x0,y),"Name:- Devank Rastogi",fontsize=sig_fontsize,fontname="ssreg",color=color);y+=13.4
+    page.insert_text((x0,y),"Designation:- Director",fontsize=sig_fontsize,fontname="ssreg",color=color);y+=13.4
+    page.insert_text((x0,y),"Email:- lapsntabs123@gmail.com",fontsize=sig_fontsize,fontname="ssreg",color=color);y+=13.4
+    page.insert_text((x0,y),"Contact No.:- 9918200166",fontsize=sig_fontsize,fontname="ssreg",color=color)
+
 # ---- Warranty + Make in India certificate fills. Same documents.pdf template
 # and redaction approach as Desktop's generate_certificates, adapted to say
 # "ACXXEL All in One PC" instead of "acxxel DESKTOP" and to AIO's own fields
@@ -484,6 +833,7 @@ def _draw_inline_paragraph(page,x,y,line_height,max_width,segments,fitz,fontsize
         else:
             current_line.append((word,is_bold));current_width+=w_width
     if current_line:render_line(current_line,cur_y)
+    return cur_y
 
 def _fill_warranty_page(page,fitz,bid_no,model_number,warranty_text):
     page_text=page.get_text("text")
@@ -809,10 +1159,11 @@ def generate_aio_documents(r,bid_id):
     typ=_data(r).get("doc_type","");ranges={"manufacturer_auth":(2,4),"make_in_india":(5,5),"warranty":(6,6),"bidder_financial":(7,7),"non_obsolete":(8,8),"non_malicious":(16,16),"non_return_hdd":(17,17),"technical_compliance":(18,18),"non_blacklisting":(20,20),"ipv6":(21,21),"preloaded_os":(22,22),"service_support":(25,30),"data_sheet":(31,32)}
     static={"experience_certificate":"experience_certificate.pdf","past_performance":"past_performance.pdf","oem_annual_turnover":"oem_annual_turnover.pdf","atc_acceptance_letter":"atc_acceptance_letter.pdf"}
     # experience_certificate/past_performance use AIO's own real GeM contract
-    # history exports (Aioexp.pdf/aiopast.pdf) instead of Desktop's copies —
-    # these sit directly in templates/, not templates/static_documents/ like
-    # everything in `static` above.
-    aio_static_overrides={"experience_certificate":"Aioexp.pdf","past_performance":"aiopast.pdf"}
+    # history export (Aioexp.pdf) instead of Desktop's copies — it sits
+    # directly in templates/, not templates/static_documents/ like everything
+    # in `static` above. Both doc types intentionally point at the same file
+    # per explicit request.
+    aio_static_overrides={"experience_certificate":"Aioexp.pdf","past_performance":"Aioexp.pdf"}
     if typ in ("approved_all_documents","approved_atc_documents") and b.status!="approved":
         return JsonResponse({"error":"Only approved bids can be downloaded"},status=403)
     try:
@@ -867,10 +1218,7 @@ def generate_aio_documents(r,bid_id):
             for pidx,p in enumerate(d):
                 if not (typ=="manufacturer_auth" and pidx==2):_fix_aio_product_wording(p,fitz)
                 if typ=="service_support":
-                    _erase_tender(p,fitz);old=p.search_for("Saurabh Singh - 9918200467")
-                    for x in old:p.add_redact_annot(x,fill=(1,1,1))
-                    if old:p.apply_redactions()
-                    for x in old:p.insert_text((x.x0,x.y1-2),"Madhuri Pal - 9519598884",fontsize=11,fontname="hebo")
+                    _erase_tender(p,fitz);_fill_service_support_escalation(p,fitz);_fill_service_support_availability(p,fitz)
                     for block in p.get_text("dict").get("blocks",[]):
                         for line in block.get("lines",[]):
                             t=" ".join(s.get("text","") for s in line.get("spans",[]));n=re.sub(r"\s+"," ",re.sub(r"[^A-Za-z\s]"," ",t).upper()).strip()
@@ -890,6 +1238,8 @@ def generate_aio_documents(r,bid_id):
                 else:
                     _fill_recipient_block(p,fitz,b.dept_name,b.organization,addr)
                     _force_tender_no_date(p,fitz,b.bid_no,date)
+                    if typ=="manufacturer_auth" and pidx==0:
+                        _fill_manufacturer_auth_body(p,fitz)
             d.save(path);d.close();m.close()
         elif typ=="approved_price_paper":
             # Same to same as Desktop's own "approved_price_paper" (Desktop.py)
@@ -1021,7 +1371,7 @@ def generate_aio_documents(r,bid_id):
                 groups=[("ATC DOCUMENTS",[(cid,atc_labels[cid]) for cid in selected_atc_ids])]
                 out_name=_build_index_and_bundle("Index of documents file with ATC",groups,False,f"aio_{bid_id}_approved_atc_documents.pdf")
                 if out_name is None:return JsonResponse({"error":"No ATC-related documents selected"},status=400)
-            return JsonResponse({"message":f"{typ} generated","pdf_url":r.build_absolute_uri(f"{settings.MEDIA_URL}generated/aio/{out_name}")})
+            return JsonResponse({"message":f"{typ} generated","pdf_url":r.build_absolute_uri(f"{settings.MEDIA_URL}generated/aio/{out_name}")+f"?v={int(time.time())}"})
         else:return JsonResponse({"error":f"Invalid doc_type: '{typ}'"},status=400)
-        return JsonResponse({"message":f"{typ} generated","pdf_url":r.build_absolute_uri(f"{settings.MEDIA_URL}generated/aio/{name}")})
+        return JsonResponse({"message":f"{typ} generated","pdf_url":r.build_absolute_uri(f"{settings.MEDIA_URL}generated/aio/{name}")+f"?v={int(time.time())}"})
     except Exception as e:return JsonResponse({"error":f"Document generation failed: {e}"},status=500)

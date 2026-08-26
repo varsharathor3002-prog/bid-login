@@ -18,11 +18,8 @@ const API_BASE = import.meta.env.VITE_API_URL;
 // (AioBidDetailView.jsx, AioBidApproval.jsx) import these same lists too, so
 // they stay in sync.
 export const AIO_RAMS = [
-  { name: "8GB DDR4 2666", price: 5000 },
   { name: "8GB DDR4 3200", price: 5500 },
-  { name: "16GB DDR4 2666", price: 9000 },
   { name: "16GB DDR4 3200", price: 9500 },
-  { name: "32GB DDR4 2666", price: 18000 },
   { name: "32GB DDR4 3200", price: 18500 },
   { name: "8GB DDR5 4800", price: 8000 },
   { name: "16GB DDR5 4800", price: 13200 },
@@ -30,7 +27,6 @@ export const AIO_RAMS = [
 ];
 
 export const AIO_HDDS = [
-  { name: "512 GB", price: 3500 },
   { name: "1 TB", price: 5000 },
   { name: "2 TB", price: 7500 },
 ];
@@ -47,8 +43,6 @@ export const AIO_SSDS = [
 ];
 
 export const AIO_OS_OPTIONS = [
-  { name: "Windows 10 Home", price: 1000 },
-  { name: "Windows 10 Professional", price: 1000 },
   { name: "Windows 11 Home", price: 1000 },
   { name: "Windows 11 Professional", price: 1000 },
   { name: "DOS", price: 1000 },
@@ -81,9 +75,9 @@ export const AIO_KEYBOARDS = [
 // has no effect on Find Model either way.
 export const AIO_MOTHERBOARDS = [
   { name: "H610, HDMI, DP, LAN, Audio Port, USB 3-4, USB 2.0-2", price: 5000 },
-  { name: "B660, HDMI, DP, LAN, Audio Port, USB 3-4, USB 2.0-2", price: 6000 },
+  { name: "H810, HDMI, DP, LAN, Audio Port, USB 3.2 Gen2-2, USB 2.0-2", price: 5500 },
   { name: "Q670, HDMI, DP, LAN, Audio Port, USB 3.0-6, Type C-1", price: 8000 },
-  { name: "OEM Port, HDMI, VGA, LAN, Audio Port, USB 3-4, USB 2.0-2", price: 4500 },
+  { name: "Integrated, HDMI, VGA, LAN, Audio Port, USB 3-4, USB 2.0-2", price: 4500 },
 ];
 
 // getFilteredRams (Desktop/User/DesktopConfig.jsx) is hardwired to Desktop's
@@ -297,7 +291,7 @@ export default function AioConfig({ bidData, onNext }) {
     }
   };
 
-  const SelectField = ({ label, name, options, required, optional }) => (
+  const SelectField = ({ label, name, options, required, optional, hideNone }) => (
     <div className="col-span-1">
       <div className="flex items-center gap-2 mb-1">
         <label className="block text-sm font-medium text-gray-700">{label}</label>
@@ -317,7 +311,7 @@ export default function AioConfig({ bidData, onNext }) {
               {opt.name}
             </option>
           ))}
-          <option value="None">None</option>
+          {!hideNone && <option value="None">None</option>}
         </select>
         <input
           type="text"
@@ -528,7 +522,7 @@ export default function AioConfig({ bidData, onNext }) {
             </div>
           </div>
 
-          <SelectField label="Motherboard" name="motherboard" options={AIO_MOTHERBOARDS} required />
+          <SelectField label="Motherboard" name="motherboard" options={AIO_MOTHERBOARDS} required hideNone />
 
           <div className="col-span-1 md:col-span-3">
             <div className="flex items-center gap-2 mb-1">
