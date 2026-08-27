@@ -8,6 +8,7 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from ..models import User, WorkstationBid, CatalogueProduct
+from .bid_cleanup import delete_bid_with_related_data
 
 from .Desktop import (
     safe_float,
@@ -797,7 +798,7 @@ def delete_workstation_bid(request, bid_id):
     bid = WorkstationBid.objects.filter(id=bid_id).first()
     if not bid:
         return JsonResponse({"error": "Bid not found"}, status=404)
-    bid.delete()
+    delete_bid_with_related_data(bid, "workstation")
     return JsonResponse({"message": "Bid deleted successfully"})
 
 
@@ -817,9 +818,10 @@ def bulk_delete_workstation_bids(request):
         bid_ids = list(dict.fromkeys(bid_ids))
         if not bid_ids:
             return JsonResponse({"error": "Select at least one bid."}, status=400)
-        rows = WorkstationBid.objects.filter(id__in=bid_ids)
-        deleted_ids = list(rows.values_list("id", flat=True))
-        rows.delete()
+        rows = list(WorkstationBid.objects.filter(id__in=bid_ids))
+        deleted_ids = [bid.id for bid in rows]
+        for bid in rows:
+            delete_bid_with_related_data(bid, "workstation")
         return JsonResponse({"deleted": len(deleted_ids), "deleted_ids": deleted_ids})
     except Exception as exc:
         return JsonResponse({"error": str(exc)}, status=400)
@@ -838,6 +840,8 @@ def review_workstation_bid(request, bid_id):
         bid.status = "complete"
         bid.review_status = "pending"
         bid.save()
+        from .GemAssignments import complete_user_assignment_for_bid
+        complete_user_assignment_for_bid(bid.bid_no, bid.user)
         return JsonResponse({"success": True, "bid_id": bid.id, "review_status": bid.review_status})
     except WorkstationBid.DoesNotExist:
         return JsonResponse({"error": "Bid not found"}, status=404)
@@ -1608,19 +1612,9 @@ def generate_workstation_certificates(request, bid_id):
             )
 
         def fix_manufacturer_auth_page(page):
-            page.add_redact_annot(fitz.Rect(68, 370, page.rect.width - 42, 450), fill=(1, 1, 1))
-            page.apply_redactions()
-            page.insert_textbox(
-                fitz.Rect(72, 375, page.rect.width - 52, 450),
-                "This is to inform you that we M/S LAPS N TABS TECHNOLOGY PRIVATE LIMITED manufacturer "
-                "of acxxel Workstation having registered office at C-187, Nirala Nagar, Lucknow-226020 "
-                "Uttar Pradesh are directly participating as OEM in the above mentioned bid \"acxxel\". "
-                "It is also a registered OEM on GeM by the same name. Trade Mark Certificate is attached below.",
-                fontsize=9.5,
-                fontname="hebo",
-                color=(0, 0, 0),
-                align=0,
-            )
+            from .Aio import _fill_manufacturer_auth_body
+
+            _fill_manufacturer_auth_body(page, fitz)
 
         def fix_non_return_hdd_page(page):
             # The template paragraph is desktop-specific; rewrite only the body,
@@ -1633,7 +1627,7 @@ def generate_workstation_certificates(request, bid_id):
             page.insert_text((write_x, write_y), "Dear Sir,", fontsize=11, fontname="hebo", color=(0, 0, 0))
             paragraph = (
                 "We undertake that, as per Buyer Organization's Security Policy, Faulty Hard Disk of "
-                "Servers / Desktop Computers / Laptops / Workstation / AIO / Printer / Toner etc. will not be "
+                "Servers/Desktop Computers/ All in One Computers etc. will not be "
                 "returned back to the OEM/supplier against warranty replacement."
             )
             page.insert_textbox(
@@ -2236,6 +2230,11 @@ def generate_workstation_certificates(request, bid_id):
                 continue
             if doc_type == "service_support":
                 fix_service_support_page(page)
+                from .Aio import _fill_service_support_escalation
+                _fill_service_support_escalation(page, fitz)
+                if original_page == 25:
+                    from .Aio import _add_service_support_bid_date
+                    _add_service_support_bid_date(page, fitz, bid_no, bid_date_formatted)
                 if original_page == 29:
                     add_service_support_table_note(page)
                 if original_page == 30:
@@ -2258,6 +2257,11 @@ def generate_workstation_certificates(request, bid_id):
                             keep_proportion=False,
                             overlay=True,
                         )
+                    from .Aio import _add_service_support_last_page_bid_date
+                    _add_service_support_last_page_bid_date(
+                        page, fitz, bid_no, bid_date_formatted,
+                        str(bid.dept_name or "").strip(), str(bid.organization or "").strip(), full_address,
+                    )
                 remove_urls_and_config_links(page)
                 lowercase_acxxel(page, min_y=230)
                 continue

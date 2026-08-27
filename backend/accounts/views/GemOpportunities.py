@@ -72,6 +72,12 @@ def gem_bid_opportunities(request):
         if not updated:
             return JsonResponse({"error": "Bid record not found."}, status=404)
         return JsonResponse({"deleted": True})
+    if body.get("action") == "bulk_delete":
+        row_ids = list(dict.fromkeys(body.get("ids") or []))
+        if not row_ids:
+            return JsonResponse({"error": "Select at least one bid."}, status=400)
+        updated = GemBidOpportunity.objects.filter(id__in=row_ids).update(is_deleted=True)
+        return JsonResponse({"deleted": updated})
     rows = body.get("results", [])
     saved = 0
     for item in rows if isinstance(rows, list) else []:

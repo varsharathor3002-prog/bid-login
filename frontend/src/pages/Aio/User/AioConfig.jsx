@@ -6,6 +6,16 @@ import {
   WARRANTIES,
 } from "../../Desktop/User/DesktopConfig";
 
+export const AIO_PROCESSORS = [
+  ...PROCESSORS
+    .filter((processor) => !processor.name.includes("Composite"))
+    .map((processor) => ({ ...processor })),
+  { name: "12th Gen Embedded i5", price: 18000 },
+  { name: "12th Gen Embedded i7", price: 23000 },
+  { name: "13th Gen Embedded i5", price: 18000 },
+  { name: "13th Gen Embedded i7", price: 23000 },
+];
+
 const API_BASE = import.meta.env.VITE_API_URL;
 
 // AIO's own option lists — exactly the values from the legacy
@@ -97,7 +107,7 @@ export const getFilteredAioRams = (processorName) => {
 
 export const AIO_OPTIONS = Object.fromEntries(
   Object.entries({
-    processor: PROCESSORS,
+    processor: AIO_PROCESSORS,
     ram: AIO_RAMS,
     hdd: AIO_HDDS,
     ssd: AIO_SSDS,
@@ -213,7 +223,7 @@ export default function AioConfig({ bidData, onNext }) {
     }
   }, [draftKey, form]);
 
-  const intelProcessors = PROCESSORS.filter(
+  const intelProcessors = AIO_PROCESSORS.filter(
     (p) => p.name.includes("Intel") || p.name.includes("Gen") || p.name.includes("Ultra")
   );
   const amdProcessors = PROCESSORS.filter((p) => p.name.includes("AMD"));
@@ -239,7 +249,7 @@ export default function AioConfig({ bidData, onNext }) {
     if (!fieldValue) return;
 
     let localList = null;
-    if (name === "processor") localList = PROCESSORS;
+    if (name === "processor") localList = AIO_PROCESSORS;
     else if (name === "ram") localList = AIO_RAMS;
     else if (name === "hdd") localList = AIO_HDDS;
     else if (name === "ssd") localList = AIO_SSDS;
@@ -259,7 +269,7 @@ export default function AioConfig({ bidData, onNext }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const hasValidProcessor = PROCESSORS.some((processor) => processor.name === form.processor);
+    const hasValidProcessor = AIO_PROCESSORS.some((processor) => processor.name === form.processor);
     if (!hasValidProcessor) {
       const validationMessage = "Please select an Intel or AMD Ryzen processor before submitting the form.";
       setMsg(validationMessage);

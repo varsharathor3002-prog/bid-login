@@ -51,7 +51,7 @@ const GENERAL_DOCS = [
   { id: "past_performance", label: "PAST PERFORMANCE" },
   { id: "oem_annual_turnover", label: "OEM ANNUAL TURNOVER" },
   { id: "warranty", label: "WARRANTY" },
-  { id: "bidder_financial", label: "BIDDER FINANCIAL UNDERSTANDINGS" },
+  { id: "bidder_financial", label: "BIDDER FINANCIAL STANDING" },
   { id: "non_obsolete", label: "NON OBSOLETE" },
   { id: "data_sheet", label: "DATA SHEET" },
   { id: "non_malicious", label: "NON MALICIOUS CODE" },
@@ -954,8 +954,8 @@ export default function DesktopBidApproval() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Local Content (%) <span className="text-red-600">*</span>
                   </label>
-                  <input type="number" min="0" max="100" step="0.01" required name="local_content" value={form?.local_content || ""} onChange={handleChange}
-                    placeholder="Enter %" className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
+                  <input type="text" inputMode="decimal" required name="local_content" value={form?.local_content || ""} onChange={handleChange}
+                    placeholder="Enter Local Content" className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
                 <div className="md:col-span-2 lg:col-span-3">
                   <label className="block text-sm font-medium text-gray-700 mb-1">ATC</label>
@@ -1092,7 +1092,10 @@ export default function DesktopBidApproval() {
 
                 {selected.status !== "approved" && (
                   <div className="md:col-span-2 lg:col-span-3 bg-amber-50 border border-amber-200 rounded-lg p-4">
-                    <label className="block text-sm font-bold text-amber-800 mb-2">Admin Review Note</label>
+                    <div className="mb-2 flex flex-wrap items-center gap-2">
+                      <label className="block text-sm font-bold text-amber-800">Admin Review Note</label>
+                      <p className="text-xs font-medium text-amber-700">If any bid detail is incorrect or requires revision, add a clear review note and send the bid for re-analysis.</p>
+                    </div>
                     <textarea value={adminNote} onChange={(e) => setAdminNote(e.target.value)} rows={3}
                       placeholder="Write review note... (e.g., Please add optional ports if required)"
                       className="w-full border border-amber-200 rounded-md px-3 py-2 text-sm resize-none outline-none" />

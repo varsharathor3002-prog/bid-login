@@ -132,6 +132,7 @@ export default function CreateDesktopBid() {
             <span className="text-blue-600 font-bold text-sm">
               Step {step} of 4
             </span>
+
           </div>
 
           <div className="w-1/3 h-[6px] bg-gray-100 rounded-full overflow-hidden">

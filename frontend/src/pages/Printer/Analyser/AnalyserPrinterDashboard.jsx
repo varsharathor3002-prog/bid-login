@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { FaTrash } from "react-icons/fa";
 
 const API_BASE = import.meta.env.VITE_API_URL;
 const API_URL = `${API_BASE}/printer-bids/list/`;
@@ -17,6 +18,9 @@ export default function AnalyserPrinterDashboard() {
   const [error, setError] = useState("");
   const [reAnalyzeCount, setReAnalyzeCount] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
+  const [selectedBidIds, setSelectedBidIds] = useState(new Set());
+  const [deletingId, setDeletingId] = useState(null);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   const navigate = useNavigate();
 
@@ -75,7 +79,39 @@ export default function AnalyserPrinterDashboard() {
 
   const handleTabChange = (tab) => {
     setCurrentPage(1);
+    setSelectedBidIds(new Set());
     setActiveTab(tab);
+  };
+
+  const deleteBid = async (bid, confirmDelete = true) => {
+    if (confirmDelete && !window.confirm(`Permanently delete bid ${bid.bid_no}?`)) return false;
+    setDeletingId(bid.id);
+    try {
+      const response = await fetch(`${API_BASE}/printer-bids/${bid.id}/delete/`, { method: "DELETE" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Bid could not be deleted.");
+      setBids((current) => current.filter((item) => item.id !== bid.id));
+      setSelectedBidIds((current) => {
+        const next = new Set(current);
+        next.delete(bid.id);
+        return next;
+      });
+      return true;
+    } catch (deleteError) {
+      setError(deleteError.message || "Bid could not be deleted.");
+      return false;
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const bulkDeleteBids = async () => {
+    const selectedBids = bids.filter((bid) => selectedBidIds.has(bid.id));
+    if (!selectedBids.length || !window.confirm(`Permanently delete ${selectedBids.length} selected printer bid(s)?`)) return;
+    setBulkDeleting(true);
+    setError("");
+    for (const bid of selectedBids) await deleteBid(bid, false);
+    setBulkDeleting(false);
   };
 
   const totalPages = Math.max(1, Math.ceil(bids.length / ITEMS_PER_PAGE));
@@ -113,7 +149,7 @@ export default function AnalyserPrinterDashboard() {
       <div className="flex gap-4 px-6 bg-gray-50 border-b border-gray-200 mt-4">
         <button
           onClick={() => handleTabChange("pending")}
-          className={`py-4 px-2 text-sm font-semibold transition-all flex items-center gap-2 ${
+          className={`py-4 px-2 text-sm font-semibold transition-all flex items-center gap-2 outline-none focus:outline-none focus-visible:outline-none ${
             activeTab === "pending" ? "text-amber-600 border-b-2 border-amber-600" : "text-gray-500 hover:text-gray-700"
           }`}
         >
@@ -123,7 +159,7 @@ export default function AnalyserPrinterDashboard() {
 
         <button
           onClick={() => handleTabChange("approved")}
-          className={`py-4 px-2 text-sm font-semibold transition-all flex items-center gap-2 ${
+          className={`py-4 px-2 text-sm font-semibold transition-all flex items-center gap-2 outline-none focus:outline-none focus-visible:outline-none ${
             activeTab === "approved" ? "text-emerald-600 border-b-2 border-emerald-600" : "text-gray-500 hover:text-gray-700"
           }`}
         >
@@ -133,7 +169,7 @@ export default function AnalyserPrinterDashboard() {
 
         <button
           onClick={() => handleTabChange("re-analyze")}
-          className={`py-4 px-2 text-sm font-semibold transition-all flex items-center gap-2 ${
+          className={`py-4 px-2 text-sm font-semibold transition-all flex items-center gap-2 outline-none focus:outline-none focus-visible:outline-none ${
             activeTab === "re-analyze" ? "text-rose-600 border-b-2 border-rose-600" : "text-gray-500 hover:text-gray-700"
           }`}
         >
@@ -145,6 +181,13 @@ export default function AnalyserPrinterDashboard() {
             </span>
           )}
         </button>
+        {activeTab === "approved" && selectedBidIds.size > 0 && (
+          <button type="button" onClick={bulkDeleteBids} disabled={bulkDeleting}
+            className="ml-auto inline-flex min-h-9 items-center gap-2 rounded bg-red-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50">
+            <FaTrash aria-hidden="true" />
+            {bulkDeleting ? "Deleting..." : `Delete Selected (${selectedBidIds.size})`}
+          </button>
+        )}
       </div>
 
       {error && (
@@ -154,24 +197,41 @@ export default function AnalyserPrinterDashboard() {
       )}
 
       <div className="w-full overflow-hidden">
-        <table className="w-full table-fixed text-left border-separate border-spacing-0">
+        <table className="w-full table-fixed text-left border-separate border-spacing-0 [&_th]:!px-1.5 [&_th]:!text-xs [&_tbody_span]:!text-sm [&_tbody_td]:!px-1.5 [&_tbody_td]:!text-sm [&_tbody_button]:!text-xs">
           <thead>
             <tr className="bg-slate-800">
-              <th className="w-[3%] px-1 py-4 text-[10px] font-bold text-white uppercase border-b border-slate-700">S.No.</th>
-              <th className="w-[10%] px-1 py-4 text-[10px] font-bold text-white uppercase border-b border-slate-700">Bid No</th>
+              <th className="w-[4%] px-1 py-4 text-[10px] font-bold text-white uppercase border-b border-slate-700 whitespace-nowrap">S.No.</th>
+              <th className="w-[9%] px-1 py-4 text-[10px] font-bold text-white uppercase border-b border-slate-700 whitespace-nowrap">Bid No</th>
               <th className="w-[12%] px-1 py-4 text-[10px] font-bold text-white uppercase border-b border-slate-700">Department</th>
               <th className="w-[10%] px-1 py-4 text-[10px] font-bold text-white uppercase border-b border-slate-700">Printer Type</th>
-              <th className="w-[9%] px-1 py-4 text-[10px] font-bold text-white uppercase border-b border-slate-700">Type Of Printing</th>
+              <th className="w-[8%] px-1 py-4 text-[10px] font-bold text-white uppercase border-b border-slate-700">Type Of Printing</th>
               <th className="w-[4%] px-1 py-4 text-[10px] font-bold text-white uppercase border-b border-slate-700">Qty</th>
-              <th className="w-[9%] px-1 py-4 text-[10px] font-bold text-white uppercase border-b border-slate-700">Submitted By</th>
-              <th className="w-[9%] px-1 py-4 text-[10px] font-bold text-white uppercase border-b border-slate-700">Date</th>
-              <th className="w-[8%] px-1 py-4 text-[10px] font-bold text-white uppercase border-b border-slate-700">Status</th>
-              <th className="w-[7%] px-1 py-4 text-[10px] font-bold text-white uppercase border-b border-slate-700">Action</th>
+              <th className="w-[8%] px-1 py-4 text-[10px] font-bold text-white uppercase border-b border-slate-700">Submitted By</th>
+              <th className="w-[8%] px-1 py-4 text-[10px] font-bold text-white uppercase border-b border-slate-700">Date</th>
+              {activeTab === "pending" && (
+                <th className="w-[8%] px-1 py-4 text-[10px] font-bold text-white uppercase border-b border-slate-700">Status</th>
+              )}
+              <th className="w-[7%] !pl-3 py-4 text-[10px] font-bold text-white uppercase border-b border-l border-slate-700">Action</th>
               {activeTab === "approved" && (
-                <th className="w-[9%] px-1 py-4 text-[10px] font-bold text-white uppercase border-b border-slate-700">Price Approved</th>
+                <th className="w-[11%] px-2 py-4 text-[10px] font-bold text-white uppercase border-b border-slate-700">Approved Details For Bidding</th>
               )}
               {activeTab === "approved" && (
-                <th className="w-[10%] px-2 py-4 text-[10px] font-bold text-white uppercase border-b border-l border-slate-700">Download Docs for the bid</th>
+                <th className="w-[11%] px-2 py-4 text-[10px] font-bold text-white uppercase border-b border-l border-slate-700">Download Docs for the bid</th>
+              )}
+              {activeTab === "approved" && (
+                <th className="w-[8%] px-2 py-4 text-[10px] font-bold text-white uppercase border-b border-l border-slate-700">
+                  <div className="flex items-center justify-center gap-2">
+                    <input type="checkbox" aria-label="Select all bids on this page"
+                      checked={paginatedBids.length > 0 && paginatedBids.every((bid) => selectedBidIds.has(bid.id))}
+                      onChange={(event) => setSelectedBidIds((current) => {
+                        const next = new Set(current);
+                        paginatedBids.forEach((bid) => event.target.checked ? next.add(bid.id) : next.delete(bid.id));
+                        return next;
+                      })}
+                      className="h-4 w-4 accent-red-600" />
+                    <span>Delete</span>
+                  </div>
+                </th>
               )}
             </tr>
           </thead>
@@ -179,7 +239,7 @@ export default function AnalyserPrinterDashboard() {
           <tbody>
             {loading && (
               <tr>
-                <td colSpan={activeTab === "approved" ? 12 : 10} className="text-center py-16 text-gray-400 font-medium">
+                <td colSpan={activeTab === "approved" ? 12 : activeTab === "re-analyze" ? 9 : 10} className="text-center py-16 text-gray-400 font-medium">
                   Loading printer bids...
                 </td>
               </tr>
@@ -187,7 +247,7 @@ export default function AnalyserPrinterDashboard() {
 
             {!loading && bids.length === 0 && (
               <tr>
-                <td colSpan={activeTab === "approved" ? 12 : 10} className="text-center py-16 text-gray-400 font-medium">
+                <td colSpan={activeTab === "approved" ? 12 : activeTab === "re-analyze" ? 9 : 10} className="text-center py-16 text-gray-400 font-medium">
                   No printer bids found.
                 </td>
               </tr>
@@ -236,6 +296,7 @@ export default function AnalyserPrinterDashboard() {
                     {formatDate(bid.date || bid.created_at)}
                   </span>
                 </td>
+                {activeTab === "pending" && (
                 <td className="px-2 py-4 border-b border-gray-100">
                   {bid.status === "pending" && (
                     <span className="inline-flex items-center gap-1 whitespace-nowrap px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-700">
@@ -253,7 +314,8 @@ export default function AnalyserPrinterDashboard() {
                     </span>
                   )}
                 </td>
-                <td className="px-2 py-4 border-b border-gray-100">
+                )}
+                <td className="!pl-3 py-4 border-b border-l border-gray-100">
                   <button
                     onClick={() =>
                       navigate(`/analyser-dashboard/printer/bid/${bid.id}`, {
@@ -272,13 +334,12 @@ export default function AnalyserPrinterDashboard() {
                   </button>
                 </td>
                 {activeTab === "approved" && (
-                  <td className="px-1 py-4 border-b border-gray-100">
-                    <span className="whitespace-nowrap text-[11px] font-bold text-emerald-700">
-                      ₹{Number(bid.final_amount || 0).toLocaleString("en-IN", {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
-                    </span>
+                  <td className="px-2 py-4 border-b border-gray-100">
+                    <button type="button"
+                      onClick={() => navigate(`/analyser-dashboard/printer/bid/${bid.id}/approved-details`, { state: { bid } })}
+                      className="whitespace-nowrap rounded bg-blue-600 px-2 py-1.5 text-[10px] font-bold uppercase tracking-normal text-white shadow-sm hover:bg-blue-700">
+                      Download
+                    </button>
                   </td>
                 )}
                 {activeTab === "approved" && (
@@ -286,10 +347,29 @@ export default function AnalyserPrinterDashboard() {
                     <button
                       type="button"
                       onClick={() => navigate(`/analyser-dashboard/printer/bid/${bid.id}/downloads`, { state: { bid } })}
-                      className="whitespace-nowrap rounded bg-blue-600 px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-white shadow-sm hover:bg-blue-700"
+                      className="whitespace-nowrap rounded bg-blue-600 px-2 py-1.5 text-[10px] font-bold uppercase tracking-normal text-white shadow-sm hover:bg-blue-700"
                     >
                       Download
                     </button>
+                  </td>
+                )}
+                {activeTab === "approved" && (
+                  <td className="border-b border-l border-gray-100 px-2 py-4">
+                    <div className="flex items-center justify-center gap-3">
+                      <input type="checkbox" aria-label={`Select bid ${bid.bid_no}`}
+                        checked={selectedBidIds.has(bid.id)}
+                        onChange={(event) => setSelectedBidIds((current) => {
+                          const next = new Set(current);
+                          if (event.target.checked) next.add(bid.id); else next.delete(bid.id);
+                          return next;
+                        })}
+                        className="h-4 w-4 shrink-0 accent-red-600" />
+                      <button type="button" onClick={() => deleteBid(bid)} disabled={deletingId === bid.id}
+                        title="Permanently delete bid"
+                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-red-50 text-xs text-red-600 hover:bg-red-100 disabled:opacity-50">
+                        {deletingId === bid.id ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-red-200 border-t-red-600" /> : <FaTrash aria-hidden="true" />}
+                      </button>
+                    </div>
                   </td>
                 )}
               </tr>

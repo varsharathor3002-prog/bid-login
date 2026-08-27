@@ -16,6 +16,35 @@ FINAL_STATUSES = {"participated", "skipped", "expired"}
 VALID_STATUSES = {value for value, _ in GemBidAssignment.STATUS_CHOICES}
 
 
+def complete_user_assignment_for_bid(bid_no, user=None):
+    """Remove a submitted bid from its assigned user's queue by bid number."""
+    normalized_bid_no = str(bid_no or "").strip()
+    if not normalized_bid_no:
+        return 0
+    rows = GemBidAssignment.objects.select_related("opportunity").filter(
+        opportunity__bid_no__iexact=normalized_bid_no,
+        hidden_for_user=False,
+    )
+    if user is not None:
+        rows = rows.filter(assigned_to=user)
+    rows = list(rows)
+    if not rows:
+        return 0
+    now = timezone.now()
+    with transaction.atomic():
+        GemBidAssignment.objects.filter(id__in=[row.id for row in rows]).update(
+            status="participated", completed_at=now, hidden_for_user=True, updated_at=now,
+        )
+        GemBidAssignmentHistory.objects.bulk_create([
+            GemBidAssignmentHistory(
+                assignment=row, action="auto_completed_after_bid_submission",
+                from_user=row.assigned_to, to_user=row.assigned_to,
+                old_status=row.status, new_status="participated", changed_by=row.assigned_to,
+            ) for row in rows
+        ])
+    return len(rows)
+
+
 def _category(value):
     item = str(value or "").lower()
     matches = {

@@ -441,6 +441,8 @@
       const historyResult = isDisqualified ? await historyFor(liveCard) : { rows: [], error: "" };
       const history = historyResult.rows;
       const disqualifiedEvent = history.find((row) => /disqualified/i.test(row.status));
+      const disqualifiedDate = disqualifiedEvent?.date_time
+        || dateFrom(valueAfterLabel(raw, ["Disqualified Date", "Disqualification Date"]));
       const quantityText = valueAfterLabel(raw, ["Quantity"]);
       const itemName = valueAfterLabel(raw, ["Items", "Item", "Product Name", "Product"])
         .replace(/^s\s*:\s*/i, "");
@@ -456,7 +458,7 @@
         technical_status: evaluation.read ? evaluation.status : valueAfterLabel(raw, ["Technical Status"]),
         evaluation_read: evaluation.read,
         is_disqualified: isDisqualified,
-        disqualified_at: disqualifiedEvent?.date_time || "",
+        disqualified_at: disqualifiedDate || "",
         history,
         history_sync_error: historyResult.error || "",
       };
@@ -720,7 +722,11 @@
           const disqualifiedYear = result.disqualified_at
             ? new Date(result.disqualified_at).getFullYear()
             : 0;
-          const wanted = result.is_disqualified && disqualifiedYear === 2026;
+          // Do not silently drop a visibly disqualified bid when GeM's history
+          // popup fails to expose a parseable timestamp. The API will use the
+          // sync time as a fallback; a visible card date is preferred above.
+          const wanted = result.is_disqualified
+            && (!result.disqualified_at || disqualifiedYear === 2026);
           if (!wanted) {
             await progress(
               "running",

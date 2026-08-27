@@ -16,7 +16,7 @@ const TITLES = {
   manufacturer_auth: "MAF/AUTHORIZATION LETTER",
   make_in_india: "MAKE IN INDIA CERTIFICATE",
   warranty: "WARRANTY CERTIFICATE",
-  bidder_financial: "BIDDER FINANCIAL UNDERTAKING",
+  bidder_financial: "BIDDER FINANCIAL STANDING",
   non_obsolete: "NON-OBSOLESCENCE UNDERTAKING",
   non_malicious: "NON-MALICIOUS CODE CERTIFICATE",
   non_return_hdd: "NON RETURN OF HARD DISK",

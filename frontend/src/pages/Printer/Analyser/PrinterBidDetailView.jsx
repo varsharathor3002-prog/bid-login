@@ -36,7 +36,8 @@ const GENERAL_DOCS = [
   { id: "past_performance", label: "PAST PERFORMANCE" },
   { id: "oem_annual_turnover", label: "OEM ANNUAL TURNOVER" },
   { id: "atc_acceptance_letter", label: "ATC ACCEPTANCE LETTER" },
-  { id: "bidder_financial", label: "BIDDER FINANCIAL UNDERSTANDINGS" },
+  { id: "make_in_india", label: "MAKE IN INDIA" },
+  { id: "bidder_financial", label: "BIDDER FINANCIAL STANDING" },
   { id: "non_obsolete", label: "NON OBSOLETE" },
   { id: "non_malicious", label: "NON MALICIOUS CODE" },
   { id: "non_blacklisting", label: "NON BLACKLISTING" },
@@ -95,7 +96,7 @@ const FIELD_GROUPS = [
   { name: "Department", key: "dept_name" },
   { name: "Organization", key: "organization" },
   { name: "Quantity", key: "qty" },
-  { name: "Pincode", key: "pincode" },
+  { name: "Buyer Pincode", key: "pincode" },
   { name: "Address", key: "address", type: "textarea" },
   { name: "ATC", key: "atc", type: "textarea", optional: true },
   { name: "Cartridge Technology", key: "cartridge_technology" },
@@ -119,10 +120,10 @@ const FIELD_GROUPS = [
   { name: "Duty Cycle (Prints/Month)", key: "duty_cycle" },
   { name: "On Site Warranty (In Year)", key: "onsite_warranty" },
   { name: "Extended Warranty (in Years) over and above standard warranty", key: "extended_warranty" },
-  { name: "EPBG (%)", key: "epbg" },
   { name: "Bid End Date", key: "date", type: "date" },
-  { name: "Extra Requirements", key: "extra_requirements", type: "textarea", optional: true },
   { name: "Freight and Installation", key: "freightInstallation" },
+  { name: "EPBG (%)", key: "epbg" },
+  { name: "Extra Requirements", key: "extra_requirements", type: "textarea", optional: true },
   { name: "Model Number", key: "model_number" },
 ];
 
@@ -160,11 +161,16 @@ const Label = ({ children, optional }) => (
 function GeneralDocsViewPopup({ form }) {
   const [open, setOpen] = useState(false);
   const [generatingDocs, setGeneratingDocs] = useState({});
+  const [downloadingDocs, setDownloadingDocs] = useState({});
 
   const selectedIds = Array.isArray(form?.selected_general_docs) ? form.selected_general_docs : [];
   const selectedLabels = Array.isArray(form?.selected_general_doc_labels) ? form.selected_general_doc_labels : [];
-  const docs = selectedIds.length
-    ? GENERAL_DOCS.filter((doc) => selectedIds.includes(doc.id))
+  const isApproved = form?.status === "approved" || form?.review_status === "approved";
+  const visibleIds = isApproved && !selectedIds.includes("make_in_india")
+    ? [...selectedIds, "make_in_india"]
+    : selectedIds;
+  const docs = visibleIds.length
+    ? GENERAL_DOCS.filter((doc) => visibleIds.includes(doc.id))
     : selectedLabels.map((label, index) => ({ id: `label_${index}`, label, viewable: false }));
 
   const handleView = async (doc) => {
@@ -183,6 +189,34 @@ function GeneralDocsViewPopup({ form }) {
       alert(error.message || "Unable to open document.");
     } finally {
       setGeneratingDocs((prev) => ({ ...prev, [doc.id]: false }));
+    }
+  };
+
+  const handleDownload = async (doc) => {
+    if (!form?.id || doc.viewable === false) return;
+    setDownloadingDocs((prev) => ({ ...prev, [doc.id]: true }));
+    try {
+      const response = await fetch(`${API_BASE}/printer-bids/${form.id}/generate-docs/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...form, doc_type: doc.id }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.pdf_url) throw new Error(data.error || "Unable to generate document.");
+      const fileResponse = await fetch(data.pdf_url);
+      if (!fileResponse.ok) throw new Error("Unable to download document.");
+      const blobUrl = URL.createObjectURL(await fileResponse.blob());
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = `${String(doc.label || doc.id).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "")}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(blobUrl);
+    } catch (error) {
+      alert(error.message || "Download failed.");
+    } finally {
+      setDownloadingDocs((prev) => ({ ...prev, [doc.id]: false }));
     }
   };
 
@@ -226,10 +260,18 @@ function GeneralDocsViewPopup({ form }) {
                     <button
                       type="button"
                       onClick={() => handleView(doc)}
-                      disabled={doc.viewable === false || generatingDocs[doc.id]}
+                      disabled={doc.viewable === false || generatingDocs[doc.id] || downloadingDocs[doc.id]}
                       className="px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed transition"
                     >
                       {generatingDocs[doc.id] ? "Generating..." : "View File"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDownload(doc)}
+                      disabled={doc.viewable === false || generatingDocs[doc.id] || downloadingDocs[doc.id]}
+                      className="rounded bg-green-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {downloadingDocs[doc.id] ? "Downloading..." : "Download"}
                     </button>
                   </div>
                 ))
@@ -290,12 +332,12 @@ function SpecialDocView({ form }) {
   );
 }
 
-const VerifiedInputWrapper = ({ name, label, children, verifiedFields, toggleVerification, readOnly, optional }) => {
+const VerifiedInputWrapper = ({ name, label, children, verifiedFields, toggleVerification, readOnly, optional, alignTwoLineLabel = false }) => {
   const isVerified = !!verifiedFields[name];
 
   return (
     <div className="col-span-1 relative group">
-      <div className="flex items-center justify-between mb-1">
+      <div className={`flex justify-between mb-1 ${alignTwoLineLabel ? "min-h-[2.75rem] items-start" : "items-center"}`}>
         <label className="block text-sm font-medium text-gray-700">
           {label}
           {optional && <span className="text-red-500 text-[11px] font-normal ml-1">*Optional</span>}
@@ -321,12 +363,21 @@ export default function PrinterBidDetailView() {
   const { id } = useParams();
   const navigate = useNavigate();
   const readOnly = !!state?.readOnly;
+  const verificationBidId = id || state?.bid?.id || state?.id || state?.bid_id || "unknown";
+  const verificationStorageKey = `printer_bid_verified_fields_${verificationBidId}`;
 
   const [form, setForm] = useState(null);
   const [loadingBid, setLoadingBid] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [msg, setMsg] = useState("");
-  const [verifiedFields, setVerifiedFields] = useState({});
+  const [verifiedFields, setVerifiedFields] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem(verificationStorageKey);
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
   const [modelSearching, setModelSearching] = useState(false);
   const [modelSaving, setModelSaving] = useState(false);
   const [showModelResult, setShowModelResult] = useState(false);
@@ -342,6 +393,10 @@ export default function PrinterBidDetailView() {
   useEffect(() => {
     fetchBid();
   }, []);
+
+  useEffect(() => {
+    sessionStorage.setItem(verificationStorageKey, JSON.stringify(verifiedFields));
+  }, [verificationStorageKey, verifiedFields]);
 
   const normalizeDocUrl = (url) => {
     if (!url) return "";
@@ -362,14 +417,7 @@ export default function PrinterBidDetailView() {
     setLoadingBid(true);
     setMsg("");
     try {
-      if (state?.bid) {
-        const normalized = normalizeBid(state.bid);
-        setForm(normalized);
-        setModelInputValue(normalized.model_number || "");
-        return;
-      }
-
-      const bidId = id || state?.id || state?.bid_id;
+      const bidId = id || state?.bid?.id || state?.id || state?.bid_id;
       if (!bidId) throw new Error("Bid ID not found");
 
       const res = await fetch(FETCH_API(bidId));
@@ -379,7 +427,16 @@ export default function PrinterBidDetailView() {
       setForm(normalized);
       setModelInputValue(normalized.model_number || "");
     } catch {
-      setMsg("Error: Unable to load printer bid data.");
+      // Navigation state can keep the page usable during a temporary API issue,
+      // but it must never replace the latest database record during normal use.
+      if (state?.bid) {
+        const normalized = normalizeBid(state.bid);
+        setForm(normalized);
+        setModelInputValue(normalized.model_number || "");
+        setMsg("Latest bid data could not be refreshed. Showing the previously loaded copy.");
+      } else {
+        setMsg("Error: Unable to load printer bid data.");
+      }
     } finally {
       setLoadingBid(false);
     }
@@ -597,7 +654,7 @@ export default function PrinterBidDetailView() {
         <button
           type="button"
           onClick={() => navigate(-1)}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-gray-300 bg-white text-gray-700 text-sm font-semibold hover:bg-slate-800 hover:text-white hover:border-slate-800 transition-all duration-200 shadow-sm mx-auto"
+          className="mx-auto inline-flex h-9 items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 text-sm font-semibold text-gray-700 shadow-sm transition-all duration-200 hover:border-slate-800 hover:bg-slate-800 hover:text-white"
         >
           Back
         </button>
@@ -607,7 +664,8 @@ export default function PrinterBidDetailView() {
 
   const isReAnalyze = form?.status === "re-analyze" || form?.review_status === "re-analyze";
   const isReviewed = form?.status === "reviewed" || form?.review_status === "reviewed";
-  const isPending = !isReAnalyze && !isReviewed;
+  const isApproved = form?.status === "approved" || form?.review_status === "approved";
+  const isPending = !isReAnalyze && !isReviewed && !isApproved;
   const printerTypeLabel = String(form?.printer_type || "").toLowerCase().includes("multifunction")
     ? "Multifunction Printer"
     : "Printer";
@@ -617,13 +675,13 @@ export default function PrinterBidDetailView() {
   const allVerified = activeRequiredFields.every((field) => !!verifiedFields[field]);
 
   return (
-    <div className="container mx-auto px-4 mt-4 max-w-6xl pb-10">
+    <div className="container mx-auto px-4 mt-4 max-w-6xl pb-10 bg-white">
       <div className="flex items-center justify-between mb-6 pt-2 border-b pb-4">
         <div className="flex items-center gap-4">
           <button
             type="button"
             onClick={() => navigate(-1)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-gray-300 bg-white text-gray-700 text-sm font-semibold hover:bg-slate-800 hover:text-white hover:border-slate-800 transition-all duration-200 shadow-sm"
+            className="inline-flex h-9 items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 text-sm font-semibold text-gray-700 shadow-sm transition-all duration-200 hover:border-slate-800 hover:bg-slate-800 hover:text-white"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
@@ -654,6 +712,11 @@ export default function PrinterBidDetailView() {
             ✅ Reviewed • {printerTypeLabel}
           </span>
         )}
+        {readOnly && isApproved && (
+          <span className="inline-flex items-center gap-1.5 whitespace-nowrap px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700 border border-green-300">
+            ✅ Approved • {printerTypeLabel}
+          </span>
+        )}
       </div>
 
       {isReAnalyze && form?.admin_note && <AdminNoteBanner note={form.admin_note} />}
@@ -664,7 +727,12 @@ export default function PrinterBidDetailView() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit}>
+      <form
+        onSubmit={handleSubmit}
+        className={`${isPending
+          ? "[&_label]:!font-semibold [&_label]:!text-slate-800 [&_input]:!border-blue-300 [&_input]:!text-slate-900 [&_input]:placeholder:!text-slate-500 [&_select]:!border-blue-300 [&_select]:!text-slate-900 [&_textarea]:!border-blue-300 [&_textarea]:!text-slate-900 [&_textarea]:placeholder:!text-slate-500"
+          : ""} ${readOnly ? "[&_select]:!appearance-none" : ""}`}
+      >
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4">
           <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="bid_no" label="Bid Number">
             <input type="text" name="bid_no" value={form?.bid_no || ""} onChange={handleChange} disabled={readOnly} className={inputCls} />
@@ -682,9 +750,18 @@ export default function PrinterBidDetailView() {
             <input type="number" name="qty" value={form?.qty || ""} onChange={handleChange} disabled={readOnly} className={inputCls} />
           </VerifiedInputWrapper>
 
-          <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="pincode" label="Pincode">
+          <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="pincode" label="Buyer Pincode">
             <input type="text" name="pincode" value={form?.pincode || ""} onChange={handleChange} disabled={readOnly} className={inputCls} />
           </VerifiedInputWrapper>
+
+          {readOnly && (
+            <div className="min-w-0">
+              <label className="mb-1 block text-sm font-medium text-gray-700">Assigned Model</label>
+              <input type="text" value={modelInputValue} disabled
+                placeholder="No model assigned"
+                className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 disabled:bg-gray-100" />
+            </div>
+          )}
 
           <div className="md:col-span-2 lg:col-span-3">
             <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="address" label="Address">
@@ -800,52 +877,67 @@ export default function PrinterBidDetailView() {
             <input type="text" name="onsite_warranty" value={form?.onsite_warranty || ""} onChange={handleChange} disabled={readOnly} className={inputCls} />
           </VerifiedInputWrapper>
 
-          <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="extended_warranty" label="Extended Warranty (in Years) over and above standard warranty">
-            <input type="text" name="extended_warranty" value={form?.extended_warranty || ""} onChange={handleChange} disabled={readOnly} className={inputCls} />
-          </VerifiedInputWrapper>
+          {!readOnly && (
+            <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="extended_warranty" label="Extended Warranty (in Years) over and above standard warranty">
+              <input type="text" name="extended_warranty" value={form?.extended_warranty || ""} onChange={handleChange} disabled={readOnly} className={inputCls} />
+            </VerifiedInputWrapper>
+          )}
 
-          <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="epbg" label="EPBG (%)">
-            <input type="text" name="epbg" value={form?.epbg || ""} onChange={handleChange} disabled={readOnly} className={inputCls} />
-          </VerifiedInputWrapper>
+          <div className="md:col-span-2 lg:col-span-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4">
+            {readOnly && (
+              <VerifiedInputWrapper alignTwoLineLabel verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="extended_warranty" label="Extended Warranty (in Years) over and above standard warranty">
+                <input type="text" name="extended_warranty" value={form?.extended_warranty || ""} onChange={handleChange} disabled={readOnly} className={inputCls} />
+              </VerifiedInputWrapper>
+            )}
+            <VerifiedInputWrapper alignTwoLineLabel={readOnly} verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="date" label="Bid End Date">
+              <input type="date" name="date" value={form?.date || ""} onChange={handleChange} disabled={readOnly} className={inputCls} />
+            </VerifiedInputWrapper>
 
-          <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="date" label="Bid End Date">
-            <input type="date" name="date" value={form?.date || ""} onChange={handleChange} disabled={readOnly} className={inputCls} />
-          </VerifiedInputWrapper>
+            <VerifiedInputWrapper alignTwoLineLabel={readOnly} verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="freightInstallation" label="Freight and Installation">
+              <select name="freightInstallation" value={form?.freightInstallation ?? "Yes"} onChange={handleChange} disabled={readOnly} className={inputCls}>
+                <option value="Yes">Yes</option>
+                <option value="No">No</option>
+              </select>
+            </VerifiedInputWrapper>
 
-          <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="extra_requirements" label="Extra Requirements" optional>
-            <textarea name="extra_requirements" value={form?.extra_requirements || ""} onChange={handleChange} disabled={readOnly} rows={2} className={textareaCls} />
-          </VerifiedInputWrapper>
+            {!readOnly && (
+              <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="epbg" label="EPBG (%)">
+                <input type="text" name="epbg" value={form?.epbg || ""} onChange={handleChange} disabled={readOnly} className={inputCls} />
+              </VerifiedInputWrapper>
+            )}
 
-          <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="freightInstallation" label="Freight and Installation">
-            <select name="freightInstallation" value={form?.freightInstallation ?? "Yes"} onChange={handleChange} disabled={readOnly} className={inputCls}>
-              <option value="Yes">Yes</option>
-              <option value="No">No</option>
-            </select>
-          </VerifiedInputWrapper>
+          </div>
 
         </div>
 
-        <div className="mt-8 mb-4">
-          <div className="relative flex items-center gap-2 bg-gray-50 p-2 rounded-lg border border-gray-300 w-fit">
+        <div className="mt-6 mb-4 grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+          {readOnly && (
+            <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="epbg" label="EPBG (%)">
+              <input type="text" name="epbg" value={form?.epbg || ""} onChange={handleChange} disabled={readOnly} className={inputCls} />
+            </VerifiedInputWrapper>
+          )}
+          <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="extra_requirements" label="Extra Requirements" optional>
+            <textarea name="extra_requirements" value={form?.extra_requirements || ""} onChange={handleChange} disabled={readOnly} rows={readOnly ? 1 : 2} className={textareaCls} />
+          </VerifiedInputWrapper>
+
+          {!readOnly && (
+          <div className="min-w-0">
+          <div className="relative flex items-center gap-2 rounded-lg border border-blue-300 bg-blue-50/60 p-2 shadow-sm w-fit">
             <div className="flex flex-col">
-              <label className="text-[10px] font-bold text-gray-500 uppercase ml-1">Assigned Model</label>
+              <label className="mb-1 text-sm font-bold text-blue-900">Assigned Model</label>
               <input
                 type="text"
                 name="model_number"
                 value={modelInputValue}
                 readOnly
                 placeholder="Model will be assigned by Find Model"
-                className="border border-gray-300 rounded bg-gray-100 px-3 py-1.5 text-sm outline-none w-64 font-semibold text-gray-600 cursor-not-allowed"
+                className="w-64 cursor-not-allowed rounded border border-gray-300 bg-gray-100 px-3 py-1.5 text-sm font-semibold text-gray-600 outline-none"
               />
             </div>
 
             {getPrinterModelImage(modelInputValue) && (
-              <div className="mt-4 w-14 h-14 rounded-lg border border-gray-200 bg-white flex items-center justify-center overflow-hidden shadow-sm">
-                <img
-                  src={getPrinterModelImage(modelInputValue)}
-                  alt={modelInputValue || "Assigned printer model"}
-                  className="w-full h-full object-contain p-1"
-                />
+              <div className="mt-4 flex h-14 w-14 items-center justify-center overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
+                <img src={getPrinterModelImage(modelInputValue)} alt={modelInputValue || "Assigned printer model"} className="h-full w-full object-contain p-1" />
               </div>
             )}
 
@@ -854,7 +946,7 @@ export default function PrinterBidDetailView() {
                 type="button"
                 onClick={handleFindModel}
                 disabled={modelSearching || modelSaving}
-                className="mt-4 bg-slate-700 hover:bg-slate-800 disabled:bg-slate-400 text-white px-3 py-1.5 rounded text-xs font-bold transition shadow-sm"
+                className="mt-4 rounded bg-slate-700 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-slate-800 disabled:bg-slate-400"
               >
                 {modelSearching ? "Searching..." : "Find Model"}
               </button>
@@ -898,19 +990,15 @@ export default function PrinterBidDetailView() {
                     <div className="flex items-start gap-3 bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
                       <span className="text-xl leading-none">✅</span>
                       {modelMatches[0].image && (
-                        <div className="w-20 h-20 rounded-lg border border-green-200 bg-white flex items-center justify-center overflow-hidden shadow-sm">
-                          <img
-                            src={modelMatches[0].image}
-                            alt={modelMatches[0].modelNo}
-                            className="w-full h-full object-contain p-1"
-                          />
+                        <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-lg border border-green-200 bg-white shadow-sm">
+                          <img src={modelMatches[0].image} alt={modelMatches[0].modelNo} className="h-full w-full object-contain p-1" />
                         </div>
                       )}
                       <div>
                         <div className="text-sm font-bold text-green-800">Model found</div>
                         <div className="text-lg font-extrabold text-blue-700 mt-1">{modelMatches[0].modelNo}</div>
                         {modelMatches[0].category && <div className="text-xs text-gray-500 mt-1">{modelMatches[0].category}</div>}
-                        <div className="text-[11px] text-green-700 mt-1">Excel printer catalogue match</div>
+                        <div className="mt-1 text-[11px] text-green-700">Excel printer catalogue match</div>
                       </div>
                     </div>
                     <div className="flex justify-end">
@@ -924,6 +1012,8 @@ export default function PrinterBidDetailView() {
               </div>
             )}
           </div>
+          </div>
+          )}
         </div>
 
         <div className="mb-10 flex gap-3 items-center flex-wrap">
@@ -932,7 +1022,7 @@ export default function PrinterBidDetailView() {
               type="button"
               disabled={!allVerified || submitting || modelSaving}
               onClick={handleNextClick}
-              className={`font-semibold px-8 py-2.5 rounded-md text-sm transition flex items-center gap-2 ${
+              className={`order-2 font-semibold px-8 py-2.5 rounded-md text-sm transition flex items-center gap-2 ${
                 allVerified ? "bg-blue-600 hover:bg-blue-700 text-white shadow-md" : "bg-gray-200 text-gray-400 cursor-not-allowed"
               }`}
             >
@@ -957,7 +1047,7 @@ export default function PrinterBidDetailView() {
           <button
             type="button"
             onClick={() => navigate(-1)}
-            className="flex items-center gap-1.5 bg-white border border-gray-300 hover:bg-slate-800 hover:text-white hover:border-slate-800 text-gray-700 font-semibold px-8 py-2.5 rounded-md text-sm transition-all duration-200 shadow-sm"
+            className={`${readOnly ? "" : "order-1"} flex items-center gap-1.5 bg-white border border-gray-300 hover:bg-slate-800 hover:text-white hover:border-slate-800 text-gray-700 font-semibold px-8 py-2.5 rounded-md text-sm transition-all duration-200 shadow-sm`}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />

@@ -12,6 +12,7 @@ from django.views.decorators.http import require_http_methods
 from django.test import RequestFactory
 from ..models import User, DesktopBid, CatalogueProduct
 from ..restricted_pincodes import is_restricted_pincode, restriction_message
+from .bid_cleanup import delete_bid_with_related_data
 import re
 import os
 import shutil
@@ -421,6 +422,9 @@ def generate_certificates(request, bid_id):
         "past_performance": "past_performance.pdf",
         "oem_annual_turnover": "oem_annual_turnover.pdf",
     }
+    static_document_overrides = getattr(bid, "static_document_overrides", None)
+    if isinstance(static_document_overrides, dict):
+        STATIC_DOCUMENTS.update(static_document_overrides)
     DYNAMIC_STANDALONE_DOCUMENTS = {"atc_acceptance_letter"}
 
     def _number_pages_from_one(document):
@@ -624,7 +628,7 @@ def generate_certificates(request, bid_id):
         ]
         atc_labels = {
             "warranty": "WARRANTY",
-            "bidder_financial": "BIDDER FINANCIAL UNDERSTANDINGS",
+            "bidder_financial": "BIDDER FINANCIAL STANDING",
             "non_obsolete": "NON OBSOLETE",
             "data_sheet": "DATA SHEET",
             "non_malicious": "NON MALICIOUS CODE",
@@ -736,7 +740,7 @@ def generate_certificates(request, bid_id):
         }
         labels = {
             "warranty": "WARRANTY",
-            "bidder_financial": "BIDDER FINANCIAL UNDERSTANDINGS",
+            "bidder_financial": "BIDDER FINANCIAL STANDING",
             "non_obsolete": "NON OBSOLETE",
             "data_sheet": "DATA SHEET",
             "non_malicious": "NON MALICIOUS CODE",
@@ -2245,24 +2249,10 @@ def generate_certificates(request, bid_id):
             )
 
     def _fix_manufacturer_auth_page(page):
-        """Keep the Desktop MAF wording consistent with the Workstation MAF."""
-        page.add_redact_annot(
-            fitz.Rect(68, 370, page.rect.width - 42, 450),
-            fill=(1, 1, 1),
-        )
-        page.apply_redactions()
-        page.insert_textbox(
-            fitz.Rect(72, 375, page.rect.width - 52, 450),
-            "This is to inform you that we M/S LAPS N TABS TECHNOLOGY PRIVATE LIMITED manufacturer "
-            "of acxxel Desktop having registered office at C-187, Nirala Nagar, Lucknow-226020 "
-            "Uttar Pradesh are directly participating as OEM in the above mentioned bid \"acxxel\". "
-            "It is also a registered OEM on GeM by the same name. Trade Mark Certificate is attached below.",
-            fontsize=9.5,
-            fontname="hebo",
-            color=(0, 0, 0),
-            align=0,
-            lineheight=1.15,
-        )
+        """Use the same structured MAF body and signature layout as AIO."""
+        from .Aio import _fill_manufacturer_auth_body
+
+        _fill_manufacturer_auth_body(page, fitz)
 
     def _replace_service_support_heading(page):
         old_text = "ACXXEL SERVICE PARTNERS"
@@ -2440,7 +2430,7 @@ def generate_certificates(request, bid_id):
         page.insert_text((write_x, write_y), "Dear Sir,", fontsize=11, fontname="hebo", color=(0, 0, 0))
         paragraph = (
             "We undertake that, as per Buyer Organization's Security Policy, Faulty Hard Disk of "
-            "Servers / Desktop Computers / Laptops / Workstation / AIO / Printer / Toner etc. will not be "
+            "Servers/Desktop Computers/ All in One Computers etc. will not be "
             "returned back to the OEM/supplier against warranty replacement."
         )
         page.insert_textbox(
@@ -2596,36 +2586,21 @@ def generate_certificates(request, bid_id):
         page.apply_redactions(images=0, graphics=0)
 
         if page_already_has_to_block:
-            if include_bid_no and bid_no:
-                address_tokens = [
-                    str(value or "").strip().lower()
-                    for value in [dept_name, organization, full_address]
-                    if str(value or "").strip()
-                ]
-                address_lines = [
-                    bbox
-                    for bbox, line_text in all_lines
-                    if any(
-                        token == line_text.strip().lower()
-                        or token.startswith(line_text.strip().lower())
-                        or line_text.strip().lower() in token
-                        for token in address_tokens
-                        if line_text.strip()
+            if include_bid_no:
+                to_line = next((bbox for bbox,text in all_lines if text.strip().rstrip(", ").upper()=="TO"),None)
+                content_line = next((bbox for bbox,text in all_lines if re.search(r"As per (?:the )?Buyer ATC|Availability of Service Centres|Service\s*&\s*Support",text,re.I)),None)
+                if to_line and content_line:
+                    page.add_redact_annot(
+                        fitz.Rect(to_line.x0-3,to_line.y0-2,page.rect.width-36,content_line.y0-6),
+                        fill=(1,1,1),
                     )
-                ]
-                if address_lines:
-                    last_line = max(address_lines, key=lambda rect: rect.y1)
-                    insert_x = last_line.x0
-                    insert_y = last_line.y1 + 13
-                else:
-                    insert_x, insert_y = 72, 226
-                page.insert_text(
-                    (insert_x, insert_y),
-                    f"Bid No: {bid_no}",
-                    fontsize=11,
-                    fontname="hebo",
-                    color=(0, 0, 0),
-                )
+                    page.apply_redactions(images=0,graphics=0)
+                    recipient_lines=["To,",dept_name,organization,full_address]
+                    y=to_line.y1-2
+                    for value in recipient_lines:
+                        if value:
+                            page.insert_text((to_line.x0,y),str(value).strip(),fontsize=11.5,fontname="hebo",color=(0,0,0))
+                            y+=16.5
             return
 
         if not page_already_has_to_block:
@@ -2825,6 +2800,10 @@ def generate_certificates(request, bid_id):
                 if original_page_number == 25:
                     _replace_service_support_consignee_contact(page)
                     _space_service_support_intro(page)
+                    from .Aio import _fill_service_support_escalation
+                    _fill_service_support_escalation(page, fitz)
+                    from .Aio import _add_service_support_bid_date
+                    _add_service_support_bid_date(page, fitz, bid_no, bid_date_formatted)
                 if original_page_number == 29:
                     _add_service_support_table_note(page)
                 if original_page_number == 30:
@@ -2849,12 +2828,20 @@ def generate_certificates(request, bid_id):
                             keep_proportion=False,
                             overlay=True,
                         )
+                    from .Aio import _add_service_support_last_page_bid_date
+                    _add_service_support_last_page_bid_date(
+                        page, fitz, bid_no, bid_date_formatted,
+                        dept_name, organization, full_address,
+                    )
                 page_text_raw = page.get_text("text")
 
             if doc_type in {"manufacturer_auth", "service_support"}:
                 # Preserve department/address capitalization in the header;
                 # normalize the brand only inside the certificate body.
                 _lowercase_acxxel(page, min_y=230)
+                page_text_raw = page.get_text("text")
+            elif doc_type == "make_in_india":
+                _lowercase_acxxel(page)
                 page_text_raw = page.get_text("text")
 
             if doc_type == "manufacturer_auth" and original_page_number == 2:
@@ -4840,6 +4827,8 @@ def review_desktop_bid(request, bid_id):
         bid.status = "complete"
         bid.review_status = "pending"
         bid.save()
+        from .GemAssignments import complete_user_assignment_for_bid
+        complete_user_assignment_for_bid(bid.bid_no, bid.user)
 
         return JsonResponse({
             "success": True,
@@ -4863,7 +4852,7 @@ def delete_desktop_bid(request, bid_id):
         bid = DesktopBid.objects.filter(id=bid_id).first()
         if not bid:
             return JsonResponse({"error": "Bid not found"}, status=404)
-        bid.delete()
+        delete_bid_with_related_data(bid, "desktop")
         return JsonResponse({"message": "Bid deleted successfully ✅"}, status=200)
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=400)
@@ -4886,9 +4875,10 @@ def bulk_delete_desktop_bids(request):
         bid_ids = list(dict.fromkeys(bid_ids))
         if not bid_ids:
             return JsonResponse({"error": "Select at least one bid."}, status=400)
-        rows = DesktopBid.objects.filter(id__in=bid_ids)
-        deleted_ids = list(rows.values_list("id", flat=True))
-        rows.delete()
+        rows = list(DesktopBid.objects.filter(id__in=bid_ids))
+        deleted_ids = [bid.id for bid in rows]
+        for bid in rows:
+            delete_bid_with_related_data(bid, "desktop")
         return JsonResponse({"deleted": len(deleted_ids), "deleted_ids": deleted_ids})
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=400)
@@ -6422,7 +6412,7 @@ def delete_desktop_bid(request, bid_id):
         bid = DesktopBid.objects.filter(id=bid_id).first()
         if not bid:
             return JsonResponse({"error": "Bid not found"}, status=404)
-        bid.delete()
+        delete_bid_with_related_data(bid, "desktop")
         return JsonResponse({"message": "Bid deleted successfully ✅"}, status=200)
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=400)

@@ -9,7 +9,7 @@ const GENERAL_DOCS = [
   { id: "past_performance", label: "PAST PERFORMANCE" },
   { id: "oem_annual_turnover", label: "OEM ANNUAL TURNOVER" },
   { id: "atc_acceptance_letter", label: "ATC ACCEPTANCE LETTER" },
-  { id: "bidder_financial", label: "BIDDER FINANCIAL UNDERSTANDINGS" },
+  { id: "bidder_financial", label: "BIDDER FINANCIAL STANDING" },
   { id: "non_obsolete", label: "NON OBSOLETE" },
   { id: "non_malicious", label: "NON MALICIOUS CODE" },
   { id: "non_return_hdd", label: "NON RETURN OF HARD DISK" },
@@ -211,9 +211,11 @@ export default function WorkstationDocument({ bidData, onSuccess, onBack, submit
                 </div>
               </div>
             </div>
-            <div style={{ background: "linear-gradient(135deg, #1d4ed8, #3b82f6)", color: "#fff", fontSize: 11, fontWeight: 700, padding: "4px 12px", borderRadius: 20, letterSpacing: "0.5px" }}>
-              {analyserMode ? "STEP 2 / 2" : "STEP 3 / 3"}
-            </div>
+            {analyserMode && (
+              <div style={{ background: "linear-gradient(135deg, #1d4ed8, #3b82f6)", color: "#fff", fontSize: 11, fontWeight: 700, padding: "4px 12px", borderRadius: 20, letterSpacing: "0.5px" }}>
+                STEP 2 / 2
+              </div>
+            )}
           </div>
 
           <div style={{ padding: "24px" }}>

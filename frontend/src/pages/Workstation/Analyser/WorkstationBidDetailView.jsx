@@ -77,7 +77,7 @@ const TEXT_FIELDS = [
 
 const USER_DOCS = [
   { id: "manufacturer_auth", label: "MANUFACTURER AUTHORIZATION CERTIFICATE" },
-  { id: "bidder_financial", label: "BIDDER FINANCIAL UNDERSTANDINGS" },
+  { id: "bidder_financial", label: "BIDDER FINANCIAL STANDING" },
   { id: "non_obsolete", label: "NON OBSOLETE" },
   { id: "non_malicious", label: "NON MALICIOUS CODE" },
   { id: "non_return_hdd", label: "NON RETURN OF HARD DISK" },
@@ -303,6 +303,8 @@ export default function WorkstationBidDetailView() {
   const location = useLocation();
   const navigate = useNavigate();
   const showGemUpload = location.state?.showGemUpload === true;
+  const verificationBidId = id || location.state?.bid?.id || location.state?.id || location.state?.bid_id || "unknown";
+  const verificationStorageKey = `workstation_bid_verified_fields_${verificationBidId}`;
   const [form, setForm] = useState(location.state?.bid || {});
   const [readOnly] = useState(!!location.state?.readOnly);
   const [loading, setLoading] = useState(false);
@@ -314,7 +316,14 @@ export default function WorkstationBidDetailView() {
   const [noMatchFound, setNoMatchFound] = useState(false);
   const [newModelInput, setNewModelInput] = useState("");
   const [modelInputValue, setModelInputValue] = useState(location.state?.bid?.model_number || "");
-  const [verifiedFields, setVerifiedFields] = useState({});
+  const [verifiedFields, setVerifiedFields] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem(verificationStorageKey);
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
   const [gemStarting, setGemStarting] = useState(false);
 
   useEffect(() => {
@@ -332,6 +341,10 @@ export default function WorkstationBidDetailView() {
     };
     loadBid();
   }, [id]);
+
+  useEffect(() => {
+    sessionStorage.setItem(verificationStorageKey, JSON.stringify(verifiedFields));
+  }, [verificationStorageKey, verifiedFields]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -521,7 +534,7 @@ export default function WorkstationBidDetailView() {
     <div className="container mx-auto px-4 mt-4 max-w-6xl pb-10 bg-white">
       <div className="flex items-center justify-between mb-6 pt-2 border-b pb-4">
         <div className="flex items-center gap-4">
-          <button type="button" onClick={() => navigate(-1)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-gray-300 bg-white text-gray-700 text-sm font-semibold hover:bg-slate-800 hover:text-white hover:border-slate-800 transition-all duration-200 shadow-sm">
+          <button type="button" onClick={() => navigate(-1)} className="inline-flex h-9 items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 text-sm font-semibold text-gray-700 shadow-sm transition-all duration-200 hover:border-slate-800 hover:bg-slate-800 hover:text-white">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
             </svg>
@@ -553,7 +566,7 @@ export default function WorkstationBidDetailView() {
 
       {msg && <div className="mb-4 px-4 py-2 rounded bg-red-50 text-red-700 text-sm font-medium border border-red-200">{msg}</div>}
 
-      <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4 ${isPending ? "[&_label]:!font-semibold [&_label]:!text-slate-800 [&_input]:!border-blue-300 [&_input]:!text-slate-900 [&_input]:placeholder:!text-slate-500 [&_select]:!border-blue-300 [&_select]:!text-slate-900 [&_textarea]:!border-blue-300 [&_textarea]:!text-slate-900" : ""}`}>
+      <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4 ${isPending ? "[&_label]:!font-semibold [&_label]:!text-slate-800 [&_input]:!border-blue-300 [&_input]:!text-slate-900 [&_input]:placeholder:!text-slate-500 [&_select]:!border-blue-300 [&_select]:!text-slate-900 [&_textarea]:!border-blue-300 [&_textarea]:!text-slate-900" : ""} ${readOnly && isApproved ? "[&_select]:!appearance-none" : ""}`}>
         {TOP_FIELDS.map(([name, label, type]) => (
           <VerifiedField key={name} name={name} label={label} required verifiedFields={verifiedFields} readOnly={readOnly} onToggle={toggleVerification}>
             <input
@@ -745,24 +758,12 @@ export default function WorkstationBidDetailView() {
                 </div>
               ) : noMatchFound ? (
                 <div className="p-5">
-                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
-                    <div className="text-sm font-bold text-amber-800">No exact matching model found</div>
-                    <div className="text-xs text-amber-700 mt-0.5">You can create a new model number and save it as the Assigned Model.</div>
-                  </div>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={newModelInput}
-                      onChange={(e) => setNewModelInput(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Enter" && !modelSaving) handleCreateNewModel(); }}
-                      placeholder="Create new model number..."
-                      autoFocus
-                      className="flex-1 border border-blue-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
-                    />
-                    <button type="button" onClick={handleCreateNewModel} disabled={modelSaving}
-                      className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white px-4 py-2 rounded-md text-sm font-bold transition shadow-sm whitespace-nowrap">
-                      {modelSaving ? "Saving..." : "Save"}
-                    </button>
+                  <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+                    <span className="text-2xl leading-none mt-0.5">⚠️</span>
+                    <div>
+                      <div className="text-sm font-bold text-amber-800">No 100% accurate model match found</div>
+                      <div className="text-xs text-amber-700 mt-0.5">Please recheck your specs or create another bid.</div>
+                    </div>
                   </div>
                 </div>
               ) : modelMatches.length === 0 ? (
@@ -771,10 +772,13 @@ export default function WorkstationBidDetailView() {
                 </div>
               ) : (
                 <div className="p-4">
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
-                    <div className="text-sm font-bold text-green-800">Model found</div>
-                    <div className="text-lg font-extrabold text-blue-700 mt-1">{modelMatches[0].modelNo}</div>
-                    {modelMatches[0].category && <div className="text-xs text-gray-500 mt-1">{modelMatches[0].category}</div>}
+                  <div className="flex items-start gap-3 bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
+                    <span className="text-xl leading-none">✅</span>
+                    <div>
+                      <div className="text-sm font-bold text-green-800">Model found</div>
+                      <div className="text-lg font-extrabold text-blue-700 mt-1">{modelMatches[0].modelNo}</div>
+                      {modelMatches[0].category && <div className="text-xs text-gray-500 mt-1">{modelMatches[0].category}</div>}
+                    </div>
                   </div>
                   <div className="flex justify-end">
                     <button type="button" onClick={() => selectModelNumber(modelMatches[0].modelNo)} disabled={modelSaving}

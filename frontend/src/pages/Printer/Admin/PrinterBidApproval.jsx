@@ -9,7 +9,7 @@ const TABS = [
 
 const GENERAL_DOCS = [
   ["manufacturer_auth", "MANUFACTURER AUTHORIZATION CERTIFICATE"], ["warranty", "WARRANTY"],
-  ["bidder_financial", "BIDDER FINANCIAL UNDERSTANDINGS"], ["non_obsolete", "NON OBSOLETE"],
+  ["bidder_financial", "BIDDER FINANCIAL STANDING"], ["non_obsolete", "NON OBSOLETE"],
   ["data_sheet", "DATA SHEET"], ["non_malicious", "NON MALICIOUS CODE"],
   ["non_return_hdd", "NON RETURN OF HARD DISK"], ["technical_compliance", "TECHNICAL COMPLIANCE"],
   ["non_blacklisting", "NON BLACKLISTING"], ["service_support", "SERVICE SUPPORT CONSIGNEE LOCATION"],
@@ -18,7 +18,7 @@ const GENERAL_DOCS = [
 
 const BID_FIELDS = [
   ["bid_no", "Bid Number"], ["model_number", "Model Number"], ["dept_name", "Department"],
-  ["organization", "Organization"], ["qty", "Quantity", "number"], ["pincode", "Pincode"],
+  ["organization", "Organization"], ["qty", "Quantity", "number"], ["pincode", "Buyer Pincode"],
   ["date", "Bid End Date", "date"], ["address", "Address"], ["local_content", "Local Content (%)"],
 ];
 
@@ -57,13 +57,14 @@ const getPrinterTypeLabel = (value) =>
     ? "Multifunction Printer"
     : "Printer";
 
-const Field = ({ item, form, onChange }) => {
+const Field = ({ item, form, onChange, compact = false }) => {
   const [name, label, type = "text"] = item;
   const isFinalPrice = name === "final_amount";
+  const isLocalContent = name === "local_content";
   const classes = "w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100";
   return (
-    <div className={`${type === "textarea" ? "md:col-span-2 lg:col-span-3" : ""} ${isFinalPrice ? "rounded-md border-2 border-emerald-300 bg-emerald-50 p-4 shadow-sm" : ""}`}>
-      <label className={`mb-1 block text-sm ${isFinalPrice ? "font-bold text-emerald-800" : "font-medium text-gray-700"}`}>{label}</label>
+    <div className={`${type === "textarea" && !compact ? "md:col-span-2 lg:col-span-3" : ""} ${isFinalPrice ? "rounded-md border-2 border-emerald-300 bg-emerald-50 p-4 shadow-sm" : ""}`}>
+      <label className={`mb-1 block text-sm ${isFinalPrice ? "font-bold text-emerald-800" : "font-medium text-gray-700"}`}>{label}{isLocalContent && <span className="ml-1 text-red-600">*</span>}</label>
       {type === "textarea" ? (
         <textarea name={name} value={form[name] ?? ""} onChange={onChange} rows={2} className={`${classes} resize-none`} />
       ) : isFinalPrice ? (
@@ -80,7 +81,7 @@ const Field = ({ item, form, onChange }) => {
           />
         </div>
       ) : (
-        <input name={name} type={type} value={form[name] ?? ""} onChange={onChange} className={classes} />
+        <input name={name} type={isLocalContent ? "text" : type} inputMode={isLocalContent ? "decimal" : undefined} required={isLocalContent} placeholder={isLocalContent ? "Enter Local Content" : undefined} value={form[name] ?? ""} onChange={onChange} className={classes} />
       )}
     </div>
   );
@@ -195,15 +196,23 @@ const PrinterDocumentsView = ({ form, documentUrl }) => {
   return <div className="md:col-span-2 lg:col-span-3">
     <label className="mb-2 block text-sm font-medium text-gray-700">Compliance Documents</label>
     <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-      <div className={`rounded-lg border p-4 ${documentUrl ? "border-purple-200 bg-purple-50" : "border-dashed border-gray-300 bg-gray-50"}`}>
-        <div className="flex items-center justify-between gap-3"><div><p className="text-sm font-bold text-gray-800">Special Document</p><p className="text-xs text-gray-500">{documentUrl ? "ATC Specific Requirement" : "No Special Document"}</p></div><div className="flex gap-2">{documentUrl && <a href={documentUrl} target="_blank" rel="noreferrer" className="rounded border border-purple-200 bg-white px-3 py-1.5 text-xs font-medium text-purple-700">View File</a>}<label className="cursor-pointer rounded bg-purple-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-purple-700">{uploading ? "Uploading..." : "Upload"}<input type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" onChange={uploadDocument} disabled={uploading} className="hidden" /></label></div></div>
-      </div>
-      <div ref={dropdownRef} className="relative">
-        <button type="button" onClick={() => setOpen((value) => !value)} className={`flex w-full items-center justify-between rounded-lg border p-4 text-left transition ${open ? "border-orange-500 bg-orange-50" : "border-gray-200 bg-white hover:border-orange-400"}`}>
-          <div><p className="text-sm font-bold text-gray-800">📁 General Documents</p><p className="text-xs text-gray-500">Click to view selected documents</p></div><span className="rounded-full bg-yellow-100 px-2.5 py-1 text-xs font-medium text-yellow-800">{displayDocs.length}/{GENERAL_DOCS.length} Files</span>
+      {documentUrl ? (
+        <div className="flex w-full items-center justify-between rounded-lg border border-purple-200 bg-purple-50 p-4 transition-all duration-200 hover:border-purple-300 hover:bg-purple-100">
+          <div className="flex items-center gap-3"><div className="rounded-full bg-purple-200 p-2 text-purple-700">✓</div><div><p className="text-sm font-bold text-purple-900">Special Document</p><p className="text-xs text-purple-700">ATC Specific Requirement</p></div></div>
+          <a href={documentUrl} target="_blank" rel="noreferrer" className="rounded border border-purple-200 bg-white px-3 py-1.5 text-xs font-medium text-purple-700 hover:bg-purple-50">View File</a>
+        </div>
+      ) : (
+        <div className="flex items-center justify-center rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4 text-sm text-gray-400">No Special Document</div>
+      )}
+      <div ref={dropdownRef} className="relative w-full">
+        <button type="button" onClick={() => setOpen((value) => !value)} className={`group flex w-full items-center justify-between rounded-lg border p-4 text-left transition-all duration-200 ${open ? "border-orange-500 bg-orange-50 ring-1 ring-orange-500" : "border-gray-200 bg-white hover:border-orange-400 hover:shadow-md"}`}>
+          <div className="flex items-center gap-3"><div className={`rounded-full p-2 ${open ? "bg-orange-200 text-orange-700" : "bg-orange-100 text-orange-600 group-hover:bg-orange-200"}`}>📁</div><div><p className="text-sm font-bold text-gray-800">Bid Documents</p><p className="text-xs text-gray-500">{displayDocs.length ? "Separate certificates and indexed ATC bundle" : "No documents selected"}</p></div></div>
+          <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${displayDocs.length ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"}`}>{displayDocs.length} Items</span>
         </button>
-        {open && <div className="absolute left-0 right-0 top-full z-20 mt-2 max-h-80 overflow-y-auto rounded-xl border bg-white shadow-2xl">
-          {displayDocs.length ? displayDocs.map((doc) => <div key={doc.id} className="flex items-center gap-2 border-b px-4 py-3 last:border-0"><span className="flex-1 text-xs font-medium text-gray-700">{doc.label}</span><button type="button" onClick={() => generate(doc)} disabled={!!working} className="rounded border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs text-blue-700">{working === `${doc.id}-view` ? "Generating..." : "View"}</button><button type="button" onClick={() => generate(doc, true)} disabled={!!working} className="rounded bg-green-600 px-2.5 py-1 text-xs text-white">{working === `${doc.id}-download` ? "..." : "Download"}</button></div>) : <p className="p-6 text-center text-sm text-gray-400">No documents selected.</p>}
+        {open && <div className="absolute left-0 right-0 top-full z-50 mt-2 w-full overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl">
+          <div className="flex items-center justify-between border-b border-orange-100 bg-orange-50 px-4 py-3"><span className="text-sm font-semibold text-orange-800">Approved Bid Documents</span><span className="rounded-full bg-green-100 px-2 py-[2px] text-xs font-semibold text-green-700">{displayDocs.length} Total</span></div>
+          <div className="max-h-80 divide-y divide-gray-100 overflow-y-auto">{displayDocs.length ? displayDocs.map((doc) => <div key={doc.id} className="flex items-center gap-3 bg-white px-4 py-3 transition-colors hover:bg-green-50"><span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-green-500 text-xs text-white">✓</span><span className="flex-1 text-sm font-medium text-gray-800">{doc.label}</span><button type="button" onClick={() => generate(doc)} disabled={!!working} className="rounded border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-50">{working === `${doc.id}-view` ? "Generating..." : "View File"}</button><button type="button" onClick={() => generate(doc, true)} disabled={!!working} className="rounded bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50">{working === `${doc.id}-download` ? "Downloading..." : "Download"}</button></div>) : <p className="p-8 text-center text-sm text-gray-500">No documents selected.</p>}</div>
+          <div className="flex justify-end border-t border-gray-100 bg-gray-50 px-4 py-2"><button type="button" onClick={() => setOpen(false)} className="rounded px-3 py-1 text-xs font-medium text-gray-500 hover:bg-gray-200 hover:text-gray-700">Close Panel</button></div>
         </div>}
       </div>
       <MakeInIndiaView form={form} />
@@ -273,6 +282,13 @@ export default function PrinterBidApproval() {
   };
 
   const handleAction = async (status) => {
+    const localContent = String(form.local_content ?? "").trim();
+    if (status === "approved" && (localContent === "" || Number(localContent) < 0 || Number(localContent) > 100)) {
+      const validationMessage = "Please enter a valid Local Content percentage between 0 and 100 before approving the bid.";
+      setMessage(validationMessage);
+      window.alert(validationMessage);
+      return;
+    }
     if (status === "approved" && (!String(form.final_amount ?? "").trim() || Number(form.final_amount) <= 0)) {
       const validationMessage = "Please enter a valid Final Price before approving the bid.";
       setMessage(validationMessage);
@@ -414,8 +430,8 @@ export default function PrinterBidApproval() {
       </div>}
 
       {selected && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 px-4 py-8">
-          <div className="mx-auto w-full max-w-7xl rounded-xl bg-white shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-black/60 p-4">
+          <div className="max-h-[calc(100vh-2rem)] w-full max-w-7xl overflow-y-auto rounded-xl bg-white shadow-2xl">
             <div className="flex items-center justify-between rounded-t-xl border-b bg-gray-50 px-6 py-4">
               <div className="flex items-center gap-4">
                 <button type="button" onClick={closeModal} className="flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-600 shadow-sm transition-all hover:border-slate-800 hover:bg-slate-800 hover:text-white">
@@ -435,7 +451,7 @@ export default function PrinterBidApproval() {
             </div>
             {message && <div className="mx-6 mt-4 rounded border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700">{message}</div>}
             <div className="p-6">
-              <div className="grid grid-cols-1 gap-x-6 gap-y-4 md:grid-cols-2 lg:grid-cols-3">
+              <div className="grid grid-cols-1 gap-x-6 gap-y-4 md:grid-cols-2 lg:grid-cols-3 [&_label]:font-semibold [&_label]:text-slate-800 [&_input]:border-slate-500 [&_input]:bg-slate-50 [&_input]:text-slate-950 [&_select]:border-slate-500 [&_select]:bg-slate-50 [&_select]:text-slate-950 [&_textarea]:border-slate-500 [&_textarea]:bg-slate-50 [&_textarea]:text-slate-950 [&_input::placeholder]:text-slate-600 [&_textarea::placeholder]:text-slate-600">
                 {BID_FIELDS.map((item) => <Field key={item[0]} item={item} form={form} onChange={(e) => setForm((old) => ({ ...old, [e.target.name]: e.target.value }))} />)}
 
                 <div className="md:col-span-2 lg:col-span-3">
@@ -446,10 +462,22 @@ export default function PrinterBidApproval() {
                 <PrinterDocumentsView form={form} documentUrl={documentUrl} />
 
                 {PRINTER_FIELDS
+                  .filter(([name]) => name !== "final_amount" && name !== "extra_requirements")
                   .filter(([name]) => getPrinterTypeLabel(form.printer_type) === "Multifunction Printer" || !MULTIFUNCTION_ONLY_FIELDS.has(name))
                   .map((item) => <Field key={item[0]} item={item} form={form} onChange={(e) => setForm((old) => ({ ...old, [e.target.name]: e.target.value }))} />)}
 
-                {selected.status !== "approved" && <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 md:col-span-2 lg:col-span-3"><label className="mb-2 block text-sm font-bold text-amber-800">Admin Review Note</label><textarea value={adminNote} onChange={(e) => setAdminNote(e.target.value)} rows={3} className="w-full resize-none rounded-md border border-amber-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-100" /></div>}
+                <div className="grid grid-cols-1 gap-6 md:col-span-2 md:grid-cols-2 lg:col-span-3">
+                  <Field compact item={PRINTER_FIELDS.find(([name]) => name === "extra_requirements")} form={form} onChange={(e) => setForm((old) => ({ ...old, [e.target.name]: e.target.value }))} />
+                  <Field compact item={PRINTER_FIELDS.find(([name]) => name === "final_amount")} form={form} onChange={(e) => setForm((old) => ({ ...old, [e.target.name]: e.target.value }))} />
+                </div>
+
+                {selected.status !== "approved" && <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 md:col-span-2 lg:col-span-3">
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <label className="block text-sm font-bold text-amber-800">Admin Review Note</label>
+                    <p className="text-xs font-medium text-amber-700">If any bid detail is incorrect or requires revision, add a clear review note and send the bid for re-analysis.</p>
+                  </div>
+                  <textarea value={adminNote} onChange={(e) => setAdminNote(e.target.value)} rows={3} className="w-full resize-none rounded-md border border-amber-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-100" />
+                </div>}
               </div>
             </div>
             <div className="flex flex-wrap gap-3 border-t px-6 py-5">

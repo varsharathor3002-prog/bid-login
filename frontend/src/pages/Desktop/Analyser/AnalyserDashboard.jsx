@@ -266,7 +266,7 @@ export default function AnalyserDashboard({ product = "desktop" }) {
 
             <div className="w-full overflow-x-auto">
 
-                <table className="w-full table-fixed text-left border-separate border-spacing-0 [&_th]:!px-2 [&_td]:!px-2">
+                <table className={`w-full table-fixed text-left border-separate border-spacing-0 [&_th]:!px-2 [&_td]:!px-2 ${activeTab === "gem-transfer" ? "min-w-[1000px]" : ""}`}>
 
                     <colgroup>
                         <col className={isApprovedView ? "w-[5%]" : "w-[6%]"} />
@@ -276,7 +276,7 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                         <col className={isApprovedView ? "w-[12%]" : "w-[15%]"} />
                         <col className={isApprovedView ? "w-[11%]" : "w-[13%]"} />
                         {!isApprovedView && <col className="w-[13%]" />}
-                        <col className={isApprovedView ? "w-[10%]" : "w-[13%]"} />
+                        <col className={activeTab === "gem-transfer" ? "w-[20%]" : isApprovedView ? "w-[10%]" : "w-[13%]"} />
                         {isApprovedView && <col className="w-[14%]" />}
                         {isApprovedView && <col className="w-[15%]" />}
                         {activeTab === "approved" && <col className="w-[8%]" />}
@@ -471,21 +471,24 @@ export default function AnalyserDashboard({ product = "desktop" }) {
 
                                         {bid.status === "approved" ? (
                                                 <button
-                                                    onClick={() =>
-                                                        navigate(
+                                                    onClick={() => activeTab === "gem-transfer"
+                                                        ? window.open("https://sso.gem.gov.in/ARXSSO/oauth/doLogin", "_blank", "noopener,noreferrer")
+                                                        : navigate(
                                                             `/analyser-dashboard/${product}/bid/${bid.id}`,
                                                             {
                                                                 state: {
                                                                     bid,
                                                                     readOnly: true,
-                                                                    showGemUpload: activeTab === "gem-transfer",
                                                                 },
                                                             }
                                                         )
                                                     }
-                                                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded text-[11px] font-bold uppercase tracking-widest shadow-sm transition-all whitespace-nowrap"
+                                                    className={activeTab === "gem-transfer"
+                                                        ? "inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-indigo-600 via-violet-600 to-purple-600 px-7 py-2.5 text-sm font-bold text-white shadow-lg shadow-indigo-200 transition-all duration-200 hover:-translate-y-0.5 hover:from-indigo-700 hover:via-violet-700 hover:to-purple-700 hover:shadow-xl whitespace-nowrap"
+                                                        : "bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded text-[11px] font-bold uppercase tracking-widest shadow-sm transition-all whitespace-nowrap"}
                                                 >
-                                                    View
+                                                    {activeTab === "gem-transfer" && <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.25" d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 15v4a1 1 0 001 1h12a1 1 0 001-1v-4" /></svg>}
+                                                    {activeTab === "gem-transfer" ? "Upload to GeM" : "View"}
                                                 </button>
 
                                         ) : (

@@ -195,7 +195,11 @@ def admin_review_aio_bid(r,bid_id):
     return JsonResponse({"message":"Admin review saved","bid":_json(b,r)})
 @csrf_exempt
 def delete_aio_bid(r,bid_id):
-    _ensure_table();n,_=AioBid.objects.filter(id=bid_id).delete();return JsonResponse({"message":"AIO bid deleted"} if n else {"error":"AIO bid not found"},status=200 if n else 404)
+    from .bid_cleanup import delete_bid_with_related_data
+    _ensure_table();bid=AioBid.objects.filter(id=bid_id).first()
+    if not bid:return JsonResponse({"error":"AIO bid not found"},status=404)
+    delete_bid_with_related_data(bid,"aio")
+    return JsonResponse({"message":"AIO bid and related data deleted"})
 
 # ---- Analyser's Catalogue Products page: same pattern as
 # list_workstation_catalogue_products/list_printer_catalogue_products
@@ -388,7 +392,10 @@ def update_aio_docs(r,bid_id):
     if r.method!="POST":return JsonResponse({"error":"POST required"},status=405)
     _ensure_table();b=AioBid.objects.filter(id=bid_id).first()
     if not b:return JsonResponse({"error":"AIO bid not found"},status=404)
-    b.atc_special_document=r.FILES.get("atc_special_document",b.atc_special_document);b.selected_general_docs=r.POST.get("selected_general_docs","[]");b.status="complete";b.save();return JsonResponse({"message":"AIO documents saved successfully","bid":_json(b,r)})
+    b.atc_special_document=r.FILES.get("atc_special_document",b.atc_special_document);b.selected_general_docs=r.POST.get("selected_general_docs","[]");b.status="complete";b.save()
+    from .GemAssignments import complete_user_assignment_for_bid
+    complete_user_assignment_for_bid(b.bid_no,b.user)
+    return JsonResponse({"message":"AIO documents saved successfully","bid":_json(b,r)})
 
 # These narrative certificate pages are shared with Desktop's own template and
 # default to "desktop computer" phrasing in a few plain-text sentences — swap
@@ -404,6 +411,7 @@ _AIO_WORDING_FIXES=[
     # documents — case-sensitive on purpose, so "Acxxel" (title case) is left
     # alone and only the literal all-caps spelling is touched.
     (re.compile(r'\bACXXEL\b'),'acxxel'),
+    (re.compile(r'\bAcxxel\b'),'acxxel'),
     # Non-Obsolete certificate's residual-market-life guarantee — only appears
     # on that one page in the template.
     (re.compile(r'\b3\s*\(Three\)',re.I),'5 (Five)'),
@@ -413,7 +421,7 @@ _AIO_WORDING_FIXES=[
     # Non Return of Hard Disk certificate's device list — only appears on
     # that one page in the template. Keep the original Desktop/Laptop
     # wording as-is, just add All in One Computers to the list alongside them.
-    (re.compile(r'Desktop\s+Computers\s*/\s*Laptops',re.I),'Desktop Computers/ Laptops/ All in One Computers'),
+    (re.compile(r'Desktop\s+Computers\s*/\s*Laptops',re.I),'Desktop Computers/ All in One Computers'),
 ]
 def _fix_aio_product_wording(page,fitz):
     edits=[]
@@ -511,6 +519,7 @@ def _fill_recipient_block(page,fitz,dept_name,organization,full_address):
     for val in values:
         page.insert_textbox(fitz.Rect(region_x0,y,page.rect.width-36,y+line_height+8),val,fontsize=11,fontname="hebo",color=(0,0,0))
         y+=line_height
+    return y
 
 def _erase_tender(page,fitz):
     for block in page.get_text("dict").get("blocks",[]):
@@ -520,7 +529,40 @@ def _erase_tender(page,fitz):
                 x=fitz.Rect(line["bbox"]);page.add_redact_annot(fitz.Rect(x.x0-3,x.y0-3,page.rect.width-36,x.y1+4),fill=(1,1,1))
     page.apply_redactions()
 
-def _force_tender_no_date(page,fitz,bid_no,date):
+def _replace_bidder_financial_heading(page,fitz):
+    old_headings=("BIDDER FINANCIAL UNDERSTANDINGS","BIDDER FINANCIAL UNDERTAKINGS")
+    replacements=[]
+    for old_heading in old_headings:
+        for rect in page.search_for(old_heading):
+            replacements.append(rect)
+            page.add_redact_annot(fitz.Rect(rect.x0-2,rect.y0-2,rect.x1+2,rect.y1+2),fill=(1,1,1))
+    if not replacements:return
+    page.apply_redactions()
+    for rect in replacements:
+        page.insert_text((rect.x0,rect.y1-2),"BIDDER FINANCIAL STANDING",fontsize=11,fontname="hebo",color=(0,0,0))
+
+def _add_aio_page_numbers(path,fitz):
+    doc=fitz.open(path)
+    try:
+        for page_index,page in enumerate(doc):
+            # Clear any template page count already present in the footer so
+            # every AIO output has one consistent counter.
+            for block in page.get_text("dict").get("blocks",[]):
+                if block.get("type")!=0:continue
+                for line in block.get("lines",[]):
+                    text=" ".join(span.get("text","") for span in line.get("spans",[])).strip()
+                    if line["bbox"][1]>page.rect.height-55 and re.fullmatch(r"(?:Page\s*)?\d+(?:\s*(?:of|/)\s*\d+)?",text,re.I):
+                        page.add_redact_annot(fitz.Rect(line["bbox"])+(-3,-2,3,2),fill=(1,1,1))
+            page.apply_redactions()
+            page.insert_textbox(
+                fitz.Rect(page.rect.width-115,page.rect.height-28,page.rect.width-18,page.rect.height-8),
+                str(page_index+1),fontsize=9,fontname="hebo",color=(0,0,0),align=2,
+            )
+        doc.saveIncr()
+    finally:
+        doc.close()
+
+def _force_tender_no_date(page,fitz,bid_no,date,recipient_bottom=None):
     # Like _erase_tender, but re-inserts the line where it actually found it
     # (Desktop's approach) instead of guessing a fixed y-coordinate — pages
     # like Warranty have this line much higher up than the other templates.
@@ -542,6 +584,8 @@ def _force_tender_no_date(page,fitz,bid_no,date):
         insert_x,insert_y=first_rect.x0,first_rect.y1-2
     else:
         insert_x,insert_y=128,(subject_rect.y0-28 if subject_rect else 330)
+    if recipient_bottom is not None:
+        insert_y=min(insert_y,recipient_bottom+14)
     page.insert_text((insert_x,insert_y),tender_text,fontsize=11,fontname="hebo",color=(0,0,0))
 
 # The MAF/AUTHORIZATIONLETTER page's body paragraph (between "Dear Sir/Madam,"
@@ -591,7 +635,7 @@ def _fill_manufacturer_auth_body(page,fitz):
     y=region_y0+9
     y=_draw_inline_paragraph(page,x,y,line_height,max_width,[
         ("This is to confirm that we, ",False),("Laps N Tabs Technology Pvt. Ltd",True),
-        (", are Brand Holder of Brand ",False),("\"acxxel\"",True),(" and manufacturer of All in One Computer.",False),
+        (", are Brand Holder of Brand ",False),("\"acxxel\"",True),(" and manufacturer.",False),
     ],fitz,fontsize=fontsize)
     y+=line_height*1.4
     for item in ["i. All in one Computer","ii. Desktop Computer","iii. Workstation Computer","iv. Multi Function Laser Printer","v. Laser Printer","vi. Printer Toner"]:
@@ -685,6 +729,143 @@ def _fill_service_support_escalation(page,fitz):
     page.insert_text((x0,y),"Designation:- Director",fontsize=11,fontname="hebo",color=(0,0,0));y+=13.4
     page.insert_text((x0,y),"Email:- lapsntabs123@gmail.com",fontsize=11,fontname="hebo",color=(0,0,0));y+=13.4
     page.insert_text((x0,y),"Contact No.:- 9918200166",fontsize=11,fontname="hebo",color=(0,0,0))
+
+def _add_service_support_bid_date(page,fitz,bid_no,date):
+    if not (bid_no or date) or not page.search_for("Level 1"):return
+    lines=[]
+    for block in page.get_text("dict").get("blocks",[]):
+        if block.get("type")!=0:continue
+        for line in block.get("lines",[]):
+            text=" ".join(span.get("text","") for span in line.get("spans",[])).strip()
+            if text:lines.append((fitz.Rect(line["bbox"]),text))
+    lines.sort(key=lambda item:item[0].y0)
+    to_index=next((i for i,(_,text) in enumerate(lines) if text.rstrip(",").strip().lower()=="to"),None)
+    certify_index=next((i for i,(_,text) in enumerate(lines) if re.search(r"this\s+is\s+certifying",text,re.I)),None)
+    escalation_index=next((i for i,(_,text) in enumerate(lines) if re.search(r"escalation matrix",text,re.I)),None)
+    if to_index is None or certify_index is None or certify_index<=to_index:return
+
+    recipient_values=[
+        text for _,text in lines[to_index+1:certify_index]
+        if not re.search(r"(?:Tender|Bid)\s*No|Dated\s*:",text,re.I)
+    ]
+    certify_end=escalation_index if escalation_index is not None else certify_index+1
+    certify_text=" ".join(text for _,text in lines[certify_index:certify_end]).strip()
+    to_rect=lines[to_index][0]
+    certify_rect=lines[certify_index][0]
+    block_bottom=max((rect.y1 for rect,_ in lines[certify_index:certify_end]),default=certify_rect.y1)
+    page.add_redact_annot(
+        fitz.Rect(min(to_rect.x0,certify_rect.x0)-3,to_rect.y0-2,page.rect.width-32,block_bottom+3),
+        fill=(1,1,1),
+    )
+    page.apply_redactions()
+
+    x=to_rect.x0
+    y=to_rect.y1-2
+    line_gap=16.5
+    page.insert_text((x,y),"To,",fontsize=11.5,fontname="hebo",color=(0,0,0))
+    for value in recipient_values:
+        y+=line_gap
+        page.insert_text((x,y),value,fontsize=11.5,fontname="hebo",color=(0,0,0))
+    y+=line_gap+2
+    page.insert_text((x,y),f"Bid No: {bid_no or ''}    Dated: {date or ''}",fontsize=11.5,fontname="hebo",color=(0,0,0))
+    y+=34
+    page.insert_textbox(
+        fitz.Rect(x,y-11,page.rect.width-36,y+18),certify_text,
+        fontsize=10.5,fontname="helv",color=(0,0,0),lineheight=1.15,
+    )
+
+def _add_service_support_last_page_bid_date(page,fitz,bid_no,date,dept_name="",organization="",full_address=""):
+    if not (bid_no or date):return
+    lines=[]
+    for block in page.get_text("dict").get("blocks",[]):
+        if block.get("type")!=0:continue
+        for line in block.get("lines",[]):
+            text=" ".join(span.get("text","") for span in line.get("spans",[])).strip()
+            if text:lines.append((fitz.Rect(line["bbox"]),text))
+    lines.sort(key=lambda item:item[0].y0)
+    to_index=next((i for i,(_,text) in enumerate(lines) if text.rstrip(",").strip().lower()=="to"),None)
+    content_index=next((i for i,(_,text) in enumerate(lines) if re.search(r"As per (?:the )?Buyer ATC|Availability of Service Centres",text,re.I)),None)
+    if to_index is None or content_index is None or content_index<=to_index+1:return
+    if dept_name or organization or full_address:
+        availability_index=next((i for i in range(content_index+1,len(lines)) if re.search(r"Availability of Service Centres",lines[i][1],re.I)),content_index+1)
+        heading_text=" ".join(text for _,text in lines[content_index:availability_index]).strip()
+        to_rect=lines[to_index][0]
+        heading_bottom=max((rect.y1 for rect,_ in lines[content_index:availability_index]),default=lines[content_index][0].y1)
+        page.add_redact_annot(
+            fitz.Rect(to_rect.x0-3,to_rect.y0-2,page.rect.width-36,heading_bottom+3),
+            fill=(1,1,1),
+        )
+        page.apply_redactions(images=0,graphics=0)
+        x=to_rect.x0;y=to_rect.y1-2;line_gap=16.5
+        for value in ["To,",dept_name,organization,full_address]:
+            if value:
+                page.insert_text((x,y),str(value).strip(),fontsize=11.5,fontname="hebo",color=(0,0,0))
+                y+=line_gap
+        page.insert_text((x,y),f"Bid No: {bid_no or ''}    Dated: {date or ''}",fontsize=11.5,fontname="hebo",color=(0,0,0))
+        y+=38
+        page.insert_textbox(
+            fitz.Rect(x,y-12,page.rect.width-45,y+28),heading_text,
+            fontsize=11,fontname="hebo",color=(0,0,0),lineheight=1.1,
+        )
+        return
+    existing=[(rect,text) for rect,text in lines[to_index+1:content_index] if re.search(r"(?:Tender|Bid)\s*No|Dated\s*:",text,re.I)]
+    for rect,_ in existing:
+        page.add_redact_annot(fitz.Rect(rect.x0-3,rect.y0-2,page.rect.width-36,rect.y1+3),fill=(1,1,1))
+    if existing:page.apply_redactions()
+    recipient=[rect for rect,text in lines[to_index+1:content_index] if not re.search(r"(?:Tender|Bid)\s*No|Dated\s*:",text,re.I)]
+    last_bottom=max((rect.y1 for rect in recipient),default=lines[to_index][0].y1)
+    insert_y=min(last_bottom+34,lines[content_index][0].y0-10)
+    page.insert_text(
+        (lines[to_index][0].x0,insert_y),f"Bid No: {bid_no or ''}    Dated: {date or ''}",
+        fontsize=11.5,fontname="hebo",color=(0,0,0),
+    )
+
+def _format_aio_service_center_heading(page,fitz):
+    areas=[]
+    for old_text in ("ACXXEL SERVICE PARTNERS","Acxxel SERVICE PARTNERS","acxxel SERVICE PARTNERS"):
+        areas.extend(page.search_for(old_text))
+    if not areas:return
+    drawings=page.get_drawings();header_rects=[]
+    for area in areas:
+        center=((area.x0+area.x1)/2,(area.y0+area.y1)/2);candidates=[]
+        for drawing in drawings:
+            rect=fitz.Rect(drawing["rect"])
+            if rect.contains(center) and rect.width>area.width+50 and rect.height>area.height+5:candidates.append(rect)
+        suitable=[rect for rect in candidates if rect.height<100 and rect.width<page.rect.width-20]
+        header_rects.append(max(suitable,key=lambda rect:rect.get_area()) if suitable else fitz.Rect(35,area.y0-5,page.rect.width-35,area.y0+48))
+    for header_rect in header_rects:
+        page.add_redact_annot(header_rect,fill=(1,1,0))
+    page.apply_redactions(images=0,graphics=0)
+    for area,header_rect in zip(areas,header_rects):
+        page.draw_rect(header_rect,color=(0,0,0),fill=(1,1,0),width=0.9,overlay=True)
+        heading="List Of acxxel Service Center In Major City"
+        toll_text="TOLL FREE No. 1800-313-9020 / 9935497000"
+        heading_size,toll_size=9,10
+        heading_x=header_rect.x0+(header_rect.width-fitz.get_text_length(heading,fontname="hebo",fontsize=heading_size))/2
+        toll_x=header_rect.x0+(header_rect.width-fitz.get_text_length(toll_text,fontname="hebo",fontsize=toll_size))/2
+        page.insert_text((heading_x,header_rect.y0+13),heading,fontsize=heading_size,fontname="hebo",color=(0,0,0))
+        page.insert_text((toll_x,min(header_rect.y0+29,header_rect.y1-5)),toll_text,fontsize=toll_size,fontname="hebo",color=(0,0,0))
+
+def _add_aio_service_support_table_note(page,fitz):
+    prefix="Note: For other locations, please email us at "
+    email_text="support@acxxel.com"
+    middle=" or visit our website "
+    website_text="acxxel.com"
+    suffix="."
+    note=f"{prefix}{email_text}{middle}{website_text}{suffix}"
+    if note in page.get_text("text").replace("\n"," "):return
+    font_name,font_size="hebo",11;note_x,note_y=42,520
+    prefix_width=fitz.get_text_length(prefix,fontname=font_name,fontsize=font_size)
+    email_width=fitz.get_text_length(email_text,fontname=font_name,fontsize=font_size)
+    middle_width=fitz.get_text_length(middle,fontname=font_name,fontsize=font_size)
+    website_width=fitz.get_text_length(website_text,fontname=font_name,fontsize=font_size)
+    email_x=note_x+prefix_width;middle_x=email_x+email_width;website_x=middle_x+middle_width
+    page.insert_text((note_x,note_y),prefix,fontsize=font_size,fontname=font_name,color=(0,0,0))
+    page.insert_text((email_x,note_y),email_text,fontsize=font_size,fontname=font_name,color=(0,0,1))
+    page.insert_text((middle_x,note_y),middle,fontsize=font_size,fontname=font_name,color=(0,0,0))
+    page.insert_text((website_x,note_y),f"{website_text}{suffix}",fontsize=font_size,fontname=font_name,color=(0,0,1))
+    page.insert_link({"kind":fitz.LINK_URI,"from":fitz.Rect(email_x,note_y-12,email_x+email_width,note_y+3),"uri":"mailto:support@acxxel.com"})
+    page.insert_link({"kind":fitz.LINK_URI,"from":fitz.Rect(website_x,note_y-12,website_x+website_width,note_y+3),"uri":"https://acxxel.com"})
 
 def _fill_service_support_availability(page,fitz):
     # Last page of the Service Support cert — adds the "authorized service
@@ -1030,7 +1211,7 @@ _TC_PROCESSOR_ALLOWED=(
     "AMD Ryzen 3: 4300G, 5300G\n"
     "AMD Ryzen 5: 5600G, 8500G\n"
     "AMD Ryzen 7: 5700G | Ryzen 9: 9300G\n"
-    "12th Gen Composite: i5, i7 Or higher"
+    "12th/13th Gen Embedded: i5, i7 Or higher"
 )
 _TC_SCREEN_SIZE_ALLOWED="21 inch | 24 inch | 27 inch"
 def _tc_ram_type(value):
@@ -1186,8 +1367,8 @@ def generate_aio_documents(r,bid_id):
             src=os.path.join(settings.MEDIA_ROOT,"templates","documents.pdf");m=fitz.open(src);d=fitz.open();start,end=ranges[typ];d.insert_pdf(m,from_page=start-1,to_page=end-1)
             p=d[0]
             if typ=="warranty":
-                _fill_recipient_block(p,fitz,b.dept_name,b.organization,addr)
-                _force_tender_no_date(p,fitz,b.bid_no,date)
+                recipient_bottom=_fill_recipient_block(p,fitz,b.dept_name,b.organization,addr)
+                _force_tender_no_date(p,fitz,b.bid_no,date,recipient_bottom)
                 _fill_warranty_page(p,fitz,b.bid_no,model_number,b.warranty)
             else:
                 _fill_make_in_india_page(p,fitz,b.bid_no,model_number,b.dept_name,b.organization,addr,date,local_content)
@@ -1216,14 +1397,19 @@ def generate_aio_documents(r,bid_id):
         elif typ in ranges:
             src=os.path.join(settings.MEDIA_ROOT,"templates","documents.pdf");m=fitz.open(src);d=fitz.open();start,end=ranges[typ];d.insert_pdf(m,from_page=start-1,to_page=end-1)
             for pidx,p in enumerate(d):
+                if typ=="service_support" and pidx==1:_format_aio_service_center_heading(p,fitz)
                 if not (typ=="manufacturer_auth" and pidx==2):_fix_aio_product_wording(p,fitz)
+                if typ=="bidder_financial":_replace_bidder_financial_heading(p,fitz)
                 if typ=="service_support":
                     _erase_tender(p,fitz);_fill_service_support_escalation(p,fitz);_fill_service_support_availability(p,fitz)
+                    if pidx==4:_add_aio_service_support_table_note(p,fitz)
                     for block in p.get_text("dict").get("blocks",[]):
                         for line in block.get("lines",[]):
                             t=" ".join(s.get("text","") for s in line.get("spans",[]));n=re.sub(r"\s+"," ",re.sub(r"[^A-Za-z\s]"," ",t).upper()).strip()
                             if re.search(r"TO\s+WHOM.*MAY\s+CONCERN",n):
                                 x=fitz.Rect(line["bbox"]);p.add_redact_annot(fitz.Rect(x.x0-4,x.y0-3,p.rect.width-36,x.y1+3),fill=(1,1,1));p.apply_redactions();y=max(92,x.y0-24);p.insert_textbox(fitz.Rect(62,y,p.rect.width-62,y+110),"\n".join(v for v in ["To,",b.dept_name,b.organization,addr] if v),fontsize=11,fontname="hebo",lineheight=1.15);break
+                    if pidx==0:_add_service_support_bid_date(p,fitz,b.bid_no,date)
+                    if pidx==len(d)-1:_add_service_support_last_page_bid_date(p,fitz,b.bid_no,date,b.dept_name,b.organization,addr)
                 elif typ=="manufacturer_auth" and pidx==2:
                     # Template page 4 = the official Trade Mark Certificate, a legal
                     # source document — must stay byte-for-byte visually unchanged
@@ -1236,8 +1422,8 @@ def generate_aio_documents(r,bid_id):
                     # was overlapping the Udyog Aadhar/DIPP lines here before).
                     _erase_tender(p,fitz)
                 else:
-                    _fill_recipient_block(p,fitz,b.dept_name,b.organization,addr)
-                    _force_tender_no_date(p,fitz,b.bid_no,date)
+                    recipient_bottom=_fill_recipient_block(p,fitz,b.dept_name,b.organization,addr)
+                    _force_tender_no_date(p,fitz,b.bid_no,date,recipient_bottom)
                     if typ=="manufacturer_auth" and pidx==0:
                         _fill_manufacturer_auth_body(p,fitz)
             d.save(path);d.close();m.close()
@@ -1285,7 +1471,7 @@ def generate_aio_documents(r,bid_id):
             try:selected=json.loads(b.selected_general_docs or "[]")
             except Exception:selected=[]
             atc_labels={
-                "warranty":"WARRANTY","bidder_financial":"BIDDER FINANCIAL UNDERSTANDINGS","non_obsolete":"NON OBSOLETE",
+                "warranty":"WARRANTY","bidder_financial":"BIDDER FINANCIAL STANDING","non_obsolete":"NON OBSOLETE",
                 "data_sheet":"DATA SHEET","non_malicious":"NON MALICIOUS CODE","non_return_hdd":"NON RETURN OF HARD DISK",
                 "technical_compliance":"TECHNICAL COMPLIANCE","non_blacklisting":"NON BLACKLISTING",
                 "service_support":"SERVICE SUPPORT CONSIGNEE LOCATION","ipv6":"IPV6","preloaded_os":"PRELOADED OPERATING SYSTEM",
@@ -1373,5 +1559,6 @@ def generate_aio_documents(r,bid_id):
                 if out_name is None:return JsonResponse({"error":"No ATC-related documents selected"},status=400)
             return JsonResponse({"message":f"{typ} generated","pdf_url":r.build_absolute_uri(f"{settings.MEDIA_URL}generated/aio/{out_name}")+f"?v={int(time.time())}"})
         else:return JsonResponse({"error":f"Invalid doc_type: '{typ}'"},status=400)
+        _add_aio_page_numbers(path,fitz)
         return JsonResponse({"message":f"{typ} generated","pdf_url":r.build_absolute_uri(f"{settings.MEDIA_URL}generated/aio/{name}")+f"?v={int(time.time())}"})
     except Exception as e:return JsonResponse({"error":f"Document generation failed: {e}"},status=500)

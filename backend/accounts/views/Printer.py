@@ -9,6 +9,7 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from ..models import User, PrinterBid, CatalogueProduct
+from .bid_cleanup import delete_bid_with_related_data
 from . import Desktop as desktop_views
 from .Desktop import (
     safe_float,
@@ -521,22 +522,43 @@ def _rewrite_printer_oem_declaration(page):
     )
 
 
-def _rewrite_printer_service_intro(page):
+def _rewrite_printer_service_intro(page, bid):
     page_text = page.get_text("text").lower()
     if "escalation matrix below reference" not in page_text or "certifying that" not in page_text:
         return
 
-    intro_rect = fitz.Rect(68, 190, page.rect.width - 36, 275)
+    intro_rect = fitz.Rect(68, 125, page.rect.width - 36, 275)
     page.add_redact_annot(intro_rect, fill=(1, 1, 1))
     page.apply_redactions()
+
+    address = str(bid.address or "").strip()
+    pincode = str(bid.pincode or "").strip()
+    if pincode and pincode not in address:
+        address = f"{address} - {pincode}" if address else pincode
+    recipient_lines = [
+        "To,",
+        str(bid.dept_name or "").strip(),
+        str(bid.organization or "").strip(),
+        address,
+    ]
+    recipient = "\n".join(line for line in recipient_lines if line)
     page.insert_textbox(
-        fitz.Rect(72, 204, page.rect.width - 50, 238),
-        "This is certifying that acxxel Printers offers on-site comprehensive warranty "
-        "as said in bid document.",
+        fitz.Rect(72, 132, page.rect.width - 50, 194),
+        recipient,
         fontsize=10.5,
         fontname="hebo",
         color=(0, 0, 0),
-        lineheight=1.25,
+        lineheight=1.1,
+        align=0,
+    )
+    page.insert_textbox(
+        fitz.Rect(72, 203, page.rect.width - 50, 237),
+        "This is certifying that acxxel Printer offers on-site comprehensive warranty "
+        "as said in bid document.",
+        fontsize=10,
+        fontname="hebo",
+        color=(0, 0, 0),
+        lineheight=1.15,
         align=0,
     )
     page.insert_text(
@@ -629,6 +651,16 @@ def _rewrite_printer_preloaded_os_paragraph(page):
     )
 
 
+def _rewrite_printer_maf_product_name(page):
+    page_text = page.get_text("text").lower()
+    if "maf/authorization letter" not in page_text and "authorization letter from manufacturer" not in page_text:
+        return
+
+    from .Aio import _fill_manufacturer_auth_body
+
+    _fill_manufacturer_auth_body(page, fitz)
+
+
 def _post_process_printer_pdf(doc_type, output_path, bid=None):
     if not fitz or not os.path.exists(output_path):
         return
@@ -661,16 +693,22 @@ def _post_process_printer_pdf(doc_type, output_path, bid=None):
                     ).strip(),
                 )
                 _rewrite_printer_oem_declaration(page)
+                _rewrite_printer_maf_product_name(page)
             elif doc_type == "preloaded_os":
                 _rewrite_printer_preloaded_os_paragraph(page)
             elif doc_type == "service_support":
-                _rewrite_line_text(
-                    page,
-                    lambda text: "desktops" in text.lower(),
-                    lambda text: re.sub(r"desktops", "Printers", text, flags=re.IGNORECASE),
-                    fontsize=10.5,
+                _rewrite_printer_service_intro(page, bid)
+                from .Aio import _fill_service_support_escalation
+                _fill_service_support_escalation(page, fitz)
+                from .Aio import _add_service_support_bid_date
+                service_date = bid.date.strftime("%d-%m-%Y") if bid is not None and bid.date else ""
+                _add_service_support_bid_date(page, fitz, bid.bid_no if bid is not None else "", service_date)
+                from .Aio import _add_service_support_last_page_bid_date
+                printer_address = f"{bid.address} - {bid.pincode}" if bid is not None and bid.pincode else (bid.address if bid is not None else "")
+                _add_service_support_last_page_bid_date(
+                    page, fitz, bid.bid_no if bid is not None else "", service_date,
+                    bid.dept_name if bid is not None else "", bid.organization if bid is not None else "", printer_address,
                 )
-                _rewrite_printer_service_intro(page)
             elif doc_type == "make_in_india" and bid is not None:
                 _rewrite_printer_make_in_india(page, bid)
             elif doc_type in {"approved_atc_documents", "approved_all_documents"}:
@@ -699,18 +737,25 @@ def _post_process_printer_pdf(doc_type, output_path, bid=None):
                     ).strip(),
                 )
                 _rewrite_printer_oem_declaration(page)
-                _rewrite_line_text(
-                    page,
-                    lambda text: "desktops" in text.lower(),
-                    lambda text: re.sub(r"desktops", "Printers", text, flags=re.IGNORECASE),
-                    fontsize=10.5,
+                _rewrite_printer_maf_product_name(page)
+                if bid is not None:
+                    _rewrite_printer_service_intro(page, bid)
+                from .Aio import _fill_service_support_escalation
+                _fill_service_support_escalation(page, fitz)
+                from .Aio import _add_service_support_bid_date
+                service_date = bid.date.strftime("%d-%m-%Y") if bid is not None and bid.date else ""
+                _add_service_support_bid_date(page, fitz, bid.bid_no if bid is not None else "", service_date)
+                from .Aio import _add_service_support_last_page_bid_date
+                printer_address = f"{bid.address} - {bid.pincode}" if bid is not None and bid.pincode else (bid.address if bid is not None else "")
+                _add_service_support_last_page_bid_date(
+                    page, fitz, bid.bid_no if bid is not None else "", service_date,
+                    bid.dept_name if bid is not None else "", bid.organization if bid is not None else "", printer_address,
                 )
-                _rewrite_printer_service_intro(page)
                 _rewrite_printer_preloaded_os_paragraph(page)
                 if bid is not None:
                     _rewrite_printer_make_in_india(page, bid)
 
-            if doc_type in {"manufacturer_auth", "service_support"}:
+            if doc_type in {"manufacturer_auth", "make_in_india"}:
                 _lowercase_printer_acxxel(page)
 
         doc.saveIncr()
@@ -861,9 +906,23 @@ def _generate_printer_spec_pdf(request, bid, doc_type):
             )
         y = 130
         if first:
-            page.insert_textbox(fitz.Rect(margin, y, page_width - margin, y + 95), _printer_recipient_text(bid), fontsize=10, fontname="hebo", lineheight=1.25)
+            recipient_fontsize = 11
+            page.insert_textbox(
+                fitz.Rect(margin, y, page_width - margin, y + 95),
+                _printer_recipient_text(bid),
+                fontsize=recipient_fontsize,
+                fontname="hebo",
+                lineheight=1.25,
+            )
             y += 105
-            page.insert_text((margin, y), f"Tender No: {bid.bid_no or ''}    Dated: {date_text}", fontsize=9.5, fontname="hebo")
+            reference_label = "Bid No"
+            reference_fontsize = 11
+            page.insert_text(
+                (margin, y),
+                f"{reference_label}: {bid.bid_no or ''}    Dated: {date_text}",
+                fontsize=reference_fontsize,
+                fontname="hebo",
+            )
             y += 30
             page.insert_textbox(fitz.Rect(margin, y, page_width - margin, y + 35), title, fontsize=11, fontname="hebo")
             y += 42
@@ -944,6 +1003,10 @@ class _PrinterDesktopBidAdapter:
         self.atc = bid.atc
         self.date = bid.date
         self.model_number = bid.model_number
+        self.static_document_overrides = {
+            "experience_certificate": "printer_experience_certificate.pdf",
+            "past_performance": "printer_past_performance.pdf",
+        }
         self.local_content = bid.local_content or ""
         self.selected_general_docs = bid.selected_general_docs or []
         self.selected_general_doc_labels = bid.selected_general_doc_labels or []
@@ -1188,6 +1251,11 @@ def update_printer_bid(request, bid_id):
 
 def _printer_bid_data(bid, request, status_label=None):
     user_name = bid.user.username if bid.user else ""
+    selected_general_docs = list(bid.selected_general_docs or [])
+    selected_general_doc_labels = list(bid.selected_general_doc_labels or [])
+    if bid.review_status == "approved" and "make_in_india" not in selected_general_docs:
+        selected_general_docs.append("make_in_india")
+        selected_general_doc_labels.append("MAKE IN INDIA")
     return {
         "id": bid.id,
         "bid_id": bid.id,
@@ -1206,8 +1274,8 @@ def _printer_bid_data(bid, request, status_label=None):
         "created_at": bid.created_at.isoformat() if bid.created_at else "",
         "updated_at": bid.updated_at.isoformat() if bid.updated_at else "",
         "atc_special_document": _file_url(request, bid.atc_special_document),
-        "selected_general_docs": bid.selected_general_docs or [],
-        "selected_general_doc_labels": bid.selected_general_doc_labels or [],
+        "selected_general_docs": selected_general_docs,
+        "selected_general_doc_labels": selected_general_doc_labels,
         "printing_technology": bid.printing_technology or "",
         "cartridge_technology": bid.cartridge_technology or "",
         "type_of_printing": bid.type_of_printing or "",
@@ -1540,6 +1608,8 @@ def review_printer_bid(request, bid_id):
         bid.status = "complete"
         bid.review_status = "pending"
         bid.save()
+        from .GemAssignments import complete_user_assignment_for_bid
+        complete_user_assignment_for_bid(bid.bid_no, bid.user)
         return JsonResponse({"success": True, "bid_id": bid.id, "review_status": bid.review_status})
     except PrinterBid.DoesNotExist:
         return JsonResponse({"error": "Bid not found"}, status=404)
@@ -1556,6 +1626,14 @@ def admin_review_printer_bid(request, bid_id):
         action = data.get("status", "")
         if action not in ("approved", "re-analyze"):
             return JsonResponse({"error": "Invalid status."}, status=400)
+        local_content_raw = data.get("local_content", bid.local_content)
+        local_content_text = str(local_content_raw if local_content_raw is not None else "").strip()
+        local_content = safe_float(local_content_text, -1)
+        if action == "approved" and (not local_content_text or local_content < 0 or local_content > 100):
+            return JsonResponse(
+                {"error": "Please enter a valid Local Content percentage between 0 and 100 before approving the bid."},
+                status=400,
+            )
         final_amount = safe_float(data.get("final_amount"), bid.final_amount)
         if action == "approved" and final_amount <= 0:
             return JsonResponse(
@@ -1581,7 +1659,7 @@ def delete_printer_bid(request, bid_id):
         bid = PrinterBid.objects.filter(id=bid_id).first()
         if not bid:
             return JsonResponse({"error": "Bid not found"}, status=404)
-        bid.delete()
+        delete_bid_with_related_data(bid, "printer")
         return JsonResponse({"message": "Printer bid deleted successfully"}, status=200)
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=400)

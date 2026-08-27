@@ -32,7 +32,7 @@ const GENERAL_DOCS = [
   { id: "atc_acceptance_letter", label: "ATC ACCEPTANCE LETTER" },
   { id: "make_in_india", label: "MAKE IN INDIA" },
   { id: "warranty", label: "WARRANTY" },
-  { id: "bidder_financial", label: "BIDDER FINANCIAL UNDERSTANDINGS" },
+  { id: "bidder_financial", label: "BIDDER FINANCIAL STANDING" },
   { id: "non_obsolete", label: "NON OBSOLETE" },
   { id: "data_sheet", label: "DATA SHEET" },
   { id: "non_malicious", label: "NON MALICIOUS CODE" },
@@ -93,9 +93,13 @@ function GeneralDocsViewPopup({ form }) {
   const rawSelectedDocs = Array.isArray(form?.selected_general_docs) ? form.selected_general_docs : [];
   const rawSelectedLabels = Array.isArray(form?.selected_general_doc_labels) ? form.selected_general_doc_labels : [];
 
-  const selectedIds = rawSelectedDocs.some((item) => knownDocIds.includes(item))
+  const storedSelectedIds = rawSelectedDocs.some((item) => knownDocIds.includes(item))
     ? rawSelectedDocs
     : rawSelectedLabels.filter((item) => knownDocIds.includes(item));
+  const isApproved = form?.status === "approved" || form?.review_status === "approved";
+  const selectedIds = isApproved && !storedSelectedIds.includes("make_in_india")
+    ? [...storedSelectedIds, "make_in_india"]
+    : storedSelectedIds;
 
   const selectedLabels = rawSelectedLabels.some((item) => knownDocIds.includes(item))
     ? rawSelectedDocs
@@ -319,12 +323,21 @@ export default function BidDetailView({ product = "desktop" }) {
   const navigate = useNavigate();
   const readOnly = state?.readOnly || false;
   const showGemUpload = state?.showGemUpload === true;
+  const verificationBidId = id || state?.bid?.id || state?.id || state?.bid_id || "unknown";
+  const verificationStorageKey = `${product}_bid_verified_fields_${verificationBidId}`;
 
   const [form, setForm] = useState(null);
   const [loadingBid, setLoadingBid] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [msg, setMsg] = useState("");
-  const [verifiedFields, setVerifiedFields] = useState({});
+  const [verifiedFields, setVerifiedFields] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem(verificationStorageKey);
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
   const [modelSearching, setModelSearching] = useState(false);
   const [modelSaving, setModelSaving] = useState(false);
   const [modelMatches, setModelMatches] = useState([]);
@@ -338,6 +351,10 @@ export default function BidDetailView({ product = "desktop" }) {
   useEffect(() => {
     fetchBid();
   }, []);
+
+  useEffect(() => {
+    sessionStorage.setItem(verificationStorageKey, JSON.stringify(verifiedFields));
+  }, [verificationStorageKey, verifiedFields]);
 
   const normalizeDocUrl = (url) => {
     if (!url) return "";
@@ -818,7 +835,7 @@ export default function BidDetailView({ product = "desktop" }) {
     <button
       type="button"
       onClick={() => navigate(-1)}
-      className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-gray-300 bg-white text-gray-700 text-sm font-semibold hover:bg-slate-800 hover:text-white hover:border-slate-800 transition-all duration-200 shadow-sm"
+      className="inline-flex h-9 items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 text-sm font-semibold text-gray-700 shadow-sm transition-all duration-200 hover:border-slate-800 hover:bg-slate-800 hover:text-white"
     >
       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
@@ -910,9 +927,9 @@ export default function BidDetailView({ product = "desktop" }) {
 
       <form
         onSubmit={handleSubmit}
-        className={isPending
+        className={`${isPending
           ? "[&_label]:!font-semibold [&_label]:!text-slate-800 [&_input]:!border-blue-300 [&_input]:!text-slate-900 [&_input]:placeholder:!text-slate-500 [&_select]:!border-blue-300 [&_select]:!text-slate-900 [&_textarea]:!border-blue-300 [&_textarea]:!text-slate-900 [&_textarea]:placeholder:!text-slate-500"
-          : ""}
+          : ""} ${readOnly && isApproved ? "[&_select]:!appearance-none" : ""}`}
       >
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4">
 
@@ -950,7 +967,7 @@ export default function BidDetailView({ product = "desktop" }) {
 
           <div className="md:col-span-2 lg:col-span-3">
             <Label>Compliance Documents</Label>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               {form?.atc_special_document ? (
                 <SpecialDocView form={form} />
               ) : (
@@ -1181,26 +1198,11 @@ export default function BidDetailView({ product = "desktop" }) {
                     <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
                       <span className="text-2xl leading-none mt-0.5">⚠️</span>
                       <div>
-                        <div className="text-sm font-bold text-amber-800">No exact matching model found</div>
+                        <div className="text-sm font-bold text-amber-800">No 100% accurate model match found</div>
                         <div className="text-xs text-amber-700 mt-0.5">
-                          You can create a new model number and save it as the Assigned Model.
+                          Please recheck your specs or create another bid.
                         </div>
                       </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={newModelInput}
-                        onChange={(e) => setNewModelInput(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === "Enter" && !modelSaving) handleCreateNewModel(); }}
-                        placeholder="Create new model number..."
-                        autoFocus
-                        className="flex-1 border border-blue-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
-                      />
-                      <button type="button" onClick={handleCreateNewModel} disabled={modelSaving}
-                        className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white px-4 py-2 rounded-md text-sm font-bold transition shadow-sm whitespace-nowrap">
-                        {modelSaving ? "Saving..." : "Save"}
-                      </button>
                     </div>
                   </div>
                 ) : modelMatches.length === 0 ? (

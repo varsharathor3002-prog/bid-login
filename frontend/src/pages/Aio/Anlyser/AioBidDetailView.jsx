@@ -1,17 +1,13 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import {
-  PROCESSORS,
-  DVDS,
-  WARRANTIES,
-} from "../../Desktop/User/DesktopConfig";
+import { DVDS, WARRANTIES } from "../../Desktop/User/DesktopConfig";
 // AIO-native RAM/SSD/HDD/OS/screen-size/WiFi/keyboard/motherboard vocabulary
 // (see AioConfig.jsx for why these can't just reuse Desktop's lists) — same
 // source used at the User config step, so the Analyser sees the exact same
 // option text.
 import {
   AIO_RAMS, AIO_SSDS, AIO_HDDS, AIO_OS_OPTIONS, AIO_SCREEN_SIZES, AIO_WIFIS,
-  AIO_KEYBOARDS, AIO_MOTHERBOARDS, getFilteredAioRams,
+  AIO_PROCESSORS, AIO_KEYBOARDS, AIO_MOTHERBOARDS, getFilteredAioRams,
 } from "../User/AioConfig";
 import { fetchComponentRates } from "../../../utils/componentRates";
 
@@ -23,7 +19,7 @@ const GENERAL_DOCS = [
   { id: "past_performance", label: "PAST PERFORMANCE" },
   { id: "oem_annual_turnover", label: "OEM ANNUAL TURNOVER" },
   { id: "atc_acceptance_letter", label: "ATC ACCEPTANCE LETTER" },
-  { id: "bidder_financial", label: "BIDDER FINANCIAL UNDERSTANDINGS" },
+  { id: "bidder_financial", label: "BIDDER FINANCIAL STANDING" },
   { id: "non_obsolete", label: "NON OBSOLETE" },
   { id: "non_malicious", label: "NON MALICIOUS CODE" },
   { id: "non_return_hdd", label: "NON RETURN OF HARD DISK" },
@@ -377,7 +373,7 @@ export default function AioBidDetailView() {
   const handleChange = (e) => {
     const { name, value } = e.target;
     const optionLists = {
-      processor: PROCESSORS, ram: AIO_RAMS, hdd: AIO_HDDS, ssd: AIO_SSDS, os: AIO_OS_OPTIONS,
+      processor: AIO_PROCESSORS, ram: AIO_RAMS, hdd: AIO_HDDS, ssd: AIO_SSDS, os: AIO_OS_OPTIONS,
       dvd: DVDS, wifi: AIO_WIFIS, screen_size: AIO_SCREEN_SIZES, keyboard: AIO_KEYBOARDS,
       warranty: WARRANTIES, motherboard: AIO_MOTHERBOARDS,
     };
@@ -541,7 +537,7 @@ export default function AioBidDetailView() {
   // exactly the same graceful fallback Desktop shows when its own extension
   // isn't loaded.
   const handleAioGemJobUpload = async () => {
-    const gemPortal = window.open("https://mkp.gem.gov.in/login", "_blank", "noopener,noreferrer");
+    const gemPortal = window.open("https://sso.gem.gov.in/ARXSSO/oauth/doLogin", "_blank", "noopener,noreferrer");
     const bidId = id || state?.id || state?.bid_id || form?.id || form?.bid_id;
     if (!bidId) {
       setMsg(gemPortal
@@ -635,7 +631,7 @@ export default function AioBidDetailView() {
   };
 
   return (
-    <div className="container mx-auto px-4 mt-4 max-w-6xl pb-10">
+    <div className="container mx-auto px-4 mt-4 max-w-6xl pb-10 bg-white">
       <div className="flex items-center justify-between mb-6 pt-2 border-b pb-4">
         <div className="flex items-center gap-4">
           <HeaderBackButton />
@@ -663,6 +659,11 @@ export default function AioBidDetailView() {
         <div className={`mb-4 px-4 py-2 rounded text-sm font-medium ${msg.includes("✅") ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>{msg}</div>
       )}
 
+      <div
+        className={`${isPending
+          ? "[&_label]:!font-semibold [&_label]:!text-slate-800 [&_input]:!border-blue-300 [&_input]:!text-slate-900 [&_input]:placeholder:!text-slate-500 [&_select]:!border-blue-300 [&_select]:!text-slate-900 [&_textarea]:!border-blue-300 [&_textarea]:!text-slate-900 [&_textarea]:placeholder:!text-slate-500"
+          : ""} ${readOnly && isApproved ? "[&_select]:!appearance-none" : ""}`}
+      >
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4">
         <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="bid_no" label="Bid Number">
           <input type="text" name="bid_no" value={form.bid_no || ""} onChange={handleChange} disabled={readOnly} className={inputCls} />
@@ -711,7 +712,7 @@ export default function AioBidDetailView() {
         </div>
 
         <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="processor" label="Processor">
-          <PriceSelect name="processor" options={PROCESSORS} />
+          <PriceSelect name="processor" options={AIO_PROCESSORS} />
         </VerifiedInputWrapper>
 
         <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="ram" label="RAM">
@@ -848,16 +849,15 @@ export default function AioBidDetailView() {
             </div>
           </div>
         )}
-      </div>
 
       {/* Same to same as Desktop's BidDetailView: this box always renders
           (readOnly just disables the input and hides Find Model) — it was
           previously wrapped in `!readOnly &&`, which hid the Assigned Model
           box entirely on the read-only "Transfer Catalogue to GeM" view. */}
-      <div className="mt-8">
-          <div className="relative flex items-center gap-2 bg-gray-50 p-2 rounded-lg border border-gray-300 w-fit">
+      <div className={isPending ? "min-w-0" : "md:col-start-2 md:row-start-3 lg:col-start-3 lg:row-start-2"}>
+          <div className={`relative flex items-center gap-2 rounded-lg border p-2 ${isPending ? "w-fit border-blue-300 bg-blue-50/60 shadow-sm" : "w-fit border-gray-300 bg-gray-50"}`}>
             <div className="flex flex-col">
-              <label className="text-[10px] font-bold text-gray-500 uppercase ml-1">Assigned Model</label>
+              <label className={`mb-1 text-sm font-bold ${isPending ? "text-blue-900" : "text-gray-700"}`}>Assigned Model</label>
               <input
                 type="text"
                 name="model_number"
@@ -865,7 +865,7 @@ export default function AioBidDetailView() {
                 onChange={handleModelInputChange}
                 placeholder={readOnly ? "No model assigned" : "Search model..."}
                 disabled={readOnly}
-                className="border border-gray-300 rounded px-3 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 outline-none w-64 font-semibold disabled:bg-gray-100 disabled:text-gray-600"
+                className={`rounded border px-3 py-1.5 text-sm outline-none w-64 font-semibold focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500 ${isPending ? "border-blue-300 bg-white text-slate-900 placeholder:text-slate-500" : "border-gray-300 text-gray-800"}`}
               />
             </div>
 
@@ -874,7 +874,7 @@ export default function AioBidDetailView() {
                 type="button"
                 onClick={handleFindModel}
                 disabled={modelSearching || modelSaving}
-                className={`mt-4 ${isReAnalyze && hasExistingModel ? "bg-amber-600 hover:bg-amber-700" : "bg-slate-700 hover:bg-slate-800"} disabled:bg-slate-400 text-white px-3 py-1.5 rounded text-xs font-bold transition shadow-sm`}
+                className={`mt-4 whitespace-nowrap ${isReAnalyze && hasExistingModel ? "bg-amber-600 hover:bg-amber-700" : "bg-slate-700 hover:bg-slate-800"} disabled:bg-slate-400 text-white px-3 py-1.5 rounded text-xs font-bold transition shadow-sm`}
               >
                 {modelSearching ? "Searching..." : (isReAnalyze && hasExistingModel) ? "Change Model" : "Find Model"}
               </button>
@@ -891,7 +891,7 @@ export default function AioBidDetailView() {
             {showModelResult && !readOnly && (
               <div className="absolute left-0 top-full mt-2 w-[420px] bg-white border border-gray-300 rounded-lg shadow-xl z-50 overflow-hidden">
                 <div className="flex items-center justify-between px-4 py-2.5 border-b bg-slate-50">
-                  <span className="text-sm font-bold text-gray-700">AIO Catalogue Model</span>
+                  <span className="text-sm font-bold text-gray-700">Catalogue Model</span>
                   <button
                     type="button"
                     onClick={() => { setShowModelResult(false); setNoMatchFound(false); setNewModelInput(""); }}
@@ -903,33 +903,18 @@ export default function AioBidDetailView() {
 
                 {modelSearching ? (
                   <div className="p-6 text-center">
-                    <div className="text-gray-400 text-sm animate-pulse">Searching aio_specs catalogue for a matching model...</div>
+                    <div className="text-gray-400 text-sm animate-pulse">Searching catalogue for a matching model...</div>
                   </div>
                 ) : noMatchFound ? (
                   <div className="p-5">
                     <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
                       <span className="text-2xl leading-none mt-0.5">⚠️</span>
                       <div>
-                        <div className="text-sm font-bold text-amber-800">No exact matching model found</div>
+                        <div className="text-sm font-bold text-amber-800">No 100% accurate model match found</div>
                         <div className="text-xs text-amber-700 mt-0.5">
-                          You can create a new model number and save it as the Assigned Model.
+                          Please recheck your specs or create another bid.
                         </div>
                       </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={newModelInput}
-                        onChange={(e) => setNewModelInput(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === "Enter" && !modelSaving) handleCreateNewModel(); }}
-                        placeholder="Create new model number..."
-                        autoFocus
-                        className="flex-1 border border-blue-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
-                      />
-                      <button type="button" onClick={handleCreateNewModel} disabled={modelSaving}
-                        className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white px-4 py-2 rounded-md text-sm font-bold transition shadow-sm whitespace-nowrap">
-                        {modelSaving ? "Saving..." : "Save"}
-                      </button>
                     </div>
                   </div>
                 ) : modelMatches.length === 0 ? (
@@ -957,6 +942,7 @@ export default function AioBidDetailView() {
             )}
           </div>
         </div>
+      </div>
 
       {!readOnly && (
         <div className="mt-6 pt-6">
@@ -1016,6 +1002,7 @@ export default function AioBidDetailView() {
           </button>
         </div>
       )}
+      </div>
     </div>
   );
 }

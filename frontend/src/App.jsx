@@ -30,13 +30,13 @@ import AnalyserPrinterDocument from "./pages/Printer/Analyser/AnalyserPrinterDoc
 import PrinterApprovedBidDownloads from "./pages/Printer/Analyser/PrinterApprovedBidDownloads";
 import PrinterBidApproval from "./pages/Printer/Admin/PrinterBidApproval";
 
-import CreateAioBid from "./pages/AIO/User/CreateAioBid";
-import AioAnalyserDashboard from "./pages/AIO/Anlyser/AioAnalyserDashboard";
-import AioBidDetailView from "./pages/AIO/Anlyser/AioBidDetailView";
-import AioApprovedBiddingDetails from "./pages/AIO/Anlyser/AioApprovedBiddingDetails";
-import AioAnalyserDocument from "./pages/AIO/Anlyser/AioAnalyserDocument";
-import AioApprovedBidDownloads from "./pages/AIO/Anlyser/AioApprovedBidDownloads";
-import AioBidApproval from "./pages/AIO/Admin/AioBidApproval";
+import CreateAioBid from "./pages/Aio/User/CreateAioBid";
+import AioAnalyserDashboard from "./pages/Aio/Anlyser/AioAnalyserDashboard";
+import AioBidDetailView from "./pages/Aio/Anlyser/AioBidDetailView";
+import AioApprovedBiddingDetails from "./pages/Aio/Anlyser/AioApprovedBiddingDetails";
+import AioAnalyserDocument from "./pages/Aio/Anlyser/AioAnalyserDocument";
+import AioApprovedBidDownloads from "./pages/Aio/Anlyser/AioApprovedBidDownloads";
+import AioBidApproval from "./pages/Aio/Admin/AioBidApproval";
 
 import DocumentPrintView from "./pages/Documents/DocumentPrintView";
 import DisqualifiedBidsPanel from "./pages/Desktop/Analyser/DisqualifiedBidsPanel";
@@ -96,6 +96,7 @@ function App() {
           <Route path="workstation/bid/:id/downloads" element={<WorkstationApprovedBidDownloads />} />
           <Route path="printer" element={<AnalyserPrinterDashboard />} />
           <Route path="printer/bid/:id/downloads" element={<PrinterApprovedBidDownloads />} />
+          <Route path="printer/bid/:id/approved-details" element={<ApprovedBiddingDetails />} />
           <Route path="disqualified-bids" element={<DisqualifiedBidsPanel showProductFilter />} />
           <Route path="bid-not-participated" element={<BidNotParticipated />} />
           <Route path="toner" element={<ComingSoon product="Toner" />} />

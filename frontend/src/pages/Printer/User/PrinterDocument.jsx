@@ -8,7 +8,7 @@ const GENERAL_DOCS = [
   { id: "past_performance", label: "PAST PERFORMANCE" },
   { id: "oem_annual_turnover", label: "OEM ANNUAL TURNOVER" },
   { id: "atc_acceptance_letter", label: "ATC ACCEPTANCE LETTER" },
-  { id: "bidder_financial", label: "BIDDER FINANCIAL UNDERSTANDINGS" },
+  { id: "bidder_financial", label: "BIDDER FINANCIAL STANDING" },
   { id: "non_obsolete", label: "NON OBSOLETE" },
   { id: "non_malicious", label: "NON MALICIOUS CODE" },
   { id: "non_blacklisting", label: "NON BLACKLISTING" },
@@ -223,19 +223,6 @@ export default function PrinterDocument({ bidData, onSuccess }) {
                 </div>
               </div>
             </div>
-            <div
-              style={{
-                background: "linear-gradient(135deg, #1d4ed8, #3b82f6)",
-                color: "#fff",
-                fontSize: 11,
-                fontWeight: 700,
-                padding: "4px 12px",
-                borderRadius: 20,
-                letterSpacing: "0.5px",
-              }}
-            >
-              STEP 4 / 4
-            </div>
           </div>
 
           <div style={{ padding: "24px" }}>
@@ -407,11 +394,24 @@ export default function PrinterDocument({ bidData, onSuccess }) {
                 </div>
               )}
 
-              <div>
-                <button type="submit" className="btn-submit" disabled={loading}>
-                  {loading ? "Submitting Bid..." : "Forward to Analyser"}
-                </button>
-              </div>
+              <button type="submit" className="btn-submit" disabled={loading}>
+                {loading ? (
+                  <>
+                    <svg className="spin" width="16" height="16" fill="none" viewBox="0 0 24 24">
+                      <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.3)" strokeWidth="4" />
+                      <path fill="rgba(255,255,255,0.9)" d="M4 12a8 8 0 018-8v8z" />
+                    </svg>
+                    Submitting Bid...
+                  </>
+                ) : (
+                  <>
+                    <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Forward to Analyser
+                  </>
+                )}
+              </button>
             </form>
           </div>
         </div>

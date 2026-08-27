@@ -1,12 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import {
-  PROCESSORS, DVDS, WARRANTIES,
-} from "../../Desktop/User/DesktopConfig";
+import { DVDS, WARRANTIES } from "../../Desktop/User/DesktopConfig";
 // AIO-native RAM/SSD/HDD/OS/screen-size/WiFi/keyboard/motherboard vocabulary —
 // see AioConfig.jsx for why these can't just reuse Desktop's lists.
 import {
   AIO_RAMS, AIO_SSDS, AIO_HDDS, AIO_OS_OPTIONS, AIO_SCREEN_SIZES, AIO_WIFIS,
-  AIO_KEYBOARDS, AIO_MOTHERBOARDS,
+  AIO_PROCESSORS, AIO_KEYBOARDS, AIO_MOTHERBOARDS,
 } from "../User/AioConfig";
 
 const API_BASE = import.meta.env.VITE_API_URL;
@@ -18,7 +16,7 @@ const getPrice = (categoryList, value) => {
 };
 
 const SPEC_OPTIONS = {
-  processor: PROCESSORS,
+  processor: AIO_PROCESSORS,
   ram: AIO_RAMS,
   hdd: AIO_HDDS,
   ssd: AIO_SSDS,
@@ -57,7 +55,7 @@ const GENERAL_DOCS = [
   { id: "past_performance", label: "PAST PERFORMANCE" },
   { id: "oem_annual_turnover", label: "OEM ANNUAL TURNOVER" },
   { id: "atc_acceptance_letter", label: "ATC ACCEPTANCE LETTER" },
-  { id: "bidder_financial", label: "BIDDER FINANCIAL UNDERSTANDINGS" },
+  { id: "bidder_financial", label: "BIDDER FINANCIAL STANDING" },
   { id: "non_obsolete", label: "NON OBSOLETE" },
   { id: "non_malicious", label: "NON MALICIOUS CODE" },
   { id: "non_return_hdd", label: "NON RETURN OF HARD DISK" },

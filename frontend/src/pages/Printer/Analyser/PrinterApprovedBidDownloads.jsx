@@ -66,7 +66,10 @@ export default function PrinterApprovedBidDownloads() {
             Bid No: <span className="font-bold text-slate-700">{bid?.bid_no || id}</span>
           </p>
         </div>
-        <button type="button" onClick={() => navigate(-1)} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50">
+        <button type="button" onClick={() => navigate(-1)} className="inline-flex h-9 items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 text-sm font-semibold text-gray-700 shadow-sm transition-all duration-200 hover:border-slate-800 hover:bg-slate-800 hover:text-white">
+          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+          </svg>
           Back
         </button>
       </div>

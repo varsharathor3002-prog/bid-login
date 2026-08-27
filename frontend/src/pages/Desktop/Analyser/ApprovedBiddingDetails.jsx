@@ -10,6 +10,8 @@ export default function ApprovedBiddingDetails() {
   const { id } = useParams();
   const { state } = useLocation();
   const navigate = useNavigate();
+  const isPrinter = window.location.pathname.includes("/printer/");
+  const bidApiPath = isPrinter ? "printer-bids" : "desktop-bids";
   const [bid, setBid] = useState(state?.bid || null);
   const [loading, setLoading] = useState(!state?.bid);
   const [downloading, setDownloading] = useState(false);
@@ -17,7 +19,7 @@ export default function ApprovedBiddingDetails() {
 
   useEffect(() => {
     if (bid) return;
-    fetch(`${API_BASE}/desktop-bids/${id}/`)
+    fetch(`${API_BASE}/${bidApiPath}/${id}/`)
       .then(async (response) => {
         if (!response.ok) throw new Error("Unable to load approved bid.");
         return response.json();
@@ -25,13 +27,13 @@ export default function ApprovedBiddingDetails() {
       .then(setBid)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [bid, id]);
+  }, [bid, bidApiPath, id]);
 
   const downloadPdf = async () => {
     setDownloading(true);
     setError("");
     try {
-      const response = await fetch(`${API_BASE}/desktop-bids/${id}/generate-docs/`, {
+      const response = await fetch(`${API_BASE}/${bidApiPath}/${id}/generate-docs/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ doc_type: "approved_price_paper" }),
@@ -95,7 +97,10 @@ export default function ApprovedBiddingDetails() {
   return (
     <div className="approved-details-view">
       <div className="print-toolbar mx-auto flex w-[210mm] items-center justify-between gap-3 py-4">
-        <button type="button" onClick={() => navigate(-1)} className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+        <button type="button" onClick={() => navigate(-1)} className="inline-flex h-9 items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 text-sm font-semibold text-gray-700 shadow-sm transition-all duration-200 hover:border-slate-800 hover:bg-slate-800 hover:text-white">
+          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+          </svg>
           Back
         </button>
         <div className="flex gap-3">
@@ -120,7 +125,7 @@ export default function ApprovedBiddingDetails() {
               <tr><th>Model No.</th><td>{bid.model_number || bid.model || "-"}</td></tr>
               <tr>
                 <th>Final Price</th>
-                <td>₹{Number(bid.total_price || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                <td>₹{Number(bid.total_price || bid.final_amount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
               </tr>
             </tbody>
           </table>

@@ -122,14 +122,11 @@ export default function CreatePrinterBid({ productMode = "printer" }) {
               onClick={handleHeaderBack}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-gray-300 bg-white text-gray-700 text-sm font-semibold hover:bg-slate-800 hover:text-white hover:border-slate-800 transition-all duration-200 shadow-sm"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
-              </svg>
               Back
             </button>
 
             <span className="text-lg font-black text-gray-900 tracking-tight">
-              {productMode === "multifunction" ? "Create New Multifunction Printer Bid" : "Create New Printer Bid"}
+              Create New Bid
             </span>
             <div className="h-6 w-[1px] bg-gray-200"></div>
             <span className="text-blue-600 font-bold text-sm">
@@ -334,12 +331,15 @@ function Step1Form({ onNext, savedData, productMode = "printer" }) {
           </div>
 
           <div>
-            <Label>Pin Code</Label>
+            <Label>Buyer Pincode</Label>
             <Input
-              type="number"
-              placeholder="Enter PIN Code"
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={6}
+              placeholder="Enter Buyer Pincode"
               value={form.pincode}
-              onChange={(e) => handleChange("pincode", e.target.value)}
+              onChange={(e) => handleChange("pincode", e.target.value.replace(/\D/g, "").slice(0, 6))}
               required
             />
           </div>

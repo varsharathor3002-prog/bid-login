@@ -37,7 +37,9 @@ export default function BidNotParticipated() {
   const [employeeBids, setEmployeeBids] = useState([]);
   const [selectedEmployeeBidIds, setSelectedEmployeeBidIds] = useState([]);
   const [selectedIds, setSelectedIds] = useState([]);
+  const [selectedDeleteIds, setSelectedDeleteIds] = useState([]);
   const [assigning, setAssigning] = useState(false);
+  const [assigningBidId, setAssigningBidId] = useState(null);
   const itemLabels = {
     high_end_desktop: "High End Desktop Computer",
     entry_mid_desktop: "Entry and Mid Level Desktop Computer",
@@ -76,6 +78,32 @@ export default function BidNotParticipated() {
       window.setTimeout(() => setSuccess(""), 8000);
     } catch (err) { setSuccess(""); setError(err.message); }
     finally { setAssigning(false); }
+  };
+  const assignOneBid = async (row, employeeId) => {
+    if (!employeeId) return;
+    setAssigningBidId(row.id);
+    setSuccess("");
+    setError("");
+    try {
+      const employee = employees.find((item) => String(item.id) === String(employeeId));
+      const response = await fetch(`${API_BASE}/gem/bid-assignments/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionStorage.getItem("token") || localStorage.getItem("token") || ""}` },
+        body: JSON.stringify({ action: "assign", assigned_to: Number(employeeId), opportunity_ids: [row.id] }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Bid could not be assigned.");
+      setRows((current) => current.filter((item) => item.id !== row.id));
+      setEmployees((current) => current.map((item) => String(item.id) === String(employeeId)
+        ? { ...item, active_count: Number(item.active_count || 0) + 1 }
+        : item));
+      setSuccess(`Bid ${row.bid_no} assigned to ${employee?.username || "user"} successfully.`);
+      window.setTimeout(() => setSuccess(""), 8000);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setAssigningBidId(null);
+    }
   };
   useEffect(() => {
     let active = true;
@@ -137,8 +165,37 @@ export default function BidNotParticipated() {
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Bid could not be deleted.");
       setRows((current) => current.filter((item) => item.id !== row.id));
+      setSelectedIds((current) => current.filter((id) => id !== row.id));
+      setSelectedDeleteIds((current) => current.filter((id) => id !== row.id));
       setError("");
     } catch (err) {
+      setError(err.message);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+  const deleteSelectedBids = async () => {
+    if (!selectedDeleteIds.length || !window.confirm(`Delete ${selectedDeleteIds.length} selected bids?`)) return;
+    setDeletingId("bulk");
+    try {
+      const response = await fetch(`${API_BASE}/gem/bid-opportunities/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${sessionStorage.getItem("token") || localStorage.getItem("token") || ""}`,
+        },
+        body: JSON.stringify({ action: "bulk_delete", ids: selectedDeleteIds }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Selected bids could not be deleted.");
+      setRows((current) => current.filter((row) => !selectedDeleteIds.includes(row.id)));
+      setSelectedIds((current) => current.filter((id) => !selectedDeleteIds.includes(id)));
+      setSelectedDeleteIds([]);
+      setError("");
+      setSuccess(`${data.deleted || 0} selected bids deleted successfully.`);
+      window.setTimeout(() => setSuccess(""), 8000);
+    } catch (err) {
+      setSuccess("");
       setError(err.message);
     } finally {
       setDeletingId(null);
@@ -178,17 +235,6 @@ export default function BidNotParticipated() {
               {itemLabels[type] || type} ({rows.filter((row) => itemCategory(row) === type).length})
             </option>)}
           </select>
-          <select value={assignedTo} onChange={(event) => setAssignedTo(event.target.value)}
-            className="min-w-56 rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800">
-            <option value="">Assign to user...</option>
-            {employees.map((employee) => <option key={employee.id} value={employee.id}>
-              {employee.username} - {employee.email} ({employee.active_count} active)
-            </option>)}
-          </select>
-          <button type="button" onClick={assignBids} disabled={assigning || !selectedIds.length || !assignedTo}
-            className="rounded bg-blue-700 px-4 py-2 text-sm font-bold text-white hover:bg-blue-800 disabled:opacity-40">
-            {assigning ? "Assigning..." : `Assign Selected (${selectedIds.length})`}
-          </button>
         </div>
       </div>
       {error && <div className="m-5 border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
@@ -212,13 +258,12 @@ export default function BidNotParticipated() {
           {!employeeBids.length && <div className="py-8 text-center text-sm text-gray-500">No active bids are assigned to this user.</div>}
         </div>
       </div>}
-      {!assignedTo && <div className="overflow-x-auto">
+      <div className="overflow-x-auto">
         <table className="w-full min-w-[760px] text-left">
           <thead className="bg-slate-800 text-xs uppercase text-white"><tr>
-            <th className="px-5 py-4">Select</th><th className="px-5 py-4">S.No.</th><th className="px-5 py-4">Bid No.</th><th className="px-5 py-4">Start Date &amp; Time</th><th className="px-5 py-4">End Date &amp; Time</th><th className="px-5 py-4">Item</th><th className="px-5 py-4 text-center">Action</th>
+            <th className="px-5 py-4">S.No.</th><th className="px-5 py-4">Bid No.</th><th className="px-5 py-4">Start Date &amp; Time</th><th className="px-5 py-4">End Date &amp; Time</th><th className="px-5 py-4">Item</th><th className="px-5 py-4 text-center">Assign To User</th>
           </tr></thead>
           <tbody>{filteredRows.map((row, index) => <tr key={row.id} className="border-b border-gray-100 hover:bg-gray-50">
-            <td className="px-5 py-4"><input type="checkbox" checked={selectedIds.includes(row.id)} onChange={() => toggleBid(row.id)} className="h-4 w-4" /></td>
             <td className="px-5 py-4 text-sm font-semibold text-gray-600">{index + 1}</td>
             <td className="px-5 py-4 font-bold text-blue-700">
               {row.pdf_url ? <a href={row.pdf_url} target="_blank" rel="noreferrer"
@@ -229,16 +274,19 @@ export default function BidNotParticipated() {
             <td className="px-5 py-4 text-sm font-semibold text-emerald-700">{formatDateTime(row.end_date)}</td>
             <td className="px-5 py-4 text-sm font-medium text-gray-800">{row.product_name}</td>
             <td className="px-5 py-4 text-center">
-              <button type="button" onClick={() => deleteBid(row)} disabled={deletingId === row.id}
-                className="rounded p-2 text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
-                title="Delete bid" aria-label={`Delete bid ${row.bid_no}`}>
-                <FaTrash aria-hidden="true" />
-              </button>
+              <select defaultValue="" disabled={assigningBidId === row.id}
+                onChange={(event) => assignOneBid(row, event.target.value)}
+                className="min-w-56 rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-500 disabled:cursor-wait disabled:bg-gray-100">
+                <option value="">{assigningBidId === row.id ? "Assigning..." : "Select user..."}</option>
+                {employees.map((employee) => <option key={employee.id} value={employee.id}>
+                  {employee.username} - {employee.email} ({employee.active_count} active)
+                </option>)}
+              </select>
             </td>
           </tr>)}</tbody>
         </table>
         {!filteredRows.length && !error && <div className="py-16 text-center text-sm text-gray-500">No eligible bids found for this item.</div>}
-      </div>}
+      </div>
     </div>
   );
 }
