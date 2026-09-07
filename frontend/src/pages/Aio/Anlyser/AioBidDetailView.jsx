@@ -402,7 +402,7 @@ export default function AioBidDetailView() {
     if (!form) return;
     setModelSearching(true);
     setModelMatches([]);
-    setShowModelResult(true);
+    setShowModelResult(false);
     setNoMatchFound(false);
     setNewModelInput("");
     try {
@@ -420,10 +420,12 @@ export default function AioBidDetailView() {
       if (!item?.model_no) {
         setModelMatches([]);
         setNoMatchFound(true);
+        setShowModelResult(false);
         return;
       }
       setModelMatches([{ modelNo: item.model_no, product_id: item.product_id }]);
       setNoMatchFound(false);
+      setShowModelResult(true);
     } catch (error) {
       console.error(error);
       alert("Network error — unable to connect to the server.");
@@ -481,7 +483,7 @@ export default function AioBidDetailView() {
   };
 
   const handleCreateNewModel = async () => {
-    const trimmed = newModelInput.trim();
+    const trimmed = modelInputValue.trim();
     if (!trimmed) {
       alert("Please enter a model number.");
       return;
@@ -863,8 +865,8 @@ export default function AioBidDetailView() {
                 name="model_number"
                 value={modelInputValue}
                 onChange={handleModelInputChange}
-                placeholder={readOnly ? "No model assigned" : "Search model..."}
-                disabled={readOnly}
+                placeholder={readOnly ? "No model assigned" : noMatchFound ? "Enter model number manually..." : "Search model..."}
+                disabled={readOnly || modelSearching || showModelResult}
                 className={`rounded border px-3 py-1.5 text-sm outline-none w-64 font-semibold focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500 ${isPending ? "border-blue-300 bg-white text-slate-900 placeholder:text-slate-500" : "border-gray-300 text-gray-800"}`}
               />
             </div>
@@ -872,12 +874,19 @@ export default function AioBidDetailView() {
             {!readOnly && (
               <button
                 type="button"
-                onClick={handleFindModel}
-                disabled={modelSearching || modelSaving}
-                className={`mt-4 whitespace-nowrap ${isReAnalyze && hasExistingModel ? "bg-amber-600 hover:bg-amber-700" : "bg-slate-700 hover:bg-slate-800"} disabled:bg-slate-400 text-white px-3 py-1.5 rounded text-xs font-bold transition shadow-sm`}
+                onClick={noMatchFound ? handleCreateNewModel : handleFindModel}
+                disabled={modelSearching || modelSaving || showModelResult}
+                className={`mt-4 whitespace-nowrap ${noMatchFound ? "bg-blue-600 hover:bg-blue-700" : isReAnalyze && hasExistingModel ? "bg-amber-600 hover:bg-amber-700" : "bg-slate-700 hover:bg-slate-800"} disabled:bg-slate-400 text-white px-3 py-1.5 rounded text-xs font-bold transition shadow-sm`}
               >
-                {modelSearching ? "Searching..." : (isReAnalyze && hasExistingModel) ? "Change Model" : "Find Model"}
+                {modelSaving ? "Saving..." : modelSearching ? "Searching..." : noMatchFound ? "Save Model" : (isReAnalyze && hasExistingModel) ? "Change Model" : "Find Model"}
               </button>
+            )}
+
+            {noMatchFound && !readOnly && !showModelResult && (
+              <div className="ml-1 w-52 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs leading-4 text-amber-800">
+                <span className="font-bold">No matching model found.</span>{" "}
+                Please create a new model number.
+              </div>
             )}
 
             {readOnly && isReAnalyze && hasExistingModel && (

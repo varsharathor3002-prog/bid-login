@@ -1,12 +1,14 @@
 import json
 import os
 import re
+import time
 from datetime import datetime
 import pandas as pd
 from django.conf import settings
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
+from django.test import RequestFactory
 from ..models import User, WorkstationBid, CatalogueProduct
 from .bid_cleanup import delete_bid_with_related_data
 
@@ -98,6 +100,26 @@ def _load_workstation_catalogue():
     return products
 
 
+def _ws_storage_gb(value):
+    # worksation.xlsx / the SSD-SSD dropdown both use 1TB == 1024GB (the
+    # dropdown's own "1024 GB (1TB) Sata SSD" label says so) — but the
+    # shared Desktop._storage_to_gb helper (used by _values_overlap_score's
+    # storage-equality bonus) treats "1 TB" as a decimal 1000, so a bid built
+    # from the "M.2 SSD NVME 1024GB" option (no "TB" in the text at all)
+    # would never register as equal to the catalogue's "1TB M.2 SSD" (1024
+    # != 1000) and silently drop that field out of a Find Model match.
+    text = re.sub(r"[^a-z0-9. ]+", " ", str(value or "").lower())
+    if not text.strip():
+        return None
+    m_tb = re.search(r"(\d+(?:\.\d+)?)\s*tb", text)
+    if m_tb:
+        return int(float(m_tb.group(1)) * 1024)
+    m_gb = re.search(r"(\d+(?:\.\d+)?)\s*gb", text)
+    if m_gb:
+        return int(float(m_gb.group(1)))
+    return None
+
+
 def _workstation_catalogue_match_value(bid_value, catalogue_value, field_name=""):
     absent_values = {"", "-", "none", "no", "n/a", "na", "not applicable", "not required"}
     bid_absent = str(bid_value or "").strip().lower() in absent_values
@@ -118,6 +140,11 @@ def _workstation_catalogue_match_value(bid_value, catalogue_value, field_name=""
             lower_size, upper_size = catalogue_numbers[0], catalogue_numbers[1]
             if lower_size <= selected_size <= upper_size:
                 return True, 2500
+    if field_name in ("ssd", "hdd"):
+        bid_gb = _ws_storage_gb(bid_value)
+        catalogue_gb = _ws_storage_gb(catalogue_value)
+        if bid_gb is not None and catalogue_gb is not None and bid_gb == catalogue_gb:
+            return True, 2200
     score = _values_overlap_score(bid_value, catalogue_value)
     return score >= 100, score
 
@@ -927,6 +954,47 @@ def update_workstation_docs(request, bid_id):
         return JsonResponse({"error": str(e)}, status=500)
 
 
+def _ws_text_width(text, fontsize, bold=False):
+    try:
+        return fitz.Font("hebo" if bold else "helv").text_length(text, fontsize=fontsize)
+    except Exception:
+        return len(text) * fontsize * 0.55
+
+
+def _ws_draw_inline_paragraph(page, x, y, line_height, max_width, segments, fontsize=11):
+    # Same helper AIO's document generator uses for a paragraph that mixes
+    # bold and regular runs on the same wrapped lines (plain insert_textbox
+    # can't vary weight mid-paragraph).
+    word_tokens = []
+    for text_chunk, is_bold in segments:
+        for w in text_chunk.split(" "):
+            if w:
+                word_tokens.append((w, is_bold))
+    current_line = []
+    current_width = 0.0
+    cur_y = y
+
+    def render_line(line_tokens, base_y):
+        cx = x
+        for word, bold in line_tokens:
+            page.insert_text((cx, base_y), word, fontsize=fontsize, fontname="hebo" if bold else "helv", color=(0, 0, 0))
+            cx += _ws_text_width(word + "  ", fontsize, bold)
+
+    for word, is_bold in word_tokens:
+        w_width = _ws_text_width(word + "  ", fontsize, is_bold)
+        if current_line and (current_width + w_width) > max_width:
+            render_line(current_line, cur_y)
+            cur_y += line_height
+            current_line = [(word, is_bold)]
+            current_width = w_width
+        else:
+            current_line.append((word, is_bold))
+            current_width += w_width
+    if current_line:
+        render_line(current_line, cur_y)
+    return cur_y
+
+
 @csrf_exempt
 @require_http_methods(["POST"])
 def generate_workstation_certificates(request, bid_id):
@@ -954,7 +1022,9 @@ def generate_workstation_certificates(request, bid_id):
         }
         static_documents = {
             "experience_certificate": "workstation_experience_certificate.pdf",
-            "past_performance": "workstation_past_performance.pdf",
+            # Past Performance intentionally points at the same file as
+            # Experience Certificate per explicit request.
+            "past_performance": "workstation_experience_certificate.pdf",
             "oem_annual_turnover": "oem_annual_turnover.pdf",
             "atc_acceptance_letter": "atc_acceptance_letter.pdf",
         }
@@ -975,7 +1045,7 @@ def generate_workstation_certificates(request, bid_id):
                     fitz.Rect(page.rect.width - 60, page.rect.height - 28, page.rect.width - 18, page.rect.height - 8),
                     str(local_number), fontsize=9, fontname="hebo", align=2,
                 )
-        approved_bundles = {"approved_atc_documents", "approved_all_documents"}
+        approved_bundles = {"approved_atc_documents", "approved_price_paper", "approved_all_documents"}
         if doc_type in approved_bundles and bid.review_status != "approved":
             return JsonResponse({"error": "Only approved bids can be downloaded"}, status=403)
 
@@ -1039,7 +1109,7 @@ def generate_workstation_certificates(request, bid_id):
             document.close()
             return JsonResponse({
                 "success": True,
-                "pdf_url": request.build_absolute_uri(f"/media/generated_docs/{filename}"),
+                "pdf_url": request.build_absolute_uri(f"/media/generated_docs/{filename}")+f"?v={int(time.time())}",
             })
 
         if doc_type in static_documents:
@@ -1052,46 +1122,240 @@ def generate_workstation_certificates(request, bid_id):
             number_pages_from_one(static_doc)
             static_doc.save(output_path)
             static_doc.close()
-            return JsonResponse({"success": True, "pdf_url": request.build_absolute_uri(f"/media/generated_docs/{filename}")})
+            return JsonResponse({"success": True, "pdf_url": request.build_absolute_uri(f"/media/generated_docs/{filename}")+f"?v={int(time.time())}"})
 
         if doc_type == "approved_atc_documents":
             if not bid.atc_special_document:
                 return JsonResponse({"error": "ATC document is not available"}, status=404)
             return JsonResponse({"success": True, "pdf_url": request.build_absolute_uri(bid.atc_special_document.url)})
 
+        if doc_type == "approved_price_paper":
+            try:
+                final_price = float(str(bid.total_price or "").replace(",", "").strip())
+            except (TypeError, ValueError):
+                final_price = 0
+            if final_price <= 0:
+                return JsonResponse(
+                    {"error": "A valid final approved price is required."},
+                    status=400,
+                )
+
+            price_doc = fitz.open()
+            page = price_doc.new_page(width=595, height=842)
+            template_path = os.path.join(settings.MEDIA_ROOT, "templates", "documents.pdf")
+            signature_image = None
+            if os.path.exists(template_path):
+                template_doc = fitz.open(template_path)
+                source_page = template_doc[5] if len(template_doc) > 5 else template_doc[0]
+                header = source_page.get_pixmap(
+                    matrix=fitz.Matrix(2, 2),
+                    clip=fitz.Rect(0, 0, source_page.rect.width, 112),
+                    alpha=False,
+                ).tobytes("png")
+                page.insert_image(fitz.Rect(18, 12, 577, 112), stream=header, keep_proportion=False)
+                signature_images = source_page.get_images(full=True)
+                if len(signature_images) > 1:
+                    signature_image = template_doc.extract_image(signature_images[1][0]).get("image")
+                template_doc.close()
+
+            page.insert_textbox(
+                fitz.Rect(45, 135, 550, 165),
+                "APPROVED DETAILS FOR BIDDING",
+                fontsize=14,
+                fontname="hebo",
+                align=1,
+            )
+            x_positions = [48, 390, 547]
+            y, row_height = 190, 28
+            for column, heading in enumerate(("APPROVED BID DETAIL", "VALUE")):
+                rect = fitz.Rect(x_positions[column], y, x_positions[column + 1], y + row_height)
+                page.draw_rect(rect, color=(0.3, 0.3, 0.3), fill=(0.9, 0.93, 0.96), width=0.7)
+                page.insert_textbox(rect + (4, 6, -4, -3), heading, fontsize=9, fontname="hebo", align=column)
+            y += row_height
+            for label, value in (
+                ("Bid No.", str(bid.bid_no or "")),
+                ("Model No.", str(bid.model_number or "")),
+                ("Final Price", f"Rs. {final_price:,.2f}"),
+            ):
+                for column, text in enumerate((label, value)):
+                    rect = fitz.Rect(x_positions[column], y, x_positions[column + 1], y + row_height)
+                    page.draw_rect(rect, color=(0.55, 0.55, 0.55), width=0.5)
+                    page.insert_textbox(
+                        rect + (4, 7, -4, -3),
+                        text,
+                        fontsize=9.5,
+                        fontname="hebo" if column == 0 else "helv",
+                        align=2 if column else 0,
+                    )
+                y += row_height
+
+            sign_x, sign_y = 72, 430
+            page.draw_line(
+                fitz.Point(sign_x, sign_y - 12),
+                fitz.Point(345, sign_y - 12),
+                color=(0.75, 0.79, 0.84),
+                width=0.8,
+            )
+            page.insert_textbox(
+                fitz.Rect(sign_x, sign_y, 550, sign_y + 28),
+                "Auth. Signatory\nFor Laps N Tabs Technology Pvt. Ltd.",
+                fontsize=9,
+                fontname="hebo",
+                lineheight=1.15,
+            )
+            if signature_image:
+                page.insert_image(
+                    fitz.Rect(sign_x, sign_y + 30, sign_x + 145, sign_y + 70),
+                    stream=signature_image,
+                    keep_proportion=False,
+                )
+            page.insert_textbox(
+                fitz.Rect(sign_x, sign_y + 74, 550, sign_y + 132),
+                "Name:- Devank Rastogi\nDesignation:- Director\n"
+                "Email:- lapsntabs123@gmail.com\nContact No.:- 9918200166",
+                fontsize=9,
+                fontname="hebo",
+                lineheight=1.15,
+            )
+            filename = f"workstation_{bid.id}_price_approved.pdf"
+            number_pages_from_one(price_doc)
+            price_doc.save(os.path.join(out_dir, filename))
+            price_doc.close()
+            return JsonResponse({
+                "success": True,
+                "pdf_url": request.build_absolute_uri(f"/media/generated_docs/{filename}")+f"?v={int(time.time())}",
+            })
+
         if doc_type == "approved_all_documents":
-            merged = fitz.open()
-            generated_names = [key for key in cert_page_ranges if key in (bid.selected_general_docs or [])]
-            generated_names.extend(["manufacturer_auth", "make_in_india"])
-            for child_type in dict.fromkeys(generated_names):
-                child_path = os.path.join(out_dir, f"workstation_{bid.id}_{child_type}.pdf")
-                if os.path.exists(child_path):
-                    child = fitz.open(child_path)
-                    number_pages_from_one(child)
-                    merged.insert_pdf(child)
-                    child.close()
-            for template_name in static_documents.values():
-                child_path = os.path.join(settings.MEDIA_ROOT, "templates", "static_documents", template_name)
-                if os.path.exists(child_path):
-                    child = fitz.open(child_path)
-                    number_pages_from_one(child)
-                    merged.insert_pdf(child)
-                    child.close()
+            # Same index+bundle approach as AIO's generate_aio_documents
+            # (_build_index_and_bundle) — a leading "Index of all approved
+            # documents" page (S.No./Documents/Page From/Page To), built from
+            # freshly (re)generated child certificates rather than whatever
+            # stale copies happened to already sit in generated_docs/.
+            doc_labels = {
+                "manufacturer_auth": "MAF CERTIFICATE",
+                "experience_certificate": "EXPERIENCE CERTIFICATE",
+                "past_performance": "PAST PERFORMANCE",
+                "oem_annual_turnover": "OEM ANNUAL TURNOVER",
+                "atc_acceptance_letter": "ATC ACCEPTANCE LETTER",
+                "make_in_india": "MAKE IN INDIA",
+                "warranty": "WARRANTY",
+                "bidder_financial": "BIDDER FINANCIAL UNDERSTANDINGS",
+                "non_obsolete": "NON OBSOLETE",
+                "data_sheet": "DATA SHEET",
+                "non_malicious": "NON MALICIOUS CODE",
+                "non_return_hdd": "NON RETURN OF HARD DISK",
+                "technical_compliance": "TECHNICAL COMPLIANCE",
+                "non_blacklisting": "NON BLACKLISTING",
+                "service_support": "SERVICE SUPPORT",
+                "ipv6": "IPV6",
+                "preloaded_os": "PRELOADED OPERATING SYSTEM",
+            }
+            factory = RequestFactory()
+
+            def _gen_child(child_id):
+                child_request = factory.post(
+                    f"/api/workstation-bids/{bid.id}/generate-docs/",
+                    data=json.dumps({"doc_type": child_id}),
+                    content_type="application/json",
+                    HTTP_HOST=request.get_host(),
+                )
+                child_response = generate_workstation_certificates(child_request, bid.id)
+                if child_response.status_code != 200:
+                    return None
+                child_path = os.path.join(out_dir, f"workstation_{bid.id}_{child_id}.pdf")
+                return fitz.open(child_path) if os.path.exists(child_path) else None
+
+            non_atc_ids = ["manufacturer_auth", "experience_certificate", "past_performance", "oem_annual_turnover", "make_in_india", "atc_acceptance_letter"]
+            atc_ids = [key for key in cert_page_ranges if key not in non_atc_ids]
+            selected_atc_ids = [cid for cid in (bid.selected_general_docs or []) if cid in atc_ids]
+            selected_atc_ids = list(dict.fromkeys(selected_atc_ids))
+
+            def _gen_group(child_ids):
+                docs = []
+                for child_id in child_ids:
+                    child_doc = _gen_child(child_id)
+                    if child_doc is not None:
+                        docs.append((doc_labels.get(child_id, child_id.upper()), child_doc))
+                return docs
+
+            groups = []
+            non_atc_generated = _gen_group(non_atc_ids)
+            if non_atc_generated:
+                groups.append(("NON-ATC DOCUMENTS", non_atc_generated))
+
+            atc_generated = _gen_group(selected_atc_ids)
             if bid.atc_special_document and os.path.exists(bid.atc_special_document.path):
                 try:
-                    child = fitz.open(bid.atc_special_document.path)
-                    number_pages_from_one(child)
-                    merged.insert_pdf(child)
-                    child.close()
+                    child_doc = fitz.open(bid.atc_special_document.path)
+                    number_pages_from_one(child_doc)
+                    atc_generated.append(("ATC SPECIAL DOCUMENT", child_doc))
                 except Exception:
                     pass
-            if merged.page_count == 0:
-                merged.close()
+            if atc_generated:
+                groups.append(("ATC DOCUMENTS", atc_generated))
+
+            if not groups:
                 return JsonResponse({"error": "No approved documents are available"}, status=404)
+
+            index_rows, page_number = [], 1
+            for section, docs in groups:
+                rows = []
+                for label, child_doc in docs:
+                    start = page_number
+                    end = start + len(child_doc) - 1
+                    rows.append((label, start, end))
+                    page_number = end + 1
+                index_rows.append((section, rows))
+
+            bundle = fitz.open()
+            index_page = bundle.new_page(width=595, height=842)
+            index_page.insert_textbox(fitz.Rect(45, 60, 550, 100), "Index of all approved documents", fontsize=17, fontname="hebo", align=1)
+            index_page.insert_text((48, 127), f"Bid Number: {bid.bid_no}", fontsize=12, fontname="hebo")
+            columns, y, row_height = [48, 92, 380, 462, 547], 152, 32
+            headings = ("S.NO.", "DOCUMENTS", "PAGE FROM", "PAGE TO")
+            for col, heading in enumerate(headings):
+                rect = fitz.Rect(columns[col], y, columns[col + 1], y + row_height)
+                index_page.draw_rect(rect, color=(0.45, 0.45, 0.45), fill=(0.92, 0.94, 0.96), width=0.6)
+                index_page.insert_textbox(rect + (4, 9, -4, -3), heading, fontsize=9.2, fontname="hebo", align=1 if col != 1 else 0)
+            y += row_height
+
+            serial = 1
+            for section, rows in index_rows:
+                section_rect = fitz.Rect(columns[0], y, columns[-1], y + row_height)
+                index_page.draw_rect(section_rect, color=(0.35, 0.35, 0.35), fill=(0.85, 0.88, 0.92), width=0.7)
+                index_page.insert_textbox(section_rect + (5, 9, -5, -3), section, fontsize=9.5, fontname="hebo", align=0)
+                y += row_height
+                for label, start, end in rows:
+                    values = (str(serial), label, str(start), str(end))
+                    for col, val in enumerate(values):
+                        rect = fitz.Rect(columns[col], y, columns[col + 1], y + row_height)
+                        index_page.draw_rect(rect, color=(0.55, 0.55, 0.55), width=0.5)
+                        index_page.insert_textbox(rect + (4, 9, -4, -3), val, fontsize=9.2, fontname="hebo", align=1 if col != 1 else 0)
+                    serial += 1
+                    y += row_height
+
+            for _, docs in groups:
+                for _, child_doc in docs:
+                    bundle.insert_pdf(child_doc)
+                    child_doc.close()
+
+            for pidx in range(1, len(bundle)):
+                pg = bundle[pidx]
+                for block in pg.get_text("dict").get("blocks", []):
+                    if block.get("type") != 0:
+                        continue
+                    for line in block.get("lines", []):
+                        text = " ".join(s.get("text", "") for s in line.get("spans", [])).strip()
+                        if line["bbox"][1] > pg.rect.height - 60 and re.fullmatch(r"(?:Page\s*)?\d+", text, re.IGNORECASE):
+                            pg.add_redact_annot(fitz.Rect(line["bbox"]) + (-3, -2, 3, 2), fill=(1, 1, 1))
+                pg.apply_redactions()
+                pg.insert_textbox(fitz.Rect(pg.rect.width - 60, pg.rect.height - 28, pg.rect.width - 18, pg.rect.height - 8), str(pidx), fontsize=9, fontname="hebo", align=2)
+
             filename = f"workstation_{bid.id}_approved_all_documents.pdf"
-            merged.save(os.path.join(out_dir, filename))
-            merged.close()
-            return JsonResponse({"success": True, "pdf_url": request.build_absolute_uri(f"/media/generated_docs/{filename}")})
+            bundle.save(os.path.join(out_dir, filename))
+            bundle.close()
+            return JsonResponse({"success": True, "pdf_url": request.build_absolute_uri(f"/media/generated_docs/{filename}")+f"?v={int(time.time())}"})
 
         if doc_type not in cert_page_ranges:
             return JsonResponse({"error": f"Invalid doc_type: '{doc_type}'"}, status=400)
@@ -1249,7 +1513,12 @@ def generate_workstation_certificates(request, bid_id):
             "hdmi": "",
             "os": clean_text(bid.os),
             "ram_type": ram_type(bid.ram),
-            "ram_size": clean_text(bid.ram),
+            # Was clean_text(bid.ram) — the full descriptive RAM string (e.g.
+            # "32GB Registered ECC") crammed into the Technical Compliance
+            # template's narrow numeric-only "RAM Size (GB)" cell, forcing it
+            # onto extra wrapped lines that bled past the row's fixed height
+            # into the row above/below. ram_size() extracts just the "32".
+            "ram_size": ram_size(bid.ram),
             "ram_size_gb": ram_size(bid.ram),
             "hdd_capacity": clean_text(bid.hdd),
             "ssd_capacity": clean_text(bid.ssd1),
@@ -1547,7 +1816,7 @@ def generate_workstation_certificates(request, bid_id):
                 )
                 page.insert_text(
                     (escalation.x0, escalation.y1 + 14),
-                    "Escalation matrix below reference:",
+                    "Escalation matrix for service support is as follows:",
                     fontsize=10.8,
                     fontname="helv",
                     color=(0, 0, 0),
@@ -1593,23 +1862,11 @@ def generate_workstation_certificates(request, bid_id):
                 if value:
                     page.insert_text((72, y), value, fontsize=11.5, fontname="hebo", color=(0, 0, 0))
                     y += 15
-
-            page.add_redact_annot(fitz.Rect(68, 404, page.rect.width - 42, 526), fill=(1, 1, 1))
-            # Preserve the signature image below: its internal image bounds can
-            # overlap this paragraph even though its visible ink does not.
-            page.apply_redactions(images=0, graphics=0)
-            page.insert_textbox(
-                fitz.Rect(72, 407, page.rect.width - 52, 522),
-                "The product offered in the bid will be serviced on-site at the location of the buyer. "
-                "The above clause is not applicable to this bid. We also undertake that once the order "
-                "is released, we shall appoint a service center within the prescribed time, in case the "
-                "location of the buyer is not already covered by an existing service center.",
-                fontsize=12,
-                fontname="hebo",
-                color=(0, 0, 0),
-                align=0,
-                lineheight=1.2,
-            )
+            # The "As per the Buyer ATC..." heading, the quoted availability
+            # paragraph, the on-site closing paragraph, and the signature block
+            # below it are all redrawn together by the shared
+            # _fill_service_support_availability helper (see the original_page
+            # == 30 branch below) — mirrors AIO's equivalent page exactly.
 
         def fix_manufacturer_auth_page(page):
             from .Aio import _fill_manufacturer_auth_body
@@ -1627,7 +1884,7 @@ def generate_workstation_certificates(request, bid_id):
             page.insert_text((write_x, write_y), "Dear Sir,", fontsize=11, fontname="hebo", color=(0, 0, 0))
             paragraph = (
                 "We undertake that, as per Buyer Organization's Security Policy, Faulty Hard Disk of "
-                "Servers/Desktop Computers/ All in One Computers etc. will not be "
+                "Servers / Desktop Computers / Laptops / Workstation / Printer / Toner etc. will not be "
                 "returned back to the OEM/supplier against warranty replacement."
             )
             page.insert_textbox(
@@ -1639,6 +1896,14 @@ def generate_workstation_certificates(request, bid_id):
                 align=0,
                 lineheight=1.15,
             )
+
+        def fix_non_obsolete_duration(page):
+            # The residual-market-life guarantee still says "3 (Three)
+            # years" — bump it to "5 (Five) years" like AIO's equivalent fix.
+            for area in page.search_for("3 (Three)"):
+                page.add_redact_annot(fitz.Rect(area.x0 - 1, area.y0 - 1, area.x1 + 24, area.y1 + 1), fill=(1, 1, 1))
+                page.apply_redactions(images=0, graphics=0)
+                page.insert_text((area.x0, area.y1 - 2), "5 (Five)", fontsize=12, fontname="hebo", color=(0, 0, 0))
 
         def fix_preloaded_os_page(page):
             os_text = clean_text(body.get("os") or bid.os or "Windows 11 Professional")
@@ -1727,10 +1992,21 @@ def generate_workstation_certificates(request, bid_id):
                     ):
                         address_rect = bbox
                     if (
-                        re.search(r"(Tender|Bid)\s*No", line_text, re.IGNORECASE)
-                        or re.search(r"GEM/\d{4}/[A-Z]/\d+", line_text)
-                        or re.search(r"\bDated\s*:?\s*\d{2}-\d{2}-\d{4}", line_text, re.IGNORECASE)
+                        bbox.y0 < 300
+                        and (
+                            re.search(r"(Tender|Bid)\s*No", line_text, re.IGNORECASE)
+                            or re.search(r"GEM/\d{4}/[A-Z]/\d+", line_text)
+                            or re.search(r"\bDated\s*:?\s*\d{2}-\d{2}-\d{4}", line_text, re.IGNORECASE)
+                        )
                     ):
+                        # The real "Tender No: ... Dated: ..." template line always
+                        # sits near the top of the page (right below the "To,"
+                        # recipient block). Without this y0 cutoff, a Bid No /
+                        # GeM-number mention inside a certificate's own body text
+                        # further down the page (e.g. Make in India's "Quoted
+                        # under GeM Bid No. - ..." sentence) gets swept up and
+                        # erased here too, before the doc-specific handler ever
+                        # gets to redraw it.
                         tender_line_rects.append(fitz.Rect(bbox.x0 - 2, bbox.y0 - 3, page.rect.width - 36, bbox.y1 + 4))
                         if first_rect is None:
                             first_rect = bbox
@@ -1789,70 +2065,122 @@ def generate_workstation_certificates(request, bid_id):
                     y += 15
 
         def update_make_in_india(page):
-            content_value = local_content or "58%"
-            page_text_before = page.get_text("text")
-            existing_model = ""
-            model_match = re.search(r"\b(?:AXL|ACL)-[A-Z0-9-]+\b", page_text_before, re.IGNORECASE)
-            if model_match:
-                existing_model = model_match.group(0)
-            product_model = model_number or existing_model or "quoted model"
-            lines = []
-            for block in page.get_text("dict").get("blocks", []):
-                if block.get("type") != 0:
-                    continue
-                for line in block.get("lines", []):
-                    text = " ".join(span.get("text", "") for span in line.get("spans", [])).strip()
-                    if text:
-                        lines.append((fitz.Rect(line["bbox"]), text))
-            lines.sort(key=lambda item: item[0].y0)
-            start_y = 386
-            for bbox, text in lines:
-                if "This is to certify" in text:
-                    start_y = max(300, bbox.y0 - 6)
-                    break
-            end_y = 690
-            for bbox, text in lines:
-                if re.search(r"Auth\.?\s*Signatory", text, re.IGNORECASE):
-                    end_y = max(start_y + 40, bbox.y0 - 8)
-                    break
-            page.add_redact_annot(fitz.Rect(36, start_y, page.rect.width - 24, end_y), fill=(1, 1, 1))
-            page.apply_redactions()
+            # Same approach as AIO's _fill_make_in_india_page (Aio.py) — find the
+            # actual template regions (intro paragraph, table cells, model
+            # caption) and edit them in place, instead of blanket-erasing the
+            # whole body and redrawing a brand new table at hardcoded
+            # coordinates. Reusing AIO's own generic helpers (no AIO-specific
+            # wording in them) rather than duplicating them here. The "To,"
+            # recipient block and the "Bid No / Dated" line are intentionally
+            # left alone — force_customer_block/force_tender_no_date already
+            # filled those in correctly earlier in the per-page loop above.
+            from .Aio import _format_model_number, _shrink_for_cell, _get_cell_bg_color, _draw_inline_paragraph
 
-            draw_inline_paragraph(
-                page,
-                x=86,
-                y=350,
-                line_height=17,
-                max_width=page.rect.width - 150,
-                segments=[
+            def _lines():
+                out = []
+                for block in page.get_text("dict").get("blocks", []):
+                    if block.get("type") != 0:
+                        continue
+                    for line in block.get("lines", []):
+                        text = " ".join(span.get("text", "") for span in line.get("spans", []))
+                        out.append((line["bbox"], text.strip()))
+                out.sort(key=lambda lx: lx[0][1])
+                return out
+
+            formatted_model = _format_model_number(model_number) or "quoted model"
+
+            all_lines = _lines()
+            intro_start = intro_end = None
+            for i, (bbox, text) in enumerate(all_lines):
+                if "This is to certify" in text and intro_start is None:
+                    intro_start = i
+                if intro_start is not None and (
+                    "content details are as below" in text.lower() or "local content details" in text.lower()
+                ):
+                    intro_end = i
+                    break
+
+            if intro_start is not None and intro_end is not None:
+                intro_lines = all_lines[intro_start:intro_end + 1]
+                region_x0 = min(b[0] for b, t in intro_lines)
+                region_y0 = intro_lines[0][0][1]
+                region_x1 = page.rect.width - 36
+                region_y1 = intro_lines[-1][0][3] + 6
+                page.add_redact_annot(fitz.Rect(region_x0 - 2, region_y0 - 2, region_x1, region_y1), fill=(1, 1, 1))
+                page.apply_redactions()
+
+                segments = [
                     ("This is to certify that ", False),
                     ("acxxel WORKSTATION ", True),
-                    (f"{product_model} ", True),
+                    (formatted_model + " ", True),
                     ("Quoted under ", False),
                     ("GeM Bid No. - ", True),
-                    (f"{bid_no or 'N/A'} ", True),
+                    ((bid_no if bid_no else "N/A") + " ", True),
                     ("is getting manufactured in India. Local content details are as below:", False),
-                ],
-                fontsize=11,
-            )
+                ]
+                _draw_inline_paragraph(page, region_x0, region_y0 + 11, 17, region_x1 - region_x0 - 4, segments, fitz, fontsize=11)
 
-            table_x0, table_y0, table_x1 = 98, 418, page.rect.width - 70
-            row_h = 33
-            col1, col2 = 190, table_x1 - 130
-            page.draw_rect(fitz.Rect(table_x0, table_y0, table_x1, table_y0 + row_h * 2), color=(0.35, 0.35, 0.35), fill=(0.82, 0.82, 0.82), width=0.7, overlay=True)
-            page.draw_line((table_x0, table_y0 + row_h), (table_x1, table_y0 + row_h), color=(0.35, 0.35, 0.35), width=0.7, overlay=True)
-            page.draw_line((col1, table_y0), (col1, table_y0 + row_h * 2), color=(0.35, 0.35, 0.35), width=0.7, overlay=True)
-            page.draw_line((col2, table_y0), (col2, table_y0 + row_h * 2), color=(0.35, 0.35, 0.35), width=0.7, overlay=True)
-            page.insert_textbox(fitz.Rect(table_x0, table_y0 + 5, col1, table_y0 + 24), "Sr.No.", fontsize=10, fontname="hebo", color=(0, 0.25, 0.35), align=1)
-            page.insert_textbox(fitz.Rect(col1, table_y0 + 5, col2, table_y0 + 24), "Description of Supplies", fontsize=10, fontname="hebo", color=(0, 0.25, 0.35), align=1)
-            page.insert_textbox(fitz.Rect(col2, table_y0 + 5, table_x1, table_y0 + 24), "Local Content", fontsize=10, fontname="hebo", color=(0, 0.25, 0.35), align=1)
-            page.insert_textbox(fitz.Rect(table_x0, table_y0 + row_h + 7, col1, table_y0 + row_h * 2 - 5), "1", fontsize=10, fontname="hebo", color=(0, 0, 0), align=1)
-            page.insert_textbox(fitz.Rect(col1, table_y0 + row_h + 7, col2, table_y0 + row_h * 2 - 5), product_model, fontsize=10, fontname="hebo", color=(0, 0, 0), align=1)
-            page.insert_textbox(fitz.Rect(col2, table_y0 + row_h + 7, table_x1, table_y0 + row_h * 2 - 5), content_value, fontsize=10, fontname="hebo", color=(0, 0, 0), align=1)
+            page_text = page.get_text("text")
+            for pattern in [r"https?://[^\s]+", r"www\.[^\s]+", r"[a-zA-Z0-9-]+\.html[^\s]*", r"[a-zA-Z0-9-]+#variant_id=[^\s]+", r"mkp\.gem\.gov\.in[^\s]*"]:
+                for m in re.finditer(pattern, page_text, re.IGNORECASE):
+                    for area in page.search_for(m.group(0)):
+                        page.add_redact_annot(area, fill=(1, 1, 1))
+            page.apply_redactions()
 
-            page.insert_text((86, 502), f"acxxel WORKSTATION MODEL {product_model}", fontsize=9, fontname="hebo", color=(0, 0, 0))
-            page.insert_text((86, 518), "Manufacturing plant: Laps N Tabs Technology Private Limited", fontsize=9, fontname="hebo", color=(0, 0, 0))
-            page.insert_text((86, 532), "C-187, Nirala Nagar Lucknow-226020.", fontsize=9, fontname="hebo", color=(0, 0, 0))
+            all_lines2 = _lines()
+            config_link_idx = next((i for i, (b, t) in enumerate(all_lines2) if "config link" in t.lower()), None)
+            if config_link_idx is not None:
+                erase_rects = [fitz.Rect(*all_lines2[config_link_idx][0])]
+                for j in range(config_link_idx + 1, min(config_link_idx + 8, len(all_lines2))):
+                    bbox_j, text_j = all_lines2[j]
+                    if text_j and (
+                        any(tok in text_j.lower() for tok in ["http", "www", ".com", ".in", ".html", "variant_id", "mkp"])
+                        or re.match(r"^[a-zA-Z0-9\-_/#.:]+$", text_j)
+                    ):
+                        erase_rects.append(fitz.Rect(*bbox_j))
+                    else:
+                        break
+                for rect in erase_rects:
+                    page.add_redact_annot(rect, fill=(1, 1, 1))
+                page.apply_redactions()
+
+            # Position-based table fill: find each "NN%" content cell, then the
+            # widest line sitting on roughly the same row to its left as the
+            # description — same as AIO, avoids relying on the template's exact
+            # coordinates or a naive digit-matching regex over the raw text.
+            all_lines_final = _lines()
+            percent_cells = [(fitz.Rect(bbox), text) for bbox, text in all_lines_final if re.fullmatch(r"\d{1,3}\s*%", text.strip())]
+            for pct_rect, pct_text in percent_cells:
+                row_y = (pct_rect.y0 + pct_rect.y1) / 2
+                desc_candidates = [
+                    (fitz.Rect(bbox), text) for bbox, text in all_lines_final
+                    if abs((fitz.Rect(bbox).y0 + fitz.Rect(bbox).y1) / 2 - row_y) <= 10
+                    and fitz.Rect(bbox).x1 <= pct_rect.x0
+                    and not re.fullmatch(r"\d+", text.strip())
+                ]
+                desc_rect = max(desc_candidates, key=lambda item: item[0].x1 - item[0].x0, default=(None, None))[0]
+
+                if formatted_model and desc_rect is not None:
+                    shrunk = _shrink_for_cell(desc_rect, fitz)
+                    cell_bg = _get_cell_bg_color(page, shrunk, fitz)
+                    page.add_redact_annot(shrunk, fill=cell_bg)
+                    page.apply_redactions()
+                    page.insert_text((desc_rect.x0 + 2, (desc_rect.y0 + desc_rect.y1) / 2 + 4), formatted_model, fontsize=9, fontname="hebo", color=(0, 0, 0))
+                if local_content:
+                    shrunk = _shrink_for_cell(pct_rect, fitz)
+                    cell_bg = _get_cell_bg_color(page, shrunk, fitz)
+                    page.add_redact_annot(shrunk, fill=cell_bg)
+                    page.apply_redactions()
+                    lc = local_content if str(local_content).endswith("%") else f"{local_content}%"
+                    page.insert_text((pct_rect.x0 + 2, (pct_rect.y0 + pct_rect.y1) / 2 + 4), lc, fontsize=9, fontname="hebo", color=(0, 0, 0))
+
+            if formatted_model:
+                for bbox, text in _lines():
+                    if re.search(r"ACXXEL", text, re.IGNORECASE) and re.search(r"MODEL", text, re.IGNORECASE):
+                        area = fitz.Rect(bbox)
+                        page.add_redact_annot(fitz.Rect(area.x0 - 1, area.y0 - 1, page.rect.width - 36, area.y1 + 1), fill=(1, 1, 1))
+                        page.apply_redactions()
+                        page.insert_text((area.x0, area.y1 - 2), f"acxxel WORKSTATION MODEL {formatted_model}", fontsize=10.5, fontname="hebo", color=(0, 0, 0))
 
         def insert_data_sheet_value(page, rect, value):
             value = clean_text(value)
@@ -2043,11 +2371,87 @@ def generate_workstation_certificates(request, bid_id):
                 y0 = min(item.y0 for item in same_value_lines) - 2
                 y1 = max(item.y1 for item in same_value_lines) + 4
                 cell_x0 = 424 if technical else anchor.x0 - 2
-                box = fitz.Rect(cell_x0, y0, x_max, y1)
+                if technical:
+                    # Use the actual table row (the nearest horizontal rules)
+                    # rather than the old placeholder's height.  Template
+                    # placeholders are often top-aligned, whereas offered
+                    # values must sit in the vertical centre of their cell.
+                    cell_mid_x = (cell_x0 + x_max) / 2
+                    row_rules = []
+                    for drawing in page.get_drawings():
+                        for item in drawing["items"]:
+                            if item[0] == "l":
+                                start, end = item[1], item[2]
+                                if abs(start.y - end.y) < 0.1 and min(start.x, end.x) <= cell_mid_x <= max(start.x, end.x):
+                                    row_rules.append(start.y)
+                            elif item[0] == "re":
+                                rect = item[1]
+                                if rect.x0 <= cell_mid_x <= rect.x1:
+                                    row_rules.extend((rect.y0, rect.y1))
+                    row_rules = sorted(set(round(rule, 2) for rule in row_rules))
+                    row_top = [rule for rule in row_rules if rule <= anchor.y0]
+                    row_bottom = [rule for rule in row_rules if rule >= anchor.y1]
+                    if row_top and row_bottom:
+                        y0 = row_top[-1] + 1
+                        y1 = row_bottom[0] - 1
+                # Keep a thin inset when clearing Technical Compliance cells
+                # so the template's vertical and horizontal table borders are
+                # never painted over.
+                clear_x0 = cell_x0 + 1 if technical else cell_x0
+                clear_x1 = x_max - 1 if technical else x_max
+                box = fitz.Rect(clear_x0, y0, clear_x1, y1)
                 page.add_redact_annot(box, fill=(1, 1, 1))
                 page.apply_redactions()
-                box = fitz.Rect(428.8 if technical else anchor.x0, y0 + 1, x_max - 2, max(y1 + 16, y0 + 30))
-                page.insert_textbox(box, new, fontsize=fontsize, fontname="hebo", color=(0, 0, 0))
+
+                text_x0 = 428.8 if technical else anchor.x0
+                available_width = x_max - 2 - text_x0
+                fit_fontsize = fontsize
+                value_to_insert = new
+                if technical:
+                    # Wrap long values inside the existing cell.  Do not
+                    # remove or draw over a table rule to make text fit.
+                    def wrap_value(value, size):
+                        lines = []
+                        for paragraph in value.split("\n"):
+                            line = ""
+                            for word in paragraph.split():
+                                candidate = f"{line} {word}".strip()
+                                if line and fitz.get_text_length(candidate, fontname="hebo", fontsize=size) > available_width:
+                                    lines.append(line)
+                                    line = word
+                                else:
+                                    line = candidate
+                            if line:
+                                lines.append(line)
+                        return lines or [value]
+
+                    wrapped_lines = wrap_value(new, fit_fontsize)
+                    line_height = fit_fontsize + 3
+                    while fit_fontsize > 6.0 and len(wrapped_lines) * line_height > y1 - y0 - 6:
+                        fit_fontsize -= 0.4
+                        wrapped_lines = wrap_value(new, fit_fontsize)
+                        line_height = fit_fontsize + 3
+                    value_to_insert = "\n".join(wrapped_lines)
+                    content_height = len(wrapped_lines) * line_height
+                else:
+                    while fit_fontsize > 7.0 and text_width(new, fit_fontsize, bold=True) > available_width:
+                        fit_fontsize -= 0.4
+                    fits_one_line = text_width(new, fit_fontsize, bold=True) <= available_width
+                    line_height = fit_fontsize + 8
+                    content_height = line_height if fits_one_line else line_height * 2
+                # The original placeholder (old) may have wrapped onto two
+                # lines while the new value only needs one (or vice versa).
+                # The static "Compliant" label beside this cell is positioned
+                # at the vertical centre of that original placeholder's span,
+                # so anchoring the new value to the top of the same span (as
+                # before) left short values sitting well above "Compliant"
+                # whenever the old placeholder was taller. Centre the new
+                # value on that same midpoint instead, so it lines up with
+                # "Compliant" no matter how many lines either one needs.
+                original_center = (y0 + y1) / 2
+                box_top = max(y0, original_center - content_height / 2)
+                box = fitz.Rect(text_x0, box_top, x_max - 2, box_top + content_height)
+                page.insert_textbox(box, value_to_insert, fontsize=fit_fontsize, fontname="hebo", color=(0, 0, 0))
                 workstation_template_replaced.add(replacement_key)
 
             replacements = [
@@ -2081,13 +2485,33 @@ def generate_workstation_certificates(request, bid_id):
                         (fitz.Rect(424, 520, 528, 600), specs["monitor"]),
                     ]
                     for area, _value in offered_cells:
-                        page.add_redact_annot(area, fill=(1, 1, 1))
+                        page.add_redact_annot(
+                            fitz.Rect(area.x0 + 1, area.y0 + 1, area.x1 - 1, area.y1 - 1),
+                            fill=(1, 1, 1),
+                        )
                     page.apply_redactions()
                     for area, value in offered_cells:
                         if clean_text(value):
+                            available_width = area.width - 9
+                            wrapped_lines = []
+                            for paragraph in clean_text(value).split("\n"):
+                                words = paragraph.split()
+                                line = ""
+                                for word in words:
+                                    candidate = f"{line} {word}".strip()
+                                    if line and fitz.get_text_length(candidate, fontname="hebo", fontsize=9.2) > available_width:
+                                        wrapped_lines.append(line)
+                                        line = word
+                                    else:
+                                        line = candidate
+                                if line:
+                                    wrapped_lines.append(line)
+                            line_height = 11.5
+                            text_height = max(line_height, len(wrapped_lines) * line_height)
+                            text_top = area.y0 + max(5, (area.height - text_height) / 2)
                             page.insert_textbox(
-                                fitz.Rect(area.x0 + 5, area.y0 + 5, area.x1 - 4, area.y1 - 4),
-                                clean_text(value), fontsize=9.2, fontname="hebo", color=(0, 0, 0),
+                                fitz.Rect(area.x0 + 5, text_top, area.x1 - 4, area.y1 - 4),
+                                "\n".join(wrapped_lines), fontsize=9.2, fontname="hebo", color=(0, 0, 0),
                             )
             if model_number:
                 # Model number is not printed in the supplied template; add it
@@ -2239,9 +2663,16 @@ def generate_workstation_certificates(request, bid_id):
                     add_service_support_table_note(page)
                 if original_page == 30:
                     fix_service_support_page_30(page)
+                    from .Aio import _fill_service_support_availability
+                    _fill_service_support_availability(page, fitz)
                     if service_signature_block and service_signature_rect:
+                        # Starts at 460 (not 500) so it also wipes the bare
+                        # "Auth. Signatory"/"For Laps N Tabs..." text lines
+                        # _fill_service_support_availability just drew above —
+                        # the pasted-in image below already carries that same
+                        # label baked in, so leaving both would show it twice.
                         page.add_redact_annot(
-                            fitz.Rect(55, 500, min(380, page.rect.width - 20), min(735, page.rect.height - 5)),
+                            fitz.Rect(55, 460, min(380, page.rect.width - 20), min(735, page.rect.height - 5)),
                             fill=(1, 1, 1),
                         )
                         page.apply_redactions()
@@ -2257,11 +2688,12 @@ def generate_workstation_certificates(request, bid_id):
                             keep_proportion=False,
                             overlay=True,
                         )
-                    from .Aio import _add_service_support_last_page_bid_date
-                    _add_service_support_last_page_bid_date(
-                        page, fitz, bid_no, bid_date_formatted,
-                        str(bid.dept_name or "").strip(), str(bid.organization or "").strip(), full_address,
-                    )
+                    # Note: _add_service_support_last_page_bid_date is deliberately
+                    # NOT called here — fix_service_support_page_30 already draws
+                    # the "To,"/recipient/Bid No block for this page, and that
+                    # function's dept_name-driven branch would treat it as
+                    # adjacent to the "As per the Buyer ATC..." heading below and
+                    # redraw over it, corrupting both.
                 remove_urls_and_config_links(page)
                 lowercase_acxxel(page, min_y=230)
                 continue
@@ -2276,7 +2708,7 @@ def generate_workstation_certificates(request, bid_id):
                 force_tender_no_date(page)
             if doc_type not in {"service_support", "warranty", "non_return_hdd", "non_obsolete"}:
                 force_customer_block(page)
-            if doc_type not in {"non_return_hdd", "warranty", "technical_compliance", "data_sheet"}:
+            if doc_type not in {"non_return_hdd", "warranty", "technical_compliance", "data_sheet", "make_in_india"}:
                 for old, new in [
                     ("Desktop Computer", "Workstation"),
                     ("Desktop Brand", "Workstation Brand"),
@@ -2284,7 +2716,7 @@ def generate_workstation_certificates(request, bid_id):
                     ("ACXXEL DESKTOP", "acxxel WORKSTATION"),
                 ]:
                     replace_exact(page, old, new, fontsize=10)
-            if model_number and doc_type not in {"non_return_hdd", "warranty", "technical_compliance", "data_sheet"}:
+            if model_number and doc_type not in {"non_return_hdd", "warranty", "technical_compliance", "data_sheet", "make_in_india"}:
                 for pattern in [r"AXL-[A-Z0-9-]+", r"ACL-[A-Z0-9-]+", r"ACXXEL[^\s,.;]+", r"ACXOEL[^\s,.;]+"]:
                     for match in re.findall(pattern, page.get_text("text"), re.IGNORECASE):
                         replace_exact(page, match, model_number, fontsize=10)
@@ -2310,6 +2742,9 @@ def generate_workstation_certificates(request, bid_id):
                 fix_non_return_hdd_page(page)
             elif doc_type == "preloaded_os":
                 fix_preloaded_os_page(page)
+            elif doc_type == "non_obsolete":
+                fix_non_obsolete_duration(page)
+                remove_urls_and_config_links(page)
             else:
                 remove_urls_and_config_links(page)
 
@@ -2382,7 +2817,220 @@ def generate_workstation_certificates(request, bid_id):
             snapshot.close()
             doc = compact_doc
 
-        if doc_type == "technical_compliance" and uses_workstation_spec_template and doc.page_count >= 6:
+        if doc_type == "technical_compliance" and uses_workstation_spec_template:
+            # Build a clean compliance document instead of trying to edit the
+            # narrow, pre-printed cells in the supplied template.  The
+            # original company header is retained, while every generated
+            # workstation specification is laid out in a new, expandable
+            # table that never crosses a table border.
+            snapshot = fitz.open(stream=doc.tobytes(), filetype="pdf")
+            compliance_doc = fitz.open()
+            compliance_rows = [
+                ("Processor", specs["processor"]),
+                (
+                    "Motherboard",
+                    specs["motherboard"]
+                    or clean_text(bid.motherboard_descp)
+                    or clean_text(bid.motherboard_type).replace("_", " "),
+                ),
+                ("RAM Size", clean_text(bid.ram)),
+                ("Primary SSD", specs["ssd_capacity"]),
+                ("Secondary SSD", specs["ssd2"]),
+                ("Hard Disk Drive", specs["hdd_capacity"]),
+                ("Graphics Card", specs["graphics_model"]),
+                ("Operating System", specs["os"]),
+                ("Wi-Fi / Bluetooth", specs["wifi"]),
+                ("Bluetooth", specs["wifi"]),
+                ("Monitor", specs["monitor"]),
+                ("Cabinet", specs["cabinet"]),
+                ("DVD / Optical Drive", specs["dvd"]),
+                ("Keyboard", specs["keyboard"]),
+                ("Mouse Connectivity", specs["mouse_connectivity"]),
+                ("Keyboard Connectivity", specs["keyboard_connectivity"]),
+                ("Power Supply", specs["power_supply"]),
+                ("Optional Ports", specs["optional_ports"]),
+                ("On-Site OEM Warranty", specs["warranty"] or specs["warranty_text"]),
+                ("Additional Requirements", specs["extra_requirements"]),
+            ]
+            # Read the selectable component lists directly from the
+            # Workstation configuration screen.  This keeps the compliance
+            # PDF in sync with the actual Workstation config without having
+            # to maintain a second set of component options in the backend.
+            config_options_path = os.path.normpath(os.path.join(
+                settings.BASE_DIR, "..", "frontend", "src", "pages",
+                "Workstation", "User", "WorkstationConfig.jsx",
+            ))
+            try:
+                with open(config_options_path, encoding="utf-8") as config_file:
+                    config_options_source = config_file.read()
+            except OSError:
+                config_options_source = ""
+
+            def config_option_names(*list_names, one_per_line=False):
+                values = []
+                for list_name in list_names:
+                    match = re.search(
+                        rf"export const {re.escape(list_name)}\s*=\s*\[(.*?)\];",
+                        config_options_source,
+                        re.DOTALL,
+                    )
+                    if match:
+                        values.extend(re.findall(r'\bname:\s*"([^"]+)"', match.group(1)))
+                separator = "\n" if one_per_line else ", "
+                return separator.join(dict.fromkeys(values))
+
+            configured_specs = {
+                "Processor": config_option_names("INTEL_PROCESSORS", "INTEL_XEON_PROCESSORS", "AMD_THREADRIPPER_PROCESSORS", one_per_line=True),
+                "Motherboard": config_option_names("INTEL_MOTHERBOARDS", "INTEL_XEON_MOTHERBOARDS", "AMD_MOTHERBOARDS"),
+                "RAM Type": config_option_names("RAMS", "REGISTERED_RAMS"),
+                "RAM Size": config_option_names("RAMS", "REGISTERED_RAMS"),
+                "Primary SSD": config_option_names("SSDS"),
+                "Secondary SSD": config_option_names("SSDS"),
+                "Hard Disk Drive": config_option_names("HDDS"),
+                "Graphics Card": config_option_names("GRAPHICS_CARDS", one_per_line=True),
+                "Operating System": config_option_names("OS_OPTIONS"),
+                "Wi-Fi / Bluetooth": config_option_names("WIFIS"),
+                "Bluetooth": config_option_names("WIFIS"),
+                "Monitor": config_option_names("MONITORS"),
+                "Cabinet": config_option_names("CABINETS"),
+                "DVD / Optical Drive": config_option_names("DVDS"),
+                "Keyboard": config_option_names("KEYBOARDS"),
+                "Mouse Connectivity": config_option_names("KEYBOARDS"),
+                "Keyboard Connectivity": config_option_names("KEYBOARDS"),
+                "Power Supply": config_option_names("POWER_SUPPLIES"),
+                "On-Site OEM Warranty": config_option_names("WARRANTIES"),
+            }
+            # Keep the BOQ / technical requirement column visible as well as
+            # the offered value.  This is the middle specification content
+            # from the earlier compliance layout, now shown in a readable
+            # expandable table.
+            boq_requirements = {
+                "Processor": (
+                    "Intel Core i5-12400, Intel Core i5-12500, Intel Core i5-12600, Intel Core i5-13400, "
+                    "Intel Core i5-14400, Intel Core i5 12600K, Intel Core i7-12700, Intel Core i5-14500, "
+                    "Intel Core i5-13500, Intel Core i5-13600, Intel Core i5-14600, Intel Core i9-12900, "
+                    "Intel Core i7-12700K, Intel Core i7-13700, Intel Core i5-13600K, Intel Core i5-14600K, "
+                    "Intel Core i9 12900K, Intel Core i7-14700, Intel Core i7-13700K, Intel Core i9-13900, "
+                    "Intel Core i9-14900, Intel Core i7-14700K, Intel Core i9-13900K, Intel Core i9 14900K, "
+                    "Intel Xeon W-2235, Intel Xeon w3-2423, Intel Xeon w3-2425, Intel Xeon W-2255, "
+                    "Intel Xeon w3-2435, Intel Xeon w3-2525, Intel Xeon w3-2535, Intel Xeon W-3245M, "
+                    "Intel Xeon W 3323, Intel Xeon w5-3423, Intel Xeon w5-3525, Intel Xeon W-3265, "
+                    "Intel Xeon W-3245, Intel Xeon w5-2445, Intel Xeon W-3265M, Intel Xeon w5-3433, "
+                    "Intel Xeon w5-3425, Intel Xeon w5-2455X, Intel Xeon W-3335, Intel Xeon W 3275M, "
+                    "Intel Xeon W-3275, Intel Xeon w5-2545, Intel Xeon w5-3555X, Intel Xeon w5-3435X, "
+                    "Intel Xeon w5-3545, Intel Xeon w5-2465X, Intel Xeon w7 3445, Intel Xeon w5-2555X"
+                ),
+                "Motherboard": "Intel Q Series",
+                "RAM Type": "DDR5",
+                "RAM Size": "Required RAM capacity",
+                "Primary SSD": "Minimum 1024 GB SSD",
+                "Secondary SSD": "Secondary SSD capacity",
+                "Hard Disk Drive": "Hard disk capacity",
+                "Graphics Type": "Dedicated graphics card",
+                "Graphics Card": "NVIDIA GeForce RTX 5070 Ti 16GB / NVIDIA GeForce RTX 5070 12GB",
+                "Graphics Memory / Details": "Graphics memory and technical details",
+                "Operating System": "Windows 11 Professional",
+                "Wi-Fi / Bluetooth": "Wi-Fi 6 / Wi-Fi 7 with Bluetooth",
+                "Bluetooth": "Bluetooth connectivity",
+                "Monitor": "Monitor size and resolution",
+                "Cabinet": "Workstation cabinet",
+                "DVD / Optical Drive": "Optical drive availability",
+                "Keyboard": "Workstation keyboard",
+                "Mouse Connectivity": "Mouse connectivity",
+                "Keyboard Connectivity": "Keyboard connectivity",
+                "Power Supply": "700 W",
+                "Optional Ports": "Required I/O ports",
+                "On-Site OEM Warranty": "On-site OEM warranty",
+                "Additional Requirements": "Other workstation requirements",
+            }
+            # Prefer the complete current list from WorkstationConfig.jsx.
+            # Keep the small text fallback only if the configuration file is
+            # unavailable on a deployment.
+            boq_requirements.update({
+                label: value for label, value in configured_specs.items() if value
+            })
+
+            def wrap_table_text(value, width, fontsize=8.8):
+                # Explicit line breaks from the configuration option lists
+                # must stay intact: one graphics card/processor per line.
+                paragraphs = str(value or "-").splitlines() or ["-"]
+                lines = []
+                for paragraph in paragraphs:
+                    words = clean_text(paragraph).split()
+                    line = ""
+                    for word in words:
+                        candidate = f"{line} {word}".strip()
+                        if line and fitz.get_text_length(candidate, fontname="hebo", fontsize=fontsize) > width:
+                            lines.append(line)
+                            line = word
+                        else:
+                            line = candidate
+                    if line:
+                        lines.append(line)
+                return lines or ["-"]
+
+            def new_compliance_page():
+                page = compliance_doc.new_page(width=612, height=792)
+                page.show_pdf_page(
+                    fitz.Rect(0, 0, 612, 116), snapshot, 0,
+                    clip=fitz.Rect(0, 0, 612, 116), keep_proportion=False,
+                )
+                page.insert_textbox(
+                    fitz.Rect(34, 121, 578, 146),
+                    "Technical Compliance Certificate",
+                    fontsize=14, fontname="hebo", color=(0.08, 0.08, 0.08), align=1,
+                )
+                headers = (
+                    (34, 140, "Parameter"),
+                    (140, 370, "BOQ / Required Specification"),
+                    (370, 510, "Offered Specification"),
+                    (510, 578, "Compliance"),
+                )
+                for x0, x1, label in headers:
+                    page.draw_rect(fitz.Rect(x0, 166, x1, 190), color=(0.45, 0.45, 0.45), fill=(0.88, 0.9, 0.94), width=0.65)
+                    page.insert_textbox(fitz.Rect(x0 + 4, 172, x1 - 4, 187), label, fontsize=8, fontname="hebo", align=1)
+                return page, 190
+
+            page, y = new_compliance_page()
+            for label, raw_value in compliance_rows:
+                label_lines = wrap_table_text(label, 96)
+                requirement_lines = wrap_table_text(boq_requirements.get(label, "-"), 220)
+                value_lines = wrap_table_text(raw_value, 130)
+                line_offset = 0
+                longest_column = max(len(label_lines), len(requirement_lines), len(value_lines), 1)
+                while line_offset < longest_column:
+                    available_lines = max(1, int((748 - y - 12) // 11))
+                    segment_count = min(longest_column - line_offset, available_lines)
+                    row_height = max(30, segment_count * 11 + 12)
+                    if y + row_height > 748:
+                        page, y = new_compliance_page()
+                        continue
+                    # Repeat the plain field name on following rows so the
+                    # list remains identifiable, but never add "(contd.)".
+                    continued_label = label_lines
+                    cells = (
+                        (34, 140, continued_label, (0.94, 0.95, 0.97)),
+                        (140, 370, requirement_lines[line_offset:line_offset + segment_count], None),
+                        (370, 510, value_lines[line_offset:line_offset + segment_count], None),
+                        (510, 578, ["Compliant"] if line_offset == 0 else [], None),
+                    )
+                    for x0, x1, lines, fill in cells:
+                        page.draw_rect(fitz.Rect(x0, y, x1, y + row_height), color=(0.55, 0.55, 0.55), fill=fill, width=0.65)
+                        if lines:
+                            text_height = len(lines) * 11
+                            text_top = y + max(5, (row_height - text_height) / 2)
+                            page.insert_textbox(
+                                fitz.Rect(x0 + 5, text_top, x1 - 5, y + row_height - 4),
+                                "\n".join(lines), fontsize=8.8, fontname="hebo", color=(0, 0, 0), align=1 if x0 == 510 else 0,
+                            )
+                    y += row_height
+                    line_offset += segment_count
+
+            doc.close()
+            snapshot.close()
+            doc = compliance_doc
+
+        elif doc_type == "technical_compliance" and uses_workstation_spec_template and doc.page_count >= 6:
             # The supplied template's last compliance page contains two RAID
             # rows that are not part of the workstation offering. Remove that
             # band and move every following section upward so no blank gap or
@@ -2405,7 +3053,7 @@ def generate_workstation_certificates(request, bid_id):
             for page in doc:
                 force_customer_block(page)
 
-        if doc_type not in {"service_support", "data_sheet", "technical_compliance"}:
+        if doc_type not in {"service_support", "data_sheet", "technical_compliance", "make_in_india"}:
             for page_index, page in enumerate(doc):
                 original_page = page_from + page_index
                 if (
@@ -2424,7 +3072,7 @@ def generate_workstation_certificates(request, bid_id):
         doc.close()
         return JsonResponse({
             "success": True,
-            "pdf_url": request.build_absolute_uri(f"/media/generated_docs/{filename}"),
+            "pdf_url": request.build_absolute_uri(f"/media/generated_docs/{filename}")+f"?v={int(time.time())}",
             "message": f"{doc_type} certificate generated successfully",
         })
     except WorkstationBid.DoesNotExist:

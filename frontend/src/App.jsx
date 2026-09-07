@@ -13,6 +13,7 @@ import WorkstationAnalyserDashboard from "./pages/Workstation/Analyser/Workstati
 import WorkstationBidDetailView from "./pages/Workstation/Analyser/WorkstationBidDetailView";
 import WorkstationAnalyserDocument from "./pages/Workstation/Analyser/WorkstationAnalyserDocument";
 import WorkstationApprovedBidDownloads from "./pages/Workstation/Analyser/WorkstationApprovedBidDownloads";
+import WorkstationApprovedBiddingDetails from "./pages/Workstation/Analyser/WorkstationApprovedBiddingDetails";
 import WorkstationBidApproval from "./pages/Workstation/Admin/WorkstationBidApproval";
 
 import AnalyserNavbar from "./components/analyser/AnalyserNavbar";
@@ -31,6 +32,7 @@ import PrinterApprovedBidDownloads from "./pages/Printer/Analyser/PrinterApprove
 import PrinterBidApproval from "./pages/Printer/Admin/PrinterBidApproval";
 
 import CreateAioBid from "./pages/Aio/User/CreateAioBid";
+import CreateTonerBid from "./pages/Toner/User/CreateTonerBid";
 import AioAnalyserDashboard from "./pages/Aio/Anlyser/AioAnalyserDashboard";
 import AioBidDetailView from "./pages/Aio/Anlyser/AioBidDetailView";
 import AioApprovedBiddingDetails from "./pages/Aio/Anlyser/AioApprovedBiddingDetails";
@@ -72,14 +74,13 @@ function App() {
         {}
         <Route path="/user" element={<UserNavbar />}>
           <Route index element={<div>Select a product</div>} />
-          {}
-          <Route path="toner" element={<div>Toner Content</div>} />
           <Route path="bid-to-be-participated" element={<UserAssignedBids />} />
         </Route>
 
         {}
         <Route path="/user/desktop" element={<CreateDesktopBid />} />
         <Route path="/user/aio" element={<CreateAioBid />} />
+        <Route path="/user/toner" element={<CreateTonerBid />} />
         <Route path="/user/workstation" element={<CreateWorkstationBid />} />
         <Route path="/user/printer" element={<CreatePrinterBid productMode="printer" />} /> {}
         <Route path="/user/multifunction-printer" element={<CreatePrinterBid productMode="multifunction" />} />
@@ -94,6 +95,7 @@ function App() {
           <Route path="aio/bid/:id/approved-details" element={<AioApprovedBiddingDetails />} />
           <Route path="workstation" element={<WorkstationAnalyserDashboard />} />
           <Route path="workstation/bid/:id/downloads" element={<WorkstationApprovedBidDownloads />} />
+          <Route path="workstation/bid/:id/approved-details" element={<WorkstationApprovedBiddingDetails />} />
           <Route path="printer" element={<AnalyserPrinterDashboard />} />
           <Route path="printer/bid/:id/downloads" element={<PrinterApprovedBidDownloads />} />
           <Route path="printer/bid/:id/approved-details" element={<ApprovedBiddingDetails />} />
