@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { fetchComponentRates } from "../../../utils/componentRates";
 
-const API_BASE = "http://127.0.0.1:8000/api";
+const API_BASE = import.meta.env.VITE_API_URL;
 
 export const INTEL_PROCESSORS = [
   { name: "Intel Core i5 12400", price: "" },

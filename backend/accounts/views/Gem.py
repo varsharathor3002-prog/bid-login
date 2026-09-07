@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from django.db import transaction
+from django.db.models import Q
 from django.conf import settings
 from django.core import signing
 from django.http import JsonResponse
@@ -199,7 +200,16 @@ def gem_jobs(request):
         jobs = jobs.filter(product_type=product_type)
     bid_id = request.GET.get("bid_id")
     if bid_id:
-        jobs = jobs.filter(bid_id=bid_id)
+        if product_type:
+            fk_attr = _PRODUCT_JOB_CONFIG[product_type][1]
+            jobs = jobs.filter(**{f"{fk_attr}_id": bid_id})
+        else:
+            # No product_type given: match whichever product's bid FK holds this id
+            # (keeps the old desktop-only `?bid_id=` calls working unchanged).
+            fk_lookup = Q()
+            for _bid_model, fk_attr, _payload_builder in _PRODUCT_JOB_CONFIG.values():
+                fk_lookup |= Q(**{f"{fk_attr}_id": bid_id})
+            jobs = jobs.filter(fk_lookup)
     status_value = request.GET.get("status")
     if status_value:
         jobs = jobs.filter(status=status_value)

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { FaTrash } from "react-icons/fa";
 import {
   INTEL_PROCESSORS, INTEL_XEON_PROCESSORS, AMD_THREADRIPPER_PROCESSORS,
   INTEL_MOTHERBOARDS, INTEL_XEON_MOTHERBOARDS, AMD_MOTHERBOARDS,
@@ -7,14 +8,14 @@ import {
   getFilteredIntelMotherboards, getFilteredAmdMotherboards,
 } from "../User/WorkstationConfig";
 
-const API_BASE = "http://127.0.0.1:8000/api";
+const API_BASE = import.meta.env.VITE_API_URL;
 const TABS = [
-  { id: "pending", label: "Pending", color: "text-amber-600", border: "border-amber-600" },
-  { id: "re-analyze", label: "Re-Analyze", color: "text-rose-600", border: "border-rose-600" },
-  { id: "approved", label: "Approved", color: "text-emerald-600", border: "border-emerald-600" },
+  { id: "pending", label: "Pending", icon: "⏳", color: "text-amber-600", border: "border-amber-600" },
+  { id: "re-analyze", label: "Re-Analyze", icon: "⚠️", color: "text-rose-600", border: "border-rose-600" },
+  { id: "approved", label: "Approved", icon: "✅", color: "text-emerald-600", border: "border-emerald-600" },
 ];
 
-const ROWS_PER_PAGE = 8;
+const ROWS_PER_PAGE = 10;
 const PAGE_WINDOW = 5;
 const PRICE_FIELDS = [
   "processor_price", "pro_descp_price", "motherboard_price", "motherboard_descp_price",
@@ -58,7 +59,7 @@ const PriceField = ({ label, name, priceName, form, handleChange, options = [], 
       <label className="block text-sm font-medium text-gray-700">{label}</label>
       {optional && <span className="text-red-500 text-[11px]">*Optional</span>}
     </div>
-    <div className="flex gap-2">
+    <div className="flex gap-3">
       {isTextArea ? (
         <textarea
           name={name}
@@ -70,7 +71,7 @@ const PriceField = ({ label, name, priceName, form, handleChange, options = [], 
         />
       ) : options.length ? (
         <select name={name} value={form?.[name] || ""} onChange={handleChange}
-          className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+          className="flex-1 min-w-0 border border-gray-300 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white">
           <option value="">Select {label}</option>
           {form?.[name] && !options.some((option) => option.name === form[name]) && <option value={form[name]}>{form[name]}</option>}
           {options.map((option) => <option key={option.name} value={option.name}>{option.name}</option>)}
@@ -93,14 +94,14 @@ const PriceField = ({ label, name, priceName, form, handleChange, options = [], 
           onChange={handleChange}
           autoComplete="off"
           placeholder="Price"
-          className="w-28 border border-blue-300 rounded-md px-2 py-2 text-sm text-center bg-white outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-20 shrink-0 border border-blue-300 rounded-md px-2 py-2 text-sm text-center bg-white outline-none focus:ring-2 focus:ring-blue-500"
         />
       )}
     </div>
   </div>
 );
 
-const fullMediaUrl = (url) => !url ? "" : url.startsWith("http") ? url : `http://127.0.0.1:8000${url}`;
+const fullMediaUrl = (url) => !url ? "" : url.startsWith("http") ? url : `${API_BASE.replace("/api", "")}${url}`;
 
 const USER_DOCS = [
   { id: "manufacturer_auth", label: "MANUFACTURER AUTHORIZATION CERTIFICATE" },
@@ -153,7 +154,18 @@ function GeneralDocsView({ form }) {
     setGenerating((prev) => ({ ...prev, [doc.id]: true }));
     try {
       const pdfUrl = await getGeneratedPdfUrl(doc);
-      if (pdfUrl) window.open(pdfUrl, "_blank", "noopener,noreferrer");
+      if (pdfUrl) {
+        // Fetch fresh bytes (bypassing any HTTP/browser cache) and open as a
+        // blob URL instead of window.open(pdfUrl) directly — otherwise a
+        // previously-viewed doc_type at a stale URL can render cached
+        // content in the new tab even though the server just generated
+        // fresh output.
+        const response = await fetch(pdfUrl, { cache: "no-store" });
+        if (!response.ok) throw new Error("Unable to open document.");
+        const blob = await response.blob();
+        const blobUrl = window.URL.createObjectURL(blob);
+        window.open(blobUrl, "_blank", "noopener,noreferrer");
+      }
     } catch (error) {
       alert(error.message || "Unable to open document.");
     } finally {
@@ -186,7 +198,7 @@ function GeneralDocsView({ form }) {
   };
 
   return (
-    <div ref={dropdownRef} className="relative w-full md:col-span-2">
+    <div ref={dropdownRef} className="relative w-full">
       <button type="button" onClick={() => setOpen((prev) => !prev)}
         className={`w-full flex items-center justify-between p-4 rounded-lg border transition-all duration-200 ${
           open ? "bg-orange-50 border-orange-500 ring-1 ring-orange-500" : "bg-white border-gray-200 hover:border-orange-400 hover:shadow-md"
@@ -265,7 +277,11 @@ function MakeInIndiaView({ form }) {
     setGenerating(true);
     try {
       const pdfUrl = await getGeneratedPdfUrl();
-      window.open(pdfUrl, "_blank", "noopener,noreferrer");
+      const response = await fetch(pdfUrl, { cache: "no-store" });
+      if (!response.ok) throw new Error("Unable to open Make in India.");
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      window.open(blobUrl, "_blank", "noopener,noreferrer");
     } catch (error) {
       alert(error.message || "Unable to open Make in India.");
     } finally {
@@ -374,6 +390,9 @@ export default function WorkstationBidApproval() {
   const [submitting, setSubmitting] = useState(false);
   const [msg, setMsg] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  const [selectedBidIds, setSelectedBidIds] = useState(new Set());
+  const [deletingId, setDeletingId] = useState(null);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   const fetchBids = async () => {
     setLoading(true);
@@ -402,7 +421,50 @@ export default function WorkstationBidApproval() {
     fetchBids();
     fetchReAnalyzeCount();
     setCurrentPage(1);
+    setSelectedBidIds(new Set());
   }, [activeTab]);
+
+  const deleteBid = async (bid) => {
+    if (!window.confirm(`Permanently delete bid ${bid.bid_no}?`)) return;
+    setDeletingId(bid.id);
+    try {
+      const response = await fetch(`${API_BASE}/workstation-bids/${bid.id}/delete/`, { method: "DELETE" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Bid could not be deleted.");
+      setBids((current) => current.filter((item) => item.id !== bid.id));
+      setSelectedBidIds((current) => {
+        const next = new Set(current);
+        next.delete(bid.id);
+        return next;
+      });
+    } catch (deleteError) {
+      alert(deleteError.message || "Bid could not be deleted.");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const bulkDeleteBids = async () => {
+    const ids = [...selectedBidIds];
+    if (!ids.length || !window.confirm(`Permanently delete ${ids.length} selected workstation bid(s)?`)) return;
+    setBulkDeleting(true);
+    try {
+      const response = await fetch(`${API_BASE}/workstation-bids/bulk-delete/`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Selected bids could not be deleted.");
+      const deletedIds = new Set(data.deleted_ids || ids);
+      setBids((current) => current.filter((bid) => !deletedIds.has(bid.id)));
+      setSelectedBidIds(new Set());
+    } catch (deleteError) {
+      alert(deleteError.message || "Selected bids could not be deleted.");
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
 
   const openModal = (bid) => {
     setSelected(bid);
@@ -476,13 +538,32 @@ export default function WorkstationBidApproval() {
 
   const StatusBadge = ({ status }) => {
     if (status === "approved") {
-      return <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">Approved</span>;
+      return <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">✅ Approved</span>;
     }
     if (status === "pending") {
-      return <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-700">Pending</span>;
+      return <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-700">⏳ Pending</span>;
     }
-    return <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-700">Re-Analyze</span>;
+    return <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-700">⚠️ Re-Analyze</span>;
   };
+
+  const formatSubmittedDate = (bid) => {
+    const raw = bid.created_at || bid.date;
+    if (!raw) return "-";
+    const d = new Date(raw);
+    if (isNaN(d)) return raw;
+    return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  };
+
+  const TABLE_HEADS = [
+    { label: "S.No", width: "w-16" },
+    { label: "Analyser", width: "w-36" },
+    { label: "Department", width: "w-40" },
+    { label: "Bid No", width: "w-36" },
+    { label: "Model", width: "w-40" },
+    { label: "Submitted On", width: "w-32" },
+    { label: "Status", width: "w-32" },
+    { label: "Action", width: "w-32" },
+  ];
 
   const totalPages = Math.max(1, Math.ceil(bids.length / ROWS_PER_PAGE));
   const safePage = Math.min(currentPage, totalPages);
@@ -494,22 +575,24 @@ export default function WorkstationBidApproval() {
   const pageNums = Array.from({ length: pageEnd - pageStart + 1 }, (_, i) => pageStart + i);
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+    <div className="w-full bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
       <button type="button" onClick={() => window.history.back()}
         className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 bg-white text-gray-700 text-sm font-medium hover:bg-slate-800 hover:text-white hover:border-slate-800 transition-all duration-200 shadow-sm m-4">
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+        </svg>
         Back
       </button>
 
-      <div className="flex gap-3 px-6 pt-3 bg-gray-50 border-b border-gray-200 overflow-visible">
+      <div className="flex items-center gap-3 px-6 pt-3 bg-gray-50 border-b border-gray-200 overflow-visible">
         {TABS.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => setActiveTab(tab.id)}
+          <button key={tab.id} onClick={() => setActiveTab(tab.id)}
             className={`min-h-[52px] px-4 py-3 text-sm font-semibold transition-all flex items-center gap-2 rounded-t-lg border-b-2 ${
-              activeTab === tab.id ? `${tab.color} ${tab.border} bg-white` : "text-gray-500 border-transparent hover:text-gray-700"
-            }`}
-          >
+              activeTab === tab.id
+                ? `${tab.color} ${tab.border} bg-white shadow-sm`
+                : "text-gray-500 border-transparent hover:text-gray-700 hover:bg-white"
+            }`}>
+            <span>{tab.icon}</span>
             <span>{tab.label}</span>
             {tab.id === "re-analyze" && reAnalyzeCount > 0 && (
               <span className="ml-1 min-w-[22px] h-[22px] px-1.5 rounded-full bg-red-600 text-white text-[11px] font-bold flex items-center justify-center leading-none shadow-sm">
@@ -518,62 +601,147 @@ export default function WorkstationBidApproval() {
             )}
           </button>
         ))}
+        {activeTab === "approved" && selectedBidIds.size > 0 && (
+          <button type="button" onClick={bulkDeleteBids} disabled={bulkDeleting}
+            className="mb-3 ml-auto inline-flex min-h-9 items-center gap-2 rounded bg-red-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50">
+            <FaTrash aria-hidden="true" />
+            {bulkDeleting ? "Deleting..." : `Delete Selected (${selectedBidIds.size})`}
+          </button>
+        )}
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full table-fixed">
-          <thead className="bg-slate-800 text-white text-xs uppercase">
-            <tr>{["S.No.", "Analyser", "Department", "Bid No", "Model", "Status", "Action"].map((h) => <th key={h} className="px-4 py-4 text-center">{h}</th>)}</tr>
-          </thead>
-          <tbody>
-            {loading && <tr><td colSpan="7" className="py-14 text-center text-gray-400">Loading bids...</td></tr>}
-            {!loading && bids.length === 0 && <tr><td colSpan="7" className="py-14 text-center text-gray-400">No workstation bids found.</td></tr>}
-            {!loading && pageBids.map((bid, index) => (
-              <tr key={bid.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                <td className="px-4 py-4 text-sm text-gray-700 text-center">{startIdx + index + 1}</td>
-                <td className="px-4 py-4 text-sm text-gray-700 text-center truncate">{bid.analyser_display_name || "-"}</td>
-                <td className="px-4 py-4 text-sm text-gray-700 text-center truncate">{bid.dept_name || "-"}</td>
-                <td className="px-4 py-4 text-sm text-blue-600 font-semibold text-center truncate">{bid.bid_no}</td>
-                <td className="px-4 py-4 text-sm text-gray-700 text-center truncate">{bid.model_number || "-"}</td>
-                <td className="px-4 py-4 text-center">
-                  <div className="flex justify-center"><StatusBadge status={bid.status || activeTab} /></div>
-                </td>
-                <td className="px-4 py-4 text-center">
-                  <div className="flex justify-center">
-                    <button type="button" onClick={() => openModal(bid)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-xs font-semibold transition-colors">View</button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center px-6 py-4 border-t border-gray-100 bg-gray-50 gap-4">
-          <p className="text-xs text-gray-500">
-            Showing <span className="font-semibold text-gray-700">{startIdx + 1}-{Math.min(startIdx + ROWS_PER_PAGE, bids.length)}</span>{" "}
-            of <span className="font-semibold text-gray-700">{bids.length}</span>
-          </p>
-          <div className="flex items-center gap-1">
-            <button type="button" disabled={safePage === 1} onClick={() => setCurrentPage((p) => p - 1)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-white border-gray-300 text-gray-600 hover:bg-slate-800 hover:text-white hover:border-slate-800">
-              Prev
-            </button>
-            {pageNums.map((p) => (
-              <button key={p} type="button" onClick={() => setCurrentPage(p)}
-                className={`w-8 h-8 rounded-md text-xs font-semibold border transition-all ${
-                  p === safePage ? "bg-slate-800 text-white border-slate-800 shadow-sm" : "bg-white border-gray-300 text-gray-600 hover:bg-slate-800 hover:text-white hover:border-slate-800"
-                }`}>
-                {p}
-              </button>
-            ))}
-            <button type="button" disabled={safePage === totalPages} onClick={() => setCurrentPage((p) => p + 1)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-white border-gray-300 text-gray-600 hover:bg-slate-800 hover:text-white hover:border-slate-800">
-              Next
-            </button>
+      {loading ? (
+        <div className="p-20 text-center text-gray-400">Loading...</div>
+      ) : bids.length === 0 ? (
+        <div className="p-20 text-center text-gray-400">No records found</div>
+      ) : (
+        <>
+          <div className="overflow-x-auto">
+            <table className="w-full table-fixed">
+              <thead>
+                <tr className="bg-slate-800">
+                  {TABLE_HEADS.map((head) => (
+                    <th key={head.label} className={`${head.width} px-4 py-4 text-[11px] font-bold text-white uppercase tracking-wide text-center`}>
+                      {head.label === "Action" && activeTab === "approved" ? (
+                        <div className="flex items-center justify-center gap-3">
+                          <input type="checkbox" aria-label="Select all bids on this page"
+                            checked={pageBids.length > 0 && pageBids.every((bid) => selectedBidIds.has(bid.id))}
+                            onChange={(event) => setSelectedBidIds((current) => {
+                              const next = new Set(current);
+                              pageBids.forEach((bid) => event.target.checked ? next.add(bid.id) : next.delete(bid.id));
+                              return next;
+                            })}
+                            className="h-4 w-4 accent-red-600" />
+                          <span>Action</span>
+                        </div>
+                      ) : head.label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {pageBids.map((bid, index) => (
+                  <tr key={bid.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-4 text-sm text-gray-700 text-center">{startIdx + index + 1}</td>
+                    <td className="px-4 py-4 text-sm text-gray-700 text-center truncate">{bid.analyser_display_name || "-"}</td>
+                    <td className="px-4 py-4 text-sm text-gray-700 text-center truncate">{bid.dept_name || "-"}</td>
+                    <td className="px-4 py-4 text-sm text-blue-600 font-semibold text-center truncate">{bid.bid_no}</td>
+                    <td className="px-4 py-4 text-sm text-gray-700 text-center truncate">{bid.model_number || "-"}</td>
+                    <td className="px-4 py-4 text-sm text-gray-700 text-center truncate">{formatSubmittedDate(bid)}</td>
+                    <td className="px-4 py-4 text-center">
+                      <div className="flex justify-center"><StatusBadge status={bid.status || activeTab} /></div>
+                    </td>
+                    <td className="px-4 py-4 text-center">
+                      <div className="flex justify-center items-center gap-2">
+                        {activeTab === "approved" && (
+                          <input type="checkbox" aria-label={`Select bid ${bid.bid_no}`}
+                            checked={selectedBidIds.has(bid.id)}
+                            onChange={(event) => setSelectedBidIds((current) => {
+                              const next = new Set(current);
+                              if (event.target.checked) next.add(bid.id); else next.delete(bid.id);
+                              return next;
+                            })}
+                            className="h-4 w-4 accent-red-600" />
+                        )}
+                        <button type="button" onClick={() => openModal(bid)}
+                          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-xs font-semibold transition-colors">
+                          View
+                        </button>
+                        {activeTab === "approved" && (
+                          <button type="button" onClick={() => deleteBid(bid)} disabled={deletingId === bid.id}
+                            title="Delete bid"
+                            className="w-8 h-8 flex items-center justify-center rounded-md bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                            {deletingId === bid.id ? (
+                              <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                              </svg>
+                            ) : (
+                              <FaTrash aria-hidden="true" />
+                            )}
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </div>
+
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center px-6 py-4 border-t border-gray-100 bg-gray-50 gap-4">
+              <p className="text-xs text-gray-500">
+                Showing <span className="font-semibold text-gray-700">{startIdx + 1}–{Math.min(startIdx + ROWS_PER_PAGE, bids.length)}</span>{" "}
+                of <span className="font-semibold text-gray-700">{bids.length}</span>
+              </p>
+              <div className="flex items-center gap-1">
+                <button type="button" disabled={safePage === 1} onClick={() => setCurrentPage((p) => p - 1)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-white border-gray-300 text-gray-600 hover:bg-slate-800 hover:text-white hover:border-slate-800">
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+                  </svg>
+                  Prev
+                </button>
+                {pageStart > 1 && (
+                  <>
+                    <button type="button" onClick={() => setCurrentPage(1)}
+                      className="w-8 h-8 rounded-md text-xs font-semibold border bg-white border-gray-300 text-gray-600 hover:bg-slate-800 hover:text-white hover:border-slate-800 transition-all">
+                      1
+                    </button>
+                    {pageStart > 2 && <span className="w-8 h-8 flex items-center justify-center text-gray-400 text-xs">…</span>}
+                  </>
+                )}
+                {pageNums.map((p) => (
+                  <button key={p} type="button" onClick={() => setCurrentPage(p)}
+                    className={`w-8 h-8 rounded-md text-xs font-semibold border transition-all ${
+                      p === safePage
+                        ? "bg-slate-800 text-white border-slate-800 shadow-sm"
+                        : "bg-white border-gray-300 text-gray-600 hover:bg-slate-800 hover:text-white hover:border-slate-800"
+                    }`}>
+                    {p}
+                  </button>
+                ))}
+                {pageEnd < totalPages && (
+                  <>
+                    {pageEnd < totalPages - 1 && <span className="w-8 h-8 flex items-center justify-center text-gray-400 text-xs">…</span>}
+                    <button type="button" onClick={() => setCurrentPage(totalPages)}
+                      className="w-8 h-8 rounded-md text-xs font-semibold border bg-white border-gray-300 text-gray-600 hover:bg-slate-800 hover:text-white hover:border-slate-800 transition-all">
+                      {totalPages}
+                    </button>
+                  </>
+                )}
+                <button type="button" disabled={safePage === totalPages} onClick={() => setCurrentPage((p) => p + 1)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-white border-gray-300 text-gray-600 hover:bg-slate-800 hover:text-white hover:border-slate-800">
+                  Next
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {selected && (
@@ -583,6 +751,9 @@ export default function WorkstationBidApproval() {
               <div className="flex items-center gap-4">
                 <button type="button" onClick={closeModal}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 bg-white text-gray-600 text-sm font-medium hover:bg-slate-800 hover:text-white hover:border-slate-800 transition-all duration-200 shadow-sm">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+                  </svg>
                   Back
                 </button>
                 <div>
@@ -590,7 +761,7 @@ export default function WorkstationBidApproval() {
                   <p className="text-sm text-gray-500 mt-0.5">Bid No: <span className="text-blue-600 font-semibold ml-1">{selected.bid_no}</span></p>
                 </div>
               </div>
-              <button type="button" onClick={closeModal} className="text-2xl text-gray-400 hover:text-gray-700 leading-none">x</button>
+              <button type="button" onClick={closeModal} className="text-2xl text-gray-400 hover:text-gray-700 leading-none">×</button>
             </div>
 
             {msg && (
@@ -601,7 +772,14 @@ export default function WorkstationBidApproval() {
               </div>
             )}
 
-            <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="p-6">
+              {selected?.is_new_product && (
+                <div className="mb-5 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  <span className="font-bold">New Product:</span>{" "}
+                  This is a new product approved for adding Gem portal.
+                </div>
+              )}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4 [&_label]:font-semibold [&_label]:text-slate-800 [&_input]:border-slate-500 [&_input]:bg-slate-50 [&_input]:text-slate-950 [&_select]:border-slate-500 [&_select]:bg-slate-50 [&_select]:text-slate-950 [&_textarea]:border-slate-500 [&_textarea]:bg-slate-50 [&_textarea]:text-slate-950 [&_input::placeholder]:text-slate-600 [&_textarea::placeholder]:text-slate-600">
               {[
                 ["bid_no", "Bid Number"],
                 ["model_number", "Model Number"],
@@ -754,16 +932,26 @@ export default function WorkstationBidApproval() {
                     className="w-full border border-amber-200 rounded-md px-3 py-2 text-sm resize-none outline-none" />
                 </div>
               )}
-            </div>
+              </div>
 
-            <div className="px-6 pb-6 flex gap-3">
-              {selected.review_status !== "approved" && (
-                <>
-                  <button type="button" disabled={submitting} onClick={() => handleAction("approved")} className="px-8 py-2.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold disabled:bg-emerald-400">Approve Bid</button>
-                  <button type="button" disabled={submitting} onClick={() => handleAction("re-analyze")} className="px-8 py-2.5 rounded bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold disabled:bg-rose-400">Send to Re-Analyze</button>
-                </>
-              )}
-              <button type="button" onClick={closeModal} className="px-8 py-2.5 rounded bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm font-semibold">Cancel</button>
+              <div className="mt-8 flex gap-3 flex-wrap">
+                {selected.review_status !== "approved" && (
+                  <>
+                    <button type="button" disabled={submitting} onClick={() => handleAction("approved")}
+                      className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-semibold px-8 py-2.5 rounded-md text-sm transition">
+                      {submitting ? "Processing..." : "✅ Approve Bid"}
+                    </button>
+                    <button type="button" disabled={submitting} onClick={() => handleAction("re-analyze")}
+                      className="bg-rose-600 hover:bg-rose-700 disabled:bg-rose-400 text-white font-semibold px-8 py-2.5 rounded-md text-sm transition">
+                      {submitting ? "Processing..." : "⚠️ Send to Re-Analyze"}
+                    </button>
+                  </>
+                )}
+                <button type="button" onClick={closeModal}
+                  className="bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold px-8 py-2.5 rounded-md text-sm transition">
+                  Cancel
+                </button>
+              </div>
             </div>
           </div>
         </div>

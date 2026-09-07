@@ -4,11 +4,11 @@ import {
   INTEL_PROCESSORS, INTEL_XEON_PROCESSORS, AMD_THREADRIPPER_PROCESSORS,
   INTEL_MOTHERBOARDS, INTEL_XEON_MOTHERBOARDS, AMD_MOTHERBOARDS,
   RAMS, REGISTERED_RAMS, SSDS, HDDS, GRAPHICS_CARDS, CABINETS, KEYBOARDS,
-  POWER_SUPPLIES, OS_OPTIONS, MONITORS, WARRANTIES, getPriceFromLocalData,
+  POWER_SUPPLIES, OS_OPTIONS, MONITORS, WARRANTIES, DVDS, getPriceFromLocalData,
   getFilteredRams, getFilteredIntelMotherboards, getFilteredAmdMotherboards,
 } from "../User/WorkstationConfig";
 
-const API_BASE = "http://127.0.0.1:8000/api";
+const API_BASE = import.meta.env.VITE_API_URL;
 const MATCH_API = (id) => `${API_BASE}/workstation-bids/${id}/match-catalogue/`;
 const SAVE_MODEL_API = (id) => `${API_BASE}/workstation-bids/${id}/save-model-number/`;
 
@@ -22,6 +22,7 @@ const FIELDS = [
   ["motherboard_price", "Motherboard Price"], ["os", "OS"], ["os_price", "OS Price"],
   ["monitor", "Monitor"], ["monitor_price", "Monitor Price"], ["cabinet", "Cabinet"],
   ["cabinet_price", "Cabinet Price"], ["keyboard", "Keyboard & Mouse"], ["keyboard_price", "Keyboard Price"],
+  ["dvd", "DVD"], ["dvd_price", "DVD Price"],
   ["power_supply", "Power Supply"], ["power_supply_price", "Power Supply Price"], ["warranty", "Warranty"],
   ["warranty_price", "Warranty Price"], ["date", "Bid End Date", "date"], ["epbg", "EPBG (%)"],
 ];
@@ -40,6 +41,7 @@ const PRICE_FIELD_BY_NAME = {
   monitor: "monitor_price",
   cabinet: "cabinet_price",
   keyboard: "keyboard_price",
+  dvd: "dvd_price",
   power_supply: "power_supply_price",
   warranty: "warranty_price",
 };
@@ -58,6 +60,7 @@ const optionsFor = (name, form) => ({
   monitor: MONITORS,
   cabinet: CABINETS,
   keyboard: KEYBOARDS,
+  dvd: DVDS,
   power_supply: POWER_SUPPLIES,
   warranty: WARRANTIES,
 }[name] || []);
@@ -87,7 +90,7 @@ const USER_DOCS = [
   { id: "preloaded_os", label: "PRELOADED OPERATING SYSTEM" },
 ];
 
-const fullMediaUrl = (url) => !url ? "" : url.startsWith("http") ? url : `http://127.0.0.1:8000${url}`;
+const fullMediaUrl = (url) => !url ? "" : url.startsWith("http") ? url : `${API_BASE.replace("/api", "")}${url}`;
 
 const AdminNoteBanner = ({ note }) => {
   if (!note) return null;
@@ -154,7 +157,18 @@ function GeneralDocsViewPopup({ form }) {
     setGenerating((prev) => ({ ...prev, [doc.id]: true }));
     try {
       const pdfUrl = await getGeneratedPdfUrl(doc);
-      if (pdfUrl) window.open(pdfUrl, "_blank", "noopener,noreferrer");
+      if (pdfUrl) {
+        // Fetch fresh bytes (bypassing any HTTP/browser cache) and open as a
+        // blob URL instead of window.open(pdfUrl) directly — otherwise a
+        // previously-viewed doc_type at a stale URL can render cached
+        // content in the new tab even though the server just generated
+        // fresh output.
+        const response = await fetch(pdfUrl, { cache: "no-store" });
+        if (!response.ok) throw new Error("Unable to open document.");
+        const blob = await response.blob();
+        const blobUrl = window.URL.createObjectURL(blob);
+        window.open(blobUrl, "_blank", "noopener,noreferrer");
+      }
     } catch (error) {
       alert(error.message || "Unable to open document.");
     } finally {
@@ -325,6 +339,7 @@ export default function WorkstationBidDetailView() {
     }
   });
   const [gemStarting, setGemStarting] = useState(false);
+  const [gemJob, setGemJob] = useState(null);
 
   useEffect(() => {
     const loadBid = async () => {
@@ -345,6 +360,33 @@ export default function WorkstationBidDetailView() {
   useEffect(() => {
     sessionStorage.setItem(verificationStorageKey, JSON.stringify(verifiedFields));
   }, [verificationStorageKey, verifiedFields]);
+
+  useEffect(() => {
+    if (!showGemUpload || !readOnly || !form?.id || form?.review_status !== "approved") return undefined;
+    let stopped = false;
+    const loadJob = async () => {
+      const response = await fetch(
+        `${API_BASE}/gem/jobs/?bid_id=${form.id}&product_type=workstation`,
+        { headers: { "Authorization": `Bearer ${sessionStorage.getItem("token") || localStorage.getItem("token") || ""}` } }
+      );
+      const data = await response.json().catch(() => []);
+      if (!stopped && response.ok && Array.isArray(data) && data[0]) {
+        setGemJob(data[0]);
+        setForm((prev) => ({
+          ...prev,
+          gem_account: data[0].account_label,
+          gem_status: data[0].status,
+          gem_error: data[0].error || data[0].rejection_reason || "",
+        }));
+      }
+    };
+    loadJob();
+    const timer = window.setInterval(loadJob, 5000);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [showGemUpload, readOnly, form?.id, form?.review_status]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -475,11 +517,83 @@ export default function WorkstationBidDetailView() {
     setNewModelInput("");
   };
 
-  const handleGemUpload = () => {
+  const handleGemJobUpload = async () => {
+    const bidId = id || form?.id || form?.bid_id;
+    if (!bidId) {
+      setMsg("Bid ID was not found, so GeM auto-fill was not queued.");
+      return;
+    }
     setGemStarting(true);
-    const gemWindow = window.open("https://mkp.gem.gov.in/", "_blank", "noopener,noreferrer");
-    setMsg(gemWindow ? "GeM opened. Log in manually and add this approved workstation offering." : "Please allow pop-ups to open GeM.");
-    setGemStarting(false);
+    setMsg("");
+    try {
+      const response = await fetch(
+        `${API_BASE}/workstation-bids/${bidId}/gem-jobs/`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${sessionStorage.getItem("token") || localStorage.getItem("token") || ""}`,
+          },
+          body: JSON.stringify({}),
+        }
+      );
+      const data = await response.json().catch(() => ({}));
+      if (response.status === 401) {
+        localStorage.removeItem("token");
+        setMsg("Acxxel session expired. Log in again before starting GeM auto-fill.");
+        return;
+      }
+      if (response.status === 403) {
+        setMsg(data.error || "Your account is not authorized to start GeM auto-fill for this bid.");
+        return;
+      }
+      if (!response.ok) throw new Error(data.error || "Unable to queue GeM upload.");
+      setGemJob(data);
+      setForm((prev) => ({
+        ...prev,
+        gem_account: data.account_label,
+        gem_status: data.status,
+        gem_error: "",
+      }));
+      if (document.documentElement.dataset.acxxelGemExtension !== "ready") {
+        setMsg("Job queued. Load the Acxxel GeM Workstation Workflow extension, then use its popup.");
+      } else {
+        const bridgeRequest = (requestEvent, resultEvent, detail) => new Promise(
+          (resolve, reject) => {
+            const timeout = window.setTimeout(() => {
+              document.removeEventListener(resultEvent, handleResult);
+              reject(new Error("GeM extension did not respond. Reload the extension and refresh this page."));
+            }, 5000);
+            function handleResult(event) {
+              window.clearTimeout(timeout);
+              document.removeEventListener(resultEvent, handleResult);
+              const result = event.detail || {};
+              if (result.ok) resolve(result);
+              else reject(new Error(result.error || "GeM extension could not complete the request."));
+            }
+            document.addEventListener(resultEvent, handleResult);
+            document.dispatchEvent(new CustomEvent(requestEvent, { detail }));
+          }
+        );
+        await bridgeRequest("acxxel-gem-connect", "acxxel-gem-connect-result", {
+          token: data.extension_token || sessionStorage.getItem("token") || localStorage.getItem("token") || "",
+          apiBase: API_BASE,
+        });
+        const startResult = await bridgeRequest(
+          "acxxel-gem-start",
+          "acxxel-gem-start-result",
+          { jobId: data.id }
+        );
+        if (!startResult.result?.tabId) {
+          throw new Error("Chrome did not confirm that the GeM login tab was opened.");
+        }
+        setMsg("");
+      }
+    } catch (error) {
+      setMsg(error.message || "Unable to queue GeM upload.");
+    } finally {
+      setGemStarting(false);
+    }
   };
 
   const handleSave = async () => {
@@ -618,7 +732,7 @@ export default function WorkstationBidDetailView() {
           return (
             <VerifiedField key={name} name={name} label={label} required={REQUIRED_FIELDS.includes(name)} verifiedFields={verifiedFields} readOnly={readOnly} onToggle={toggleVerification}>
               {priceField ? (
-                <div className="flex gap-2">
+                <div className="flex gap-3">
                   <select
                     name={name}
                     value={form[name] || ""}
@@ -629,6 +743,7 @@ export default function WorkstationBidDetailView() {
                     <option value="">Select {label}</option>
                     {hasSavedCustomValue && <option value={form[name]}>{form[name]}</option>}
                     {options.map((option) => <option key={option.name} value={option.name}>{option.name}</option>)}
+                    {!REQUIRED_FIELDS.includes(name) && <option value="None">None</option>}
                   </select>
                   <input
                     type="text"
@@ -636,7 +751,7 @@ export default function WorkstationBidDetailView() {
                     readOnly
                     disabled
                     placeholder="Price"
-                    className="w-24 shrink-0 border border-gray-200 rounded-md px-2 py-2 text-sm text-gray-500 bg-gray-50 cursor-not-allowed"
+                    className="w-20 shrink-0 border border-gray-200 rounded-md px-2 py-2 text-sm text-gray-500 bg-gray-50 cursor-not-allowed"
                   />
                 </div>
               ) : (
@@ -654,7 +769,7 @@ export default function WorkstationBidDetailView() {
         })}
 
         <div className="md:col-span-2 lg:col-span-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {TEXT_FIELDS.filter(([name]) => name !== "address" && name !== "atc" && name !== "optional_ports").map(([name, label]) => (
+          {TEXT_FIELDS.filter(([name]) => name !== "address" && name !== "atc").map(([name, label]) => (
             <VerifiedField key={name} name={name} label={label} optional required={conditionalRequired.includes(name)} verifiedFields={verifiedFields} readOnly={readOnly} onToggle={toggleVerification}>
               <textarea
                 name={name}
@@ -667,17 +782,6 @@ export default function WorkstationBidDetailView() {
             </VerifiedField>
           ))}
         </div>
-
-        <VerifiedField name="optional_ports" label="Optional Ports" optional required={false} verifiedFields={verifiedFields} readOnly={readOnly} onToggle={toggleVerification}>
-          <textarea
-            name="optional_ports"
-            value={form.optional_ports || ""}
-            onChange={handleChange}
-            readOnly={readOnly}
-            rows={2}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm resize-none outline-none focus:ring-2 focus:ring-blue-500 read-only:bg-gray-50"
-          />
-        </VerifiedField>
 
         {readOnly && isApproved && (
           <div className="md:col-span-2 lg:col-span-3 rounded-lg border border-slate-300 bg-slate-50 p-4 shadow-sm">
@@ -697,17 +801,22 @@ export default function WorkstationBidDetailView() {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <div className="flex-1">
                 <label className="block text-sm font-semibold text-indigo-950 mb-1">GeM upload</label>
-                <div className="w-full border border-indigo-200 bg-white rounded-md px-3 py-2 text-sm text-slate-700">Manual login in the GeM tab</div>
+                <div className="w-full border border-indigo-200 bg-white rounded-md px-3 py-2 text-sm text-slate-700">
+                  {gemJob ? `Job status: ${gemJob.status}` : "Not queued yet"}
+                </div>
                 <p className="text-xs text-indigo-700 mt-2">Approved workstation model: <span className="font-semibold">{form.model_number || "-"}</span></p>
+                {(gemJob?.error || gemJob?.rejection_reason) && (
+                  <p className="text-xs text-rose-700 mt-1">{gemJob.error || gemJob.rejection_reason}</p>
+                )}
               </div>
-              <button type="button" onClick={handleGemUpload} disabled={gemStarting}
+              <button type="button" onClick={handleGemJobUpload} disabled={gemStarting}
                 className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white font-semibold px-6 py-2.5 rounded-md text-sm transition">
-                {gemStarting ? "Opening..." : "Upload to GeM"}
+                {gemStarting ? "Opening GeM..." : "Upload to GeM"}
               </button>
             </div>
           </div>
         )}
-      <div className={isPending ? "min-w-0" : "md:col-start-2 md:row-start-3 lg:col-start-3 lg:row-start-2"}>
+      <div className="min-w-0">
         <div className={`relative flex items-center gap-2 rounded-lg border p-2 ${isPending ? "w-fit border-blue-300 bg-blue-50/60 shadow-sm" : "h-full border-gray-300 bg-gray-50"}`}>
           <div className="flex flex-col">
             <label className={`mb-1 text-sm font-bold ${isPending ? "text-blue-900" : "text-gray-700"}`}>Assigned Model</label>
@@ -727,10 +836,18 @@ export default function WorkstationBidDetailView() {
               type="button"
               onClick={noMatchFound ? handleCreateNewModel : handleFindModel}
               disabled={modelSearching || modelSaving || showModelResult}
-              className={`mt-4 whitespace-nowrap ${noMatchFound ? "bg-blue-600 hover:bg-blue-700" : "bg-slate-700 hover:bg-slate-800"} disabled:bg-slate-400 text-white px-3 py-1.5 rounded text-xs font-bold transition shadow-sm`}
+              className={`mt-4 whitespace-nowrap ${noMatchFound ? "bg-blue-600 hover:bg-blue-700" : isReAnalyze && form?.model_number ? "bg-amber-600 hover:bg-amber-700" : "bg-slate-700 hover:bg-slate-800"} disabled:bg-slate-400 text-white px-3 py-1.5 rounded text-xs font-bold transition shadow-sm`}
             >
               {modelSaving ? "Saving..." : modelSearching ? "Searching..." : noMatchFound ? "Save Model" : form?.model_number ? "Change Model" : "Find Model"}
             </button>
+          )}
+
+          {readOnly && isReAnalyze && form?.model_number && (
+            <div className="mt-4 flex items-center gap-2">
+              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700 border border-green-300">
+                ✅ Assigned
+              </span>
+            </div>
           )}
 
           {noMatchFound && !readOnly && !showModelResult && (
