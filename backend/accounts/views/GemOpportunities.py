@@ -80,10 +80,19 @@ def gem_bid_opportunities(request):
         return JsonResponse({"deleted": updated})
     rows = body.get("results", [])
     saved = 0
+    now = timezone.localtime()
+    first_date = now.date() - timedelta(days=3)
     for item in rows if isinstance(rows, list) else []:
         bid_no = str(item.get("bid_no") or "").strip()
         product_name = str(item.get("product_name") or "").strip()
         if not bid_no or not product_name:
+            continue
+        bid_date = _date(item.get("bid_date"))
+        end_date = _date(item.get("end_date"))
+        if not bid_date or not end_date:
+            continue
+        local_bid_date = timezone.localtime(bid_date).date()
+        if not first_date <= local_bid_date <= now.date() or end_date <= now:
             continue
         existing = GemBidOpportunity.objects.filter(bid_no=bid_no).first()
         if existing and existing.is_deleted:
@@ -93,8 +102,8 @@ def gem_bid_opportunities(request):
         GemBidOpportunity.objects.update_or_create(
             bid_no=bid_no,
             defaults={
-                "bid_date": _date(item.get("bid_date")),
-                "end_date": _date(item.get("end_date")),
+                "bid_date": bid_date,
+                "end_date": end_date,
                 "product_name": _clean_item(product_name),
                 "department": str(item.get("department") or ""),
                 "delivery_pincode": str(item.get("delivery_pincode") or "")[:6],

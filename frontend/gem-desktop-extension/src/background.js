@@ -278,12 +278,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
     if (message.type === "GET_STATE") {
       const saved = await settings();
-      const sync = await chrome.storage.local.get("gemBidSync");
-      return { ok: true, connected: Boolean(saved.token), gemBidSync: sync.gemBidSync || null };
+      const sync = await chrome.storage.local.get(["gemBidSync", "gemOpportunitySync"]);
+      return { ok: true, connected: Boolean(saved.token), gemBidSync: sync.gemBidSync || null, gemOpportunitySync: sync.gemOpportunitySync || null };
     }
     if (message.type === "GET_GEM_BID_SYNC_STATE") {
-      const sync = await chrome.storage.local.get("gemBidSync");
-      return { ok: true, gemBidSync: sync.gemBidSync || null };
+      const sync = await chrome.storage.local.get(["gemBidSync", "gemOpportunitySync"]);
+      return { ok: true, gemBidSync: sync.gemBidSync || null, gemOpportunitySync: sync.gemOpportunitySync || null };
     }
     if (message.type === "GET_ACTIVE_JOB") {
       const saved = await chrome.storage.local.get("activeJobId");
@@ -344,6 +344,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }) };
     }
     if (["START_GEM_BID_SYNC", "START_GEM_OPPORTUNITY_SYNC"].includes(message.type)) {
+      const opportunityScan = message.type === "START_GEM_OPPORTUNITY_SYNC";
+      const stateKey = opportunityScan ? "gemOpportunitySync" : "gemBidSync";
       const saved = await settings();
       if (!saved.token) throw new Error("Open Acxxel and log in before syncing GeM bids.");
       const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -365,7 +367,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (!tab?.id) {
         throw new Error("Open Seller Bid List from the logged-in GeM Bids menu, then click Sync. Your current tab was not redirected.");
       }
-      await chrome.storage.local.set({ gemBidSync: { status: "starting", message: "Starting GeM bid sync...", page: 0, saved: 0, updatedAt: Date.now() } });
+      await chrome.storage.local.set({ [stateKey]: { status: "starting", message: opportunityScan ? "Starting Bid To Be Participated scan..." : "Starting disqualified bid sync...", page: 0, saved: 0, updatedAt: Date.now() } });
       let response;
       try {
         const sendStart = () => Promise.race([
@@ -392,7 +394,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       } catch (error) {
         const failureMessage = error.message || "GeM bid scanner did not start.";
         await chrome.storage.local.set({
-          gemBidSync: {
+          [stateKey]: {
             status: "failed",
             message: failureMessage,
             page: 0,
@@ -404,7 +406,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         throw error;
       }
       await chrome.storage.local.set({
-        gemBidSync: {
+        [stateKey]: {
           status: "running",
           message: `Scanner started. ${response.cardCount || 0} bid card(s) found on the current GeM page.`,
           page: 0,
@@ -415,15 +417,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       });
       return { ok: true, started: true };
     }
-    if (message.type === "STOP_GEM_BID_SYNC") {
+    if (["STOP_GEM_BID_SYNC", "STOP_GEM_OPPORTUNITY_SYNC"].includes(message.type)) {
+      const opportunityScan = message.type === "STOP_GEM_OPPORTUNITY_SYNC";
+      const stateKey = opportunityScan ? "gemOpportunitySync" : "gemBidSync";
+      const contentMessage = opportunityScan ? "STOP_GEM_OPPORTUNITY_SYNC" : "STOP_GEM_BID_SYNC";
       const tabs = await chrome.tabs.query({ url: "https://bidplus.gem.gov.in/seller-bids*" });
       await Promise.all(tabs.map((tab) => (
-        chrome.tabs.sendMessage(tab.id, { type: "STOP_GEM_BID_SYNC" }).catch(() => null)
+        chrome.tabs.sendMessage(tab.id, { type: contentMessage }).catch(() => null)
       )));
       await chrome.storage.local.set({
-        gemBidSync: {
+        [stateKey]: {
           status: "stopped",
-          message: "GeM bid sync stopped by user.",
+          message: opportunityScan ? "Bid To Be Participated scan stopped by user." : "Disqualified bid sync stopped by user.",
           page: 0,
           saved: 0,
           updatedAt: Date.now(),
@@ -432,18 +437,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       });
       return { ok: true, stopped: true };
     }
-    if (message.type === "PAUSE_GEM_BID_SYNC") {
+    if (["PAUSE_GEM_BID_SYNC", "PAUSE_GEM_OPPORTUNITY_SYNC"].includes(message.type)) {
+      const opportunityScan = message.type === "PAUSE_GEM_OPPORTUNITY_SYNC";
+      const stateKey = opportunityScan ? "gemOpportunitySync" : "gemBidSync";
+      const contentMessage = opportunityScan ? "PAUSE_GEM_OPPORTUNITY_SYNC" : "PAUSE_GEM_BID_SYNC";
       const tabs = await chrome.tabs.query({ url: "https://bidplus.gem.gov.in/seller-bids*" });
       const responses = await Promise.all(tabs.map((tab) => (
-        chrome.tabs.sendMessage(tab.id, { type: "PAUSE_GEM_BID_SYNC" }).catch(() => null)
+        chrome.tabs.sendMessage(tab.id, { type: contentMessage }).catch(() => null)
       )));
       if (!responses.some((response) => response?.ok)) {
         throw new Error("No running GeM bid sync was found to pause.");
       }
-      const current = await chrome.storage.local.get("gemBidSync");
+      const current = await chrome.storage.local.get(stateKey);
       await chrome.storage.local.set({
-        gemBidSync: {
-          ...(current.gemBidSync || {}),
+        [stateKey]: {
+          ...(current[stateKey] || {}),
           status: "paused",
           message: "GeM bid sync paused by user.",
           updatedAt: Date.now(),
@@ -452,15 +460,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       });
       return { ok: true, paused: true };
     }
-    if (message.type === "RESUME_GEM_BID_SYNC") {
+    if (["RESUME_GEM_BID_SYNC", "RESUME_GEM_OPPORTUNITY_SYNC"].includes(message.type)) {
+      const opportunityScan = message.type === "RESUME_GEM_OPPORTUNITY_SYNC";
+      const stateKey = opportunityScan ? "gemOpportunitySync" : "gemBidSync";
+      const contentMessage = opportunityScan ? "RESUME_GEM_OPPORTUNITY_SYNC" : "RESUME_GEM_BID_SYNC";
       const tabs = await chrome.tabs.query({ url: "https://bidplus.gem.gov.in/seller-bids*" });
       await Promise.all(tabs.map((tab) => (
-        chrome.tabs.sendMessage(tab.id, { type: "RESUME_GEM_BID_SYNC" }).catch(() => null)
+        chrome.tabs.sendMessage(tab.id, { type: contentMessage }).catch(() => null)
       )));
-      const current = await chrome.storage.local.get("gemBidSync");
+      const current = await chrome.storage.local.get(stateKey);
       await chrome.storage.local.set({
-        gemBidSync: {
-          ...(current.gemBidSync || {}),
+        [stateKey]: {
+          ...(current[stateKey] || {}),
           status: "running",
           message: "GeM bid sync resumed.",
           updatedAt: Date.now(),
@@ -488,7 +499,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (!/^https:\/\/[^/]*gem\.gov\.in\//i.test(detailUrl)) {
         throw new Error("Invalid GeM bid detail URL.");
       }
-      const response = await fetch(detailUrl, { credentials: "include" });
+      let response = null;
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        response = await fetch(detailUrl, {
+          credentials: "include",
+          cache: "no-store",
+        });
+        const retryable = response.status === 429 || response.status >= 500;
+        if (response.ok || !retryable || attempt === 3) break;
+        await new Promise((resolve) => setTimeout(resolve, attempt * 1500));
+      }
       if (!response.ok) throw new Error(`GeM bid document returned HTTP ${response.status}.`);
       const bytes = new Uint8Array(await response.arrayBuffer());
       if (bytes.length > 15 * 1024 * 1024) throw new Error("GeM bid document is larger than 15 MB.");
@@ -503,7 +523,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return { ok: true, detailText: parsed.detail_text || "" };
     }
     if (message.type === "GEM_BID_SYNC_PROGRESS") {
-      const gemBidSync = {
+      const opportunityProgress = message.scanType === "opportunity" || (
+        !message.scanType && /selected category|full bid details|opportunit|bid to be participated/i.test(String(message.message || ""))
+      );
+      const stateKey = opportunityProgress ? "gemOpportunitySync" : "gemBidSync";
+      const syncState = {
         status: message.status || "running",
         message: message.message || "",
         page: message.page || 0,
@@ -512,8 +536,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         updatedAt: Date.now(),
         extensionVersion: chrome.runtime.getManifest().version,
       };
-      await chrome.storage.local.set({ gemBidSync });
-      if (["complete", "failed"].includes(gemBidSync.status) && sender.tab?.id) {
+      await chrome.storage.local.set({ [stateKey]: syncState });
+      if (["complete", "failed"].includes(syncState.status) && sender.tab?.id) {
         setTimeout(() => closeBackgroundSyncTab(sender.tab.id), 1200);
       }
       return { ok: true };

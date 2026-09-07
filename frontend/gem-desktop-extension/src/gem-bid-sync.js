@@ -3,6 +3,7 @@
   let syncing = false;
   let stopRequested = false;
   let pauseRequested = false;
+  let activeScanType = "";
 
   const text = (node) => String(node?.innerText || node?.textContent || "").replace(/\s+/g, " ").trim();
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -41,7 +42,7 @@
   }
 
   async function progress(status, message, extra = {}) {
-    await runtimeMessage({ type: "GEM_BID_SYNC_PROGRESS", status, message, ...extra });
+    await runtimeMessage({ type: "GEM_BID_SYNC_PROGRESS", scanType: activeScanType, status, message, ...extra });
   }
 
   function visible(element) {
@@ -662,7 +663,7 @@
     // available in a background tab, so pagination should remain unobtrusive.
     window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "instant" });
     await sleep(500);
-    for (let attempt = 1; attempt <= 3; attempt += 1) {
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
       const state = mainPaginationNextState();
       if (!state.found) return { advanced: false, reason: "missing" };
       if (state.disabled) return { advanced: false, reason: "end" };
@@ -670,14 +671,51 @@
       next.scrollIntoView({ block: "center", inline: "center" });
       await sleep(250);
       activateControl(next);
-      if (await waitForPageChange(signature, 30000)) return { advanced: true };
+      if (await waitForPageChange(signature, 15000)) return { advanced: true };
+    }
+    // GeM occasionally leaves the Next control visually enabled while its
+    // Angular click handler stops responding. Its seller list also supports a
+    // page hash, so use that as a final navigation fallback and still verify
+    // that the bid-card signature actually changed.
+    const currentHash = `#page-${page}`;
+    const targetHash = `#page-${page + 1}`;
+    for (let routeAttempt = 1; routeAttempt <= 1; routeAttempt += 1) {
+      // A failed Angular request can leave the address at the target page while
+      // the old cards remain rendered. Bounce through the known current route
+      // so assigning targetHash always emits a fresh hashchange.
+      if (location.hash.toLowerCase() === targetHash) {
+        location.hash = currentHash;
+        await sleep(1000);
+      }
+      location.hash = targetHash;
+      if (await waitForPageChange(signature, 20000)) return { advanced: true };
     }
     return { advanced: false, reason: "stuck" };
+  }
+
+  async function advancePageWithRecovery(signature, page, onRetry) {
+    let recoveryAttempt = 0;
+    while (true) {
+      stopIfRequested();
+      const advance = await advancePage(signature, page);
+      if (advance.advanced || advance.reason === "end") return advance;
+      recoveryAttempt += 1;
+      await onRetry?.(recoveryAttempt, advance.reason);
+
+      // A GeM response may arrive after the click timeout. Check for that late
+      // response before clicking Next again, otherwise a second click could
+      // accidentally skip a page.
+      if (await waitForPageChange(signature, 30000)) {
+        return { advanced: true, recovered: true };
+      }
+      await sleep(Math.min(5000 + recoveryAttempt * 2000, 30000));
+    }
   }
 
   async function scanAllPages() {
     if (syncing) throw new Error("A GeM bid sync is already running in this tab.");
     syncing = true;
+    activeScanType = "disqualified";
     stopRequested = false;
     pauseRequested = false;
     let page = 1;
@@ -752,11 +790,14 @@
           );
         });
         await progress("running", `Synced page ${page}. Checked ${checked}; saved ${saved} disqualified bids from 2026.`, { page, saved, checked });
-        const advance = await advancePage(signature, page);
+        const advance = await advancePageWithRecovery(signature, page, async (attempt, reason) => {
+          await progress(
+            "running",
+            `GeM pagination is temporarily unavailable after page ${page} (${reason}). Recovering automatically, attempt ${attempt}...`,
+            { page, saved, checked },
+          );
+        });
         if (!advance.advanced) {
-          if (advance.reason !== "end") {
-            throw new Error(`GeM pagination did not move after page ${page}. Keep the tab active and retry sync from this page.`);
-          }
           break;
         }
         page += 1;
@@ -771,10 +812,12 @@
         await progress("stopped", "GeM bid sync stopped by user.", { page, saved });
         return;
       }
-      await progress("failed", error.message || "GeM bid sync failed.", { page, saved });
+      await progress("failed", error.message || "GeM bid sync failed.", { page, saved, checked });
+      error.syncProgressReported = true;
       throw error;
     } finally {
       syncing = false;
+      activeScanType = "";
     }
   }
 
@@ -853,10 +896,19 @@
     if (endTime && endTime <= Date.now()) return { reject: "expired" };
     if (!endTime && !validityDays) return { reject: "date" };
     if (validityDays > 120 || (endTime && endTime - Date.now() > 120 * 86400000)) return { reject: "over120" };
+    const bidDate = dateFrom(flat.match(new RegExp(`(?:Dated|Bid\\s+Start\\s+Date(?:/Time)?)\\s*:?\\s*${indianDateTime}`, "i"))?.[1]);
+    if (!bidDate) return { reject: "date" };
+    const now = new Date();
+    const firstAllowedDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 3);
+    const lastAllowedDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    const bidStartTime = Date.parse(bidDate);
+    if (bidStartTime < firstAllowedDate.getTime() || bidStartTime >= lastAllowedDate.getTime()) {
+      return { reject: "date" };
+    }
     return {
       eligible: true,
       bid_no: bidNo,
-      bid_date: dateFrom(flat.match(new RegExp(`(?:Dated|Bid\\s+Start\\s+Date(?:/Time)?)\\s*:?\\s*${indianDateTime}`, "i"))?.[1]),
+      bid_date: bidDate,
       end_date: endDate,
       product_name: cleanItemName.slice(0, 500),
       product_type: product[0],
@@ -880,7 +932,11 @@
     try {
       response = await runtimeMessage({ type: "READ_GEM_BID_DETAIL", url, bidNo });
     } catch (error) {
-      if (/no tab with id|tab.*(?:closed|not found)|invalid tab id/i.test(String(error?.message || error))) {
+      const message = String(error?.message || error);
+      if (/HTTP\s+(?:401|403)\b/i.test(message)) {
+        throw new Error("GeM session expired or access was denied. Please log in to GeM again.");
+      }
+      if (/no tab with id|tab.*(?:closed|not found)|invalid tab id|GeM bid document returned HTTP|failed to fetch|networkerror/i.test(message)) {
         return { reject: "detail" };
       }
       throw error;
@@ -1049,15 +1105,32 @@
     throw new Error(`GeM category matching "${query}" was not found.`);
   }
 
-  async function scanOpportunityPages() {
+  async function scanOpportunityPages(resume = null) {
     if (syncing) throw new Error("A GeM bid sync is already running in this tab.");
     syncing = true;
+    activeScanType = "opportunity";
     stopRequested = false;
-    let page = 1, saved = 0, checked = 0;
-    const rejected = { product: 0, pac: 0, location: 0, date: 0, expired: 0, over120: 0, detail: 0 };
+    let page = Number(resume?.page || 1);
+    let saved = Number(resume?.saved || 0);
+    let checked = Number(resume?.checked || 0);
+    const rejected = {
+      product: 0, pac: 0, location: 0, date: 0, expired: 0, over120: 0, detail: 0,
+      ...(resume?.rejected || {}),
+    };
     try {
-      await progress("running", "Preparing the manually selected GeM category...", { page, saved });
+      await progress("running", resume
+        ? `Restoring the selected category scan at page ${page} after GeM stopped loading...`
+        : "Preparing the manually selected GeM category...", { page, saved, checked });
       await applyOpportunityFilters();
+      if (resume?.categoryQuery) {
+        const category = OPPORTUNITY_CATEGORIES.find((entry) => entry[1] === resume.categoryQuery);
+        if (!category) throw new Error("Saved GeM category could not be restored.");
+        await selectOpportunityCategory(category[1], category[2]);
+      }
+      if (page > 1) {
+        location.hash = `page-${page}`;
+        await sleep(3000);
+      }
       const visited = new Set();
       while (true) {
         const cards = await waitForBidCards(180000);
@@ -1079,14 +1152,33 @@
           saved += response.saved || 0;
         }
         await progress("running", `Selected category page ${page}: checked ${checked}, saved ${saved}; rejected detail ${rejected.detail}, product ${rejected.product}, PAC ${rejected.pac}, location ${rejected.location}, date ${rejected.date}, expired ${rejected.expired}, >120d ${rejected.over120}.`, { page, saved });
-        const advance = await advancePage(signature, page);
+        const advance = await advancePageWithRecovery(signature, page, async (attempt, reason) => {
+          await progress(
+            "running",
+            `GeM did not load page ${page + 1} (${reason}). Reloading the tab and resuming automatically...`,
+            { page, saved, checked },
+          );
+          const selectedText = text(categorySelectContainer());
+          const category = OPPORTUNITY_CATEGORIES.find((entry) => entry[2].test(selectedText));
+          sessionStorage.setItem("acxxelOpportunityResume", JSON.stringify({
+            page: page + 1,
+            saved,
+            checked,
+            rejected,
+            categoryQuery: category?.[1] || "",
+            savedAt: Date.now(),
+          }));
+          window.setTimeout(() => location.reload(), 250);
+          // Keep this execution parked until the reload replaces the document.
+          await new Promise(() => {});
+        });
         if (!advance.advanced) {
-          if (advance.reason !== "end") throw new Error(`Selected category pagination did not move after page ${page}.`);
           break;
         }
         page += 1;
       }
       await progress("complete", `Selected category scan complete. Checked ${checked} bids; saved ${saved} eligible bids. Select the next category manually and scan again.`, { page, saved });
+      sessionStorage.removeItem("acxxelOpportunityResume");
     } catch (error) {
       if (error.code === "GEM_SYNC_STOPPED") {
         await progress(
@@ -1096,10 +1188,12 @@
         );
         return;
       }
-      await progress("failed", error.message || "GeM opportunity scan failed.", { page, saved });
+      await progress("failed", error.message || "GeM opportunity scan failed.", { page, saved, checked });
+      error.syncProgressReported = true;
       throw error;
     } finally {
       syncing = false;
+      activeScanType = "";
     }
   }
 
@@ -1240,18 +1334,26 @@
         ok: true,
         cardCount: currentCards().length,
         visible: document.visibilityState === "visible",
+        syncing,
+        scanType: activeScanType,
         url: location.href,
       });
       return true;
     }
-    if (message.type === "STOP_GEM_BID_SYNC") {
+    if (["STOP_GEM_BID_SYNC", "STOP_GEM_OPPORTUNITY_SYNC"].includes(message.type)) {
+      const requestedType = message.type === "STOP_GEM_OPPORTUNITY_SYNC" ? "opportunity" : "disqualified";
+      if (!syncing || activeScanType !== requestedType) {
+        sendResponse({ ok: false, error: `No running ${requestedType} scan was found in this tab.` });
+        return true;
+      }
       stopRequested = true;
       pauseRequested = false;
       sendResponse({ ok: true, stopping: syncing });
       return true;
     }
-    if (message.type === "PAUSE_GEM_BID_SYNC") {
-      if (!syncing) {
+    if (["PAUSE_GEM_BID_SYNC", "PAUSE_GEM_OPPORTUNITY_SYNC"].includes(message.type)) {
+      const requestedType = message.type === "PAUSE_GEM_OPPORTUNITY_SYNC" ? "opportunity" : "disqualified";
+      if (!syncing || activeScanType !== requestedType) {
         sendResponse({ ok: false, error: "No GeM bid sync is currently running in this tab." });
         return true;
       }
@@ -1259,7 +1361,12 @@
       sendResponse({ ok: true, pausing: true });
       return true;
     }
-    if (message.type === "RESUME_GEM_BID_SYNC") {
+    if (["RESUME_GEM_BID_SYNC", "RESUME_GEM_OPPORTUNITY_SYNC"].includes(message.type)) {
+      const requestedType = message.type === "RESUME_GEM_OPPORTUNITY_SYNC" ? "opportunity" : "disqualified";
+      if (!syncing || activeScanType !== requestedType) {
+        sendResponse({ ok: false, error: `No paused ${requestedType} scan was found in this tab.` });
+        return true;
+      }
       pauseRequested = false;
       sendResponse({ ok: true, resuming: syncing });
       return true;
@@ -1276,6 +1383,7 @@
       runner().catch(async (error) => {
         if (error.code === "GEM_SYNC_STOPPED") return;
         console.error("Acxxel GeM bid sync failed:", error);
+        if (error.syncProgressReported) return;
         try {
           await progress("failed", error.message || "GeM bid scanner stopped before processing the page.", { page: 0, saved: 0 });
         } catch {
@@ -1285,5 +1393,25 @@
     }, 0);
     return true;
   });
+
+  try {
+    const resume = JSON.parse(sessionStorage.getItem("acxxelOpportunityResume") || "null");
+    if (resume && Date.now() - Number(resume.savedAt || 0) < 30 * 60 * 1000) {
+      sessionStorage.removeItem("acxxelOpportunityResume");
+      window.setTimeout(() => {
+        scanOpportunityPages(resume).catch(async (error) => {
+          console.error("Acxxel GeM opportunity resume failed:", error);
+          if (error.syncProgressReported) return;
+          await progress("failed", error.message || "GeM opportunity scan could not resume.", {
+            page: resume.page,
+            saved: resume.saved,
+            checked: resume.checked,
+          }).catch(() => {});
+        });
+      }, 3000);
+    }
+  } catch {
+    sessionStorage.removeItem("acxxelOpportunityResume");
+  }
 
 })();
