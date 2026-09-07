@@ -56,6 +56,11 @@ from .views.AioGem import (
     retry_aio_gem_job,
     update_aio_gem_status,
 )
+from .views.Toner import (
+    create_toner_bid,
+    update_toner_bid,
+    get_toner_bid,
+)
 
 
 
@@ -172,6 +177,12 @@ urlpatterns = [
     path("gem/extension/aio-jobs/<int:job_id>/report/", extension_aio_report_job, name="extension_aio_report_job"),
     path("gem/aio-jobs/<int:job_id>/retry/", retry_aio_gem_job, name="retry_aio_gem_job"),
     path("aio-bids/<int:bid_id>/", get_aio_bid, name="get_aio_bid"),
+
+    # Toner: only Create Bid + Config exist so far (Toner.py) — no
+    # list/review/gem/document routes yet, same as the two-step frontend flow.
+    path("toner-bids/create/", create_toner_bid, name="create_toner_bid"),
+    path("toner-bids/<int:bid_id>/update/", update_toner_bid, name="update_toner_bid"),
+    path("toner-bids/<int:bid_id>/", get_toner_bid, name="get_toner_bid"),
 
 
     path("workstation-bids/create/", create_workstation_bid, name="create_workstation_bid"),

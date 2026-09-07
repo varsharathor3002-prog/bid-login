@@ -1351,12 +1351,20 @@ export default function CatalogueProducts() {
       const shouldLoadMainCatalogue =
         categoryFilter === "All" ||
         categoryFilter === "Desktop" ||
-        categoryFilter === "AIO" ||
         categoryFilter === "Toner";
       const shouldLoadWorkstations =
         categoryFilter === "All" || categoryFilter === "Workstation";
       const shouldLoadPrinters =
         categoryFilter === "All" || categoryFilter === "Printer";
+      // AIO gets its own dedicated fetch (list_aio_catalogue_products, same
+      // pattern as Workstation/Printer above) instead of routing through
+      // the main /catalogue/ endpoint — that endpoint's
+      // _catalogue_product_data/_normalize_extra_specs rebuilds extra_specs
+      // against Desktop's own fixed spec-field list and silently drops
+      // every AIO-only key (Screen Size, WiFi Bluetooth, Motherboard
+      // Ports...), which was showing as "NA" everywhere on this page.
+      const shouldLoadAio =
+        categoryFilter === "All" || categoryFilter === "AIO";
 
       if (shouldLoadMainCatalogue) {
         const params = new URLSearchParams();
@@ -1369,6 +1377,24 @@ export default function CatalogueProducts() {
 
         const query = params.toString();
         const url = query ? `${API}/catalogue/?${query}` : `${API}/catalogue/`;
+        requests.push(
+          fetch(url)
+            .then(parseJsonResponse)
+            .then((data) => (Array.isArray(data) ? data : []))
+            // AIO products come from the dedicated /aio-catalogue/ fetch
+            // below (with real extra_specs) — drop the category="All" copy
+            // here so they don't show up twice with broken specs.
+            .then((data) => data.filter((p) => String(p?.category || "").toLowerCase() !== "aio"))
+        );
+      }
+
+      if (shouldLoadAio) {
+        const params = new URLSearchParams();
+        if (search.trim()) {
+          params.append("search", search.trim());
+        }
+        const query = params.toString();
+        const url = query ? `${API}/aio-catalogue/?${query}` : `${API}/aio-catalogue/`;
         requests.push(
           fetch(url)
             .then(parseJsonResponse)

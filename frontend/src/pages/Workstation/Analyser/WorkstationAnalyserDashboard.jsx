@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { FaTrash } from "react-icons/fa";
 
-const API_BASE = "http://127.0.0.1:8000/api";
+const API_BASE = import.meta.env.VITE_API_URL;
 const API_URL = `${API_BASE}/workstation-bids/list/`;
 const ITEMS_PER_PAGE = 8;
 const VISIBLE_PAGES = 5;
@@ -348,7 +348,7 @@ export default function WorkstationAnalyserDashboard() {
                     </td>
                     {isApprovedView && (
                       <td className="pr-5 py-4 border-b border-gray-100">
-                        <button type="button" onClick={() => navigate(`/analyser-dashboard/workstation/bid/${bid.id}`, { state: { bid, readOnly: true } })} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-[11px] font-bold uppercase tracking-widest shadow-sm whitespace-nowrap">
+                        <button type="button" onClick={() => navigate(`/analyser-dashboard/workstation/bid/${bid.id}/approved-details`, { state: { bid } })} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-[11px] font-bold uppercase tracking-widest shadow-sm whitespace-nowrap">
                           Download<span className="hidden">
                           ₹{Number(bid.final_amount || bid.total_price || 0).toLocaleString("en-IN", {
                             minimumFractionDigits: 2,
