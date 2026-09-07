@@ -90,6 +90,17 @@ export const AIO_MOTHERBOARDS = [
   { name: "Integrated, HDMI, VGA, LAN, Audio Port, USB 3-4, USB 2.0-2", price: 4500 },
 ];
 
+// The 4 Embedded processors have their video/LAN/USB controller built into
+// the chip itself — there's no separate motherboard chipset to price, so
+// picking one auto-selects the Integrated motherboard option at ₹0 instead
+// of its normal price.
+const EMBEDDED_PROCESSOR_NAMES = AIO_PROCESSORS
+  .filter((processor) => processor.name.includes("Embedded"))
+  .map((processor) => processor.name);
+const INTEGRATED_MOTHERBOARD_NAME = AIO_MOTHERBOARDS.find((board) =>
+  board.name.startsWith("Integrated")
+)?.name;
+
 // getFilteredRams (Desktop/User/DesktopConfig.jsx) is hardwired to Desktop's
 // own RAMS array, so it can't filter AIO_RAMS — this is the same DDR4/DDR5-by
 // -processor rule reimplemented locally against AIO's own list.
@@ -265,6 +276,16 @@ export default function AioConfig({ bidData, onNext }) {
       const price = getPriceFromCatalog(localList, fieldValue);
       setForm((prev) => ({ ...prev, [priceField]: price }));
     }
+
+    if (name === "processor" && INTEGRATED_MOTHERBOARD_NAME) {
+      if (EMBEDDED_PROCESSOR_NAMES.includes(fieldValue)) {
+        setForm((prev) => ({
+          ...prev,
+          motherboard: INTEGRATED_MOTHERBOARD_NAME,
+          motherboard_price: 0,
+        }));
+      }
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -325,7 +346,7 @@ export default function AioConfig({ bidData, onNext }) {
         </select>
         <input
           type="text"
-          value={form[`${name}_price`] || ""}
+          value={form[`${name}_price`] === "" || form[`${name}_price`] == null ? "" : form[`${name}_price`]}
           readOnly
           disabled
           placeholder="Price"

@@ -38,7 +38,7 @@ const workstationCategories = [
 // monitor, no cabinet, the exact RAM/SSD/OS/WiFi/Keyboard/Motherboard values
 // from aio_bid_create.php).
 const aioCategories = [
-  ["processor", "Processor", Desktop.PROCESSORS], ["ram", "RAM", Aio.AIO_RAMS],
+  ["processor", "Processor", Aio.AIO_PROCESSORS], ["ram", "RAM", Aio.AIO_RAMS],
   ["hdd", "HDD", Aio.AIO_HDDS], ["ssd", "SSD", Aio.AIO_SSDS],
   ["motherboard", "Motherboard", Aio.AIO_MOTHERBOARDS], ["os", "Operating System", Aio.AIO_OS_OPTIONS],
   ["dvd", "DVD", Desktop.DVDS], ["wifi", "Wi-Fi / Bluetooth", Aio.AIO_WIFIS],
