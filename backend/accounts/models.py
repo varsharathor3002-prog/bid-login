@@ -1,6 +1,21 @@
 from django.db import models
 
 
+class GemFinancialRanking(models.Model):
+    bid_no = models.CharField(max_length=100)
+    ra_no = models.CharField(max_length=100, blank=True, default="")
+    technical_status = models.CharField(max_length=20, default="unknown", choices=[("unknown", "Unknown"), ("qualified", "Qualified"), ("disqualified", "Disqualified")])
+    lot_key = models.CharField(max_length=100, blank=True, default="")
+    item_name = models.CharField(max_length=500, blank=True)
+    sellers = models.JSONField(default=list)
+    last_synced_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "gem_financial_rankings"
+        ordering = ["-last_synced_at", "-id"]
+        constraints = [models.UniqueConstraint(fields=["bid_no", "lot_key"], name="gem_financial_bid_lot_unique")]
+
+
 class User(models.Model):
 
     ROLE_CHOICES = [

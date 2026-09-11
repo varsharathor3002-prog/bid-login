@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Acxxel GeM Desktop Workflow",
-  "version": "3.50.2",
+  "version": "3.60.2",
   "description": "Fills approved Desktop jobs and reads technical evaluation results in an authenticated GeM tab.",
   "permissions": ["storage", "tabs", "alarms", "scripting"],
   "host_permissions": [
@@ -12,7 +12,7 @@
     "https://www.acxxelbidding.com/*",
     "https://*.gem.gov.in/*"
   ],
-  "background": { "service_worker": "src/background.js" },
+  "background": { "service_worker": "src/bid_project_part B/background.js" },
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
@@ -20,7 +20,7 @@
     "128": "icons/icon128.png"
   },
   "action": {
-    "default_popup": "src/popup.html",
+    "default_popup": "src/bid_project_part B/popup.html",
     "default_title": "Acxxel GeM Desktop Workflow",
     "default_icon": {
       "16": "icons/icon16.png",

@@ -1,4 +1,5 @@
 from django.urls import path
+from .views.GemFinancialRanking import financial_rankings, delete_financial_ranking
 from . import views
 from .views.Workstation import (
     create_workstation_bid,
@@ -84,6 +85,8 @@ from .views.TonerGem import (
 
 
 urlpatterns = [
+    path("gem/financial-rankings/", financial_rankings, name="gem_financial_rankings"),
+    path("gem/financial-rankings/<int:result_id>/", delete_financial_ranking, name="delete_financial_ranking"),
 
     path('register/', views.register),
     path("user-list/", views.user_list),

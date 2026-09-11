@@ -1,0 +1,39 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="../popup.css"></head>
+<body><header><strong>Acxxel GeM <small id="version"></small></strong><span id="state">Checking...</span></header>
+<main>
+  <section class="sync-section">
+    <strong>Disqualified Bid Tracking</strong>
+    <p class="hint">Keep the filtered Technical Evaluated Bid List visible, then start sync for this active tab.</p>
+    <div class="button-row">
+      <button id="sync-bids" type="button">Scan Disqualified Bid</button>
+      <button id="pause-sync" type="button" class="secondary" disabled>Pause Sync</button>
+      <button id="stop-sync" type="button" class="danger" disabled>Stop Sync</button>
+      <button id="copy-sync-status" type="button" class="secondary">Copy status</button>
+      <button id="retry-sync" type="button" class="secondary" hidden>Retry Sync</button>
+    </div>
+    <p id="sync-state" class="sync-state"></p>
+  </section>
+  <section class="sync-section">
+    <strong>Bid To Be Participated</strong>
+    <p class="hint">First select one GeM category and Bid Start Date: Latest First manually. Then scan all pages for that category. Repeat for each category.</p>
+    <div class="button-row">
+      <button id="sync-opportunities" type="button">Scan Bid To Be Participated</button>
+      <button id="pause-opportunities" type="button" class="secondary" disabled>Pause Scan</button>
+      <button id="stop-opportunities" type="button" class="danger" disabled>Stop Scan</button>
+      <button id="copy-opportunity-status" type="button" class="secondary">Copy status</button>
+    </div>
+    <p id="opportunity-state" class="sync-state"></p>
+  </section>
+  <section class="sync-section">
+    <strong>Financial Ranking</strong>
+    <p class="hint">Manually select Bids/RAs Already Submitted/Participated and Financial Evaluated. Qualified is read from Technical Status; L1/L2/L3 comes from View RA Results, or View Bid Results when that bid has no RA.</p>
+    <div class="button-row">
+      <button id="financial-start" type="button">Scan All Qualified RA Results</button>
+      <button id="financial-stop" type="button" class="danger" disabled>Stop Scan</button>
+      <button id="financial-copy" type="button" class="secondary">Copy status</button>
+    </div>
+    <p id="financial-state" class="sync-state" role="status"></p>
+  </section>
+  <p id="message"></p>
+</main><script src="../popup.js"></script><script src="financial-ranking-popup.js"></script></body></html>

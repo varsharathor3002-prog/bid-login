@@ -48,6 +48,7 @@ import TonerBidApproval from "./pages/Toner/Admin/TonerBidApproval";
 
 import DocumentPrintView from "./pages/Documents/DocumentPrintView";
 import DisqualifiedBidsPanel from "./pages/Desktop/Analyser/DisqualifiedBidsPanel";
+import FinancialRankingPanel from "./pages/Desktop/Analyser/FinancialRankingPanel";
 import BidNotParticipated from "./pages/Desktop/Analyser/BidNotParticipated";
 import ComponentRates from "./pages/Admin/ComponentRates.jsx";
 import UserAssignedBids from "./pages/User/UserAssignedBids.jsx";
@@ -92,6 +93,7 @@ function App() {
         <Route path="/user/multifunction-printer" element={<CreatePrinterBid productMode="multifunction" />} />
 
         <Route path="/analyser-dashboard" element={<AnalyserNavbar />}>
+          <Route path="financial-rankings" element={<FinancialRankingPanel />} />
           <Route index element={null} />
           <Route path="desktop" element={<AnalyserDashboard product="desktop" />} />
           <Route path="desktop/bid/:id/downloads" element={<ApprovedBidDownloads />} />
