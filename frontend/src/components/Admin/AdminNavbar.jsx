@@ -38,8 +38,10 @@ const bidItems = [
   { name: "AIO Bid Approval",         path: "/aio-bid-approval",                     ready: true },
   { name: "Workstation Bid Approval", path: "/admin-dashboard/workstation-bid-approval", ready: true },
   { name: "Printer Bid Approval",     path: "/admin-dashboard/printer-bid-approval", ready: true },
-  { name: "Toner Bid Approval",       path: "/toner-bid-approval",                   ready: false },
+  { name: "Toner Bid Approval",       path: "/toner-bid-approval",                   ready: true },
 ];
+
+
 
 const adminItems = [
   { name: "Add User",     path: "/admin-dashboard/add-user",     icon: <FaUserPlus /> },
@@ -52,7 +54,7 @@ const BID_PRODUCTS = [
   { key: "aio",         label: "AIO",         icon: <FaLaptop />,  color: "#8b5cf6", ready: true },
   { key: "workstation", label: "Workstation", icon: <FaServer />,  color: "#0ea5e9", ready: true },
   { key: "printer",     label: "Printer",     icon: <FaPrint />,   color: "#10b981", ready: true  },
-  { key: "toner",       label: "Toner",       icon: <FaBox />,     color: "#f59e0b", ready: false },
+  { key: "toner",       label: "Toner",       icon: <FaBox />,     color: "#f59e0b", ready: true },
 ];
 
 const ADMIN_DASHBOARD_API_MAP = {
@@ -570,7 +572,7 @@ const AdminNavbar = () => {
             </button>
             {openRates && (
               <div className="mt-3 space-y-1.5 ml-2">
-                {[{ key: "desktop", label: "Desktop", ready: true }, { key: "workstation", label: "Workstation", ready: true }, { key: "aio", label: "AIO", ready: true }].map((item) => {
+                {[{ key: "desktop", label: "Desktop", ready: true }, { key: "workstation", label: "Workstation", ready: true }, { key: "aio", label: "AIO", ready: true }, { key: "toner", label: "Toner", ready: true }].map((item) => {
                   const path = `/admin-dashboard/component-rates/${item.key}`;
                   return <div key={item.key} onClick={() => item.ready && navigate(path)} className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 no-highlight select-none ${!item.ready ? "cursor-not-allowed text-gray-500 opacity-70" : isActive(path) ? "cursor-pointer bg-gray-700/70 text-white" : "cursor-pointer hover:bg-gray-700/50 text-gray-200"}`}><FaDesktop className={item.ready ? "text-emerald-400" : "text-gray-500"} /><span className="text-sm font-medium">{item.label}</span>{!item.ready && <span className="ml-auto rounded-full bg-gray-600 px-2 py-0.5 text-[10px] text-gray-300">Coming Soon</span>}</div>;
                 })}
