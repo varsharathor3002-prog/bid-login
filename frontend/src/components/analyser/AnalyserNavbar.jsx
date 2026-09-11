@@ -29,10 +29,10 @@ const BID_PRODUCTS = [
   { key: "aio", label: "AIO", icon: <FaLaptop />, color: "#8b5cf6", ready: true },
   { key: "workstation", label: "Workstation", icon: <FaServer />, color: "#0ea5e9", ready: true },
   { key: "printer", label: "Printer", icon: <FaPrint />, color: "#10b981", ready: true },
-  { key: "toner", label: "Toner", icon: <FaBox />, color: "#f59e0b", ready: false },
+  { key: "toner", label: "Toner", icon: <FaBox />, color: "#f59e0b", ready: true },
 ];
 const PRODUCTS = BID_PRODUCTS;
-const NAV_ENABLED_KEYS = new Set(["desktop", "aio", "workstation", "printer"]);
+const NAV_ENABLED_KEYS = new Set(["desktop", "aio", "workstation", "printer", "toner"]);
 const DASHBOARD_API_MAP = {
   desktop: {
     years: `${API_BASE}/desktop-bids/dashboard-years/`,

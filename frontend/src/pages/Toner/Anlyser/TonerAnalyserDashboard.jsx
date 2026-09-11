@@ -1,35 +1,32 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { FaTrash } from "react-icons/fa";
 
+const API_BASE = import.meta.env.VITE_API_URL;
 const API_MAP = {
-   desktop: `${import.meta.env.VITE_API_URL}/desktop-bids/list/`,
+   toner: `${API_BASE}/toner-bids/list/`,
 };
 
 const ITEMS_PER_PAGE = 10;
 const VISIBLE_PAGES = 5;
 
-export default function AnalyserDashboard({ product = "desktop" }) {
+export default function TonerAnalyserDashboard({ product = "toner" }) {
 
-    const [activeTab, setActiveTab] = useState(() => {
-        const status = new URLSearchParams(window.location.search).get("status");
-        return ["pending", "approved", "re-analyze"].includes(status) ? status : "pending";
-    });
+    const [activeTab, setActiveTab] = useState("pending");
     const [bids, setBids] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [reAnalyzeCount, setReAnalyzeCount] = useState(0);
     const [gemTransferCount, setGemTransferCount] = useState(0);
     const [currentPage, setCurrentPage] = useState(1);
-    const [selectedBidIds, setSelectedBidIds] = useState(new Set());
-    const [deletingId, setDeletingId] = useState(null);
+    const [selectedIds, setSelectedIds] = useState(new Set());
     const [bulkDeleting, setBulkDeleting] = useState(false);
+    const [deletingId, setDeletingId] = useState(null);
 
     const navigate = useNavigate();
 
     useEffect(() => {
         setCurrentPage(1);
-        setSelectedBidIds(new Set());
+        setSelectedIds(new Set());
         fetchBids();
     }, [product, activeTab]);
 
@@ -86,7 +83,7 @@ export default function AnalyserDashboard({ product = "desktop" }) {
 
         } catch {
 
-            setError("Unable to connect to the backend.");
+            setError("Backend se connect nahi ho pa raha.");
             setBids([]);
 
         } finally {
@@ -135,52 +132,75 @@ export default function AnalyserDashboard({ product = "desktop" }) {
     };
 
     const isApprovedView = activeTab === "approved" || activeTab === "gem-transfer";
+    // Bulk-select checkboxes only on the plain Approved tab (not the GeM
+    // transfer view, which is for tracking catalogue transfers, not deleting).
+    const showBulkSelect = activeTab === "approved";
+    const bodyColSpan = (isApprovedView ? 9 : 8) + (showBulkSelect ? 1 : 0);
 
-    const deleteBid = async (bid) => {
-        if (!window.confirm(`Permanently delete bid ${bid.bid_no}?`)) return;
-        setDeletingId(bid.id);
+    const toggleSelectOne = (id) => {
+        setSelectedIds((prev) => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id); else next.add(id);
+            return next;
+        });
+    };
+
+    const toggleSelectAll = () => {
+        setSelectedIds((prev) => {
+            const allSelected = paginatedBids.length > 0 && paginatedBids.every((bid) => prev.has(bid.id));
+            const next = new Set(prev);
+            if (allSelected) paginatedBids.forEach((bid) => next.delete(bid.id));
+            else paginatedBids.forEach((bid) => next.add(bid.id));
+            return next;
+        });
+    };
+
+    const handleBulkDelete = async () => {
+        const ids = Array.from(selectedIds);
+        if (ids.length === 0) return;
+        const ok = window.confirm(`Are you sure you want to delete ${ids.length} selected bid${ids.length > 1 ? "s" : ""}?`);
+        if (!ok) return;
+        setBulkDeleting(true);
         try {
-            const response = await fetch(`${import.meta.env.VITE_API_URL}/desktop-bids/${bid.id}/delete/`, { method: "DELETE" });
-            const data = await response.json().catch(() => ({}));
-            if (!response.ok) throw new Error(data.error || "Bid could not be deleted.");
-            setBids((current) => current.filter((item) => item.id !== bid.id));
-            setSelectedBidIds((current) => {
-                const next = new Set(current);
-                next.delete(bid.id);
+            const results = await Promise.allSettled(
+                ids.map((id) => fetch(`${API_BASE}/toner-bids/${id}/delete/`, { method: "DELETE" }))
+            );
+            const succeededIds = ids.filter((id, i) => results[i].status === "fulfilled" && results[i].value.ok);
+            setBids((prev) => prev.filter((b) => !succeededIds.includes(b.id)));
+            setSelectedIds((prev) => {
+                const next = new Set(prev);
+                succeededIds.forEach((id) => next.delete(id));
                 return next;
             });
-            fetchReAnalyzeCount();
-            fetchGemTransferCount();
-        } catch (deleteError) {
-            setError(deleteError.message || "Bid could not be deleted.");
+            const failedCount = ids.length - succeededIds.length;
+            if (failedCount > 0) alert(`${failedCount} bid(s) could not be deleted.`);
+        } catch (error) {
+            console.error("handleBulkDelete error: ", error);
+            alert("Unable to delete selected bids.");
         } finally {
-            setDeletingId(null);
+            setBulkDeleting(false);
         }
     };
 
-    const bulkDeleteBids = async () => {
-        const ids = [...selectedBidIds];
-        if (!ids.length) return;
-        if (!window.confirm(`Permanently delete ${ids.length} selected desktop bid(s)?`)) return;
-        setBulkDeleting(true);
-        setError("");
+    const handleDeleteOne = async (bid) => {
+        const ok = window.confirm("Are you sure you want to delete this bid?");
+        if (!ok) return;
+        setDeletingId(bid.id);
         try {
-            const response = await fetch(`${import.meta.env.VITE_API_URL}/desktop-bids/bulk-delete/`, {
-                method: "DELETE",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ ids }),
+            const res = await fetch(`${API_BASE}/toner-bids/${bid.id}/delete/`, { method: "DELETE" });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || "Delete failed");
+            setBids((prev) => prev.filter((b) => b.id !== bid.id));
+            setSelectedIds((prev) => {
+                const next = new Set(prev);
+                next.delete(bid.id);
+                return next;
             });
-            const data = await response.json().catch(() => ({}));
-            if (!response.ok) throw new Error(data.error || "Selected bids could not be deleted.");
-            const deletedIds = new Set(data.deleted_ids || ids);
-            setBids((current) => current.filter((bid) => !deletedIds.has(bid.id)));
-            setSelectedBidIds(new Set());
-            fetchReAnalyzeCount();
-            fetchGemTransferCount();
-        } catch (deleteError) {
-            setError(deleteError.message || "Selected bids could not be deleted.");
+        } catch (error) {
+            console.error("handleDeleteOne error: ", error);
+            alert(error.message || "Unable to delete bid.");
         } finally {
-            setBulkDeleting(false);
+            setDeletingId(null);
         }
     };
 
@@ -188,7 +208,7 @@ export default function AnalyserDashboard({ product = "desktop" }) {
 
         <div className="w-full bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
 
-            <div className="flex items-center gap-4 px-6 bg-gray-50 border-b border-gray-200 mt-4">
+            <div className="flex gap-4 px-6 bg-gray-50 border-b border-gray-200 mt-4">
 
                 <button
                     onClick={() => setActiveTab("pending")}
@@ -248,19 +268,23 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                     )}
                 </button>
 
-                {activeTab === "approved" && selectedBidIds.size > 0 && (
-                    <button type="button" onClick={bulkDeleteBids} disabled={bulkDeleting}
-                        className="ml-auto inline-flex min-h-9 items-center gap-2 rounded bg-red-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50">
-                        <FaTrash aria-hidden="true" />
-                        {bulkDeleting ? "Deleting..." : `Delete Selected (${selectedBidIds.size})`}
-                    </button>
-                )}
-
             </div>
 
             {error && (
                 <div className="mx-6 mt-4 bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">
                     ⚠️ {error}
+                </div>
+            )}
+
+            {showBulkSelect && selectedIds.size > 0 && (
+                <div className="flex items-center justify-end px-6 py-3 mt-4 bg-red-50 border-y border-red-200">
+                    <button type="button" onClick={handleBulkDelete} disabled={bulkDeleting}
+                        className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold bg-red-400 hover:bg-red-500 text-white shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        {bulkDeleting ? "Deleting..." : `Delete Selected (${selectedIds.size})`}
+                    </button>
                 </div>
             )}
 
@@ -279,7 +303,7 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                         <col className={activeTab === "gem-transfer" ? "w-[20%]" : isApprovedView ? "w-[10%]" : "w-[13%]"} />
                         {isApprovedView && <col className="w-[14%]" />}
                         {isApprovedView && <col className="w-[15%]" />}
-                        {activeTab === "approved" && <col className="w-[8%]" />}
+                        {showBulkSelect && <col className="w-[8%]" />}
                     </colgroup>
 
                     <thead>
@@ -332,18 +356,12 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                                 </th>
                             )}
 
-                            {activeTab === "approved" && (
-                                <th className="px-2 py-4 text-[11px] font-bold uppercase tracking-wider text-white border-b border-l border-slate-700">
+                            {showBulkSelect && (
+                                <th className="!pl-5 py-4 text-[11px] tracking-wider font-bold text-white uppercase border-b border-l border-slate-700">
                                     <div className="flex items-center justify-center gap-2">
-                                        <input type="checkbox" aria-label="Select all bids on this page"
-                                            checked={paginatedBids.length > 0 && paginatedBids.every((bid) => selectedBidIds.has(bid.id))}
-                                            onChange={(event) => setSelectedBidIds((current) => {
-                                                const next = new Set(current);
-                                                paginatedBids.forEach((bid) => event.target.checked ? next.add(bid.id) : next.delete(bid.id));
-                                                return next;
-                                            })}
-                                            className="h-4 w-4 accent-red-600" />
-                                        <span>Delete</span>
+                                        <input type="checkbox" checked={paginatedBids.length > 0 && paginatedBids.every((bid) => selectedIds.has(bid.id))}
+                                            onChange={toggleSelectAll} className="w-4 h-4 accent-red-500 cursor-pointer" />
+                                        Delete
                                     </div>
                                 </th>
                             )}
@@ -357,7 +375,7 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                         {loading && (
                             <tr>
                                 <td
-                                    colSpan={activeTab === "approved" ? 10 : isApprovedView ? 9 : 8}
+                                    colSpan={bodyColSpan}
                                     className="text-center py-16 text-gray-400 font-medium"
                                 >
                                     Loading bids...
@@ -368,7 +386,7 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                         {!loading && bids.length === 0 && (
                             <tr>
                                 <td
-                                    colSpan={activeTab === "approved" ? 10 : isApprovedView ? 9 : 8}
+                                    colSpan={bodyColSpan}
                                     className="text-center py-16 text-gray-400 font-medium"
                                 >
                                     {activeTab === "gem-transfer"
@@ -467,8 +485,6 @@ export default function AnalyserDashboard({ product = "desktop" }) {
 
                                     <td className="px-5 py-4 border-b border-gray-100">
 
-                                        <div className="flex items-center gap-2">
-
                                         {bid.status === "approved" ? (
                                                 <button
                                                     onClick={() => activeTab === "gem-transfer"
@@ -509,8 +525,6 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                                             </button>
 
                                         )}
-
-                                        </div>
 
                                     </td>
 
@@ -558,24 +572,25 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                                     </td>
                                     )}
 
-                                    {activeTab === "approved" && (
-                                    <td className="border-b border-l border-gray-100 px-2 py-4">
+                                    {showBulkSelect && (
+                                    <td className="!pl-5 py-4 border-b border-l border-gray-100">
                                         <div className="flex items-center justify-center gap-3">
-                                            <input type="checkbox" aria-label={`Select bid ${bid.bid_no}`}
-                                                checked={selectedBidIds.has(bid.id)}
-                                                onChange={(event) => setSelectedBidIds((current) => {
-                                                    const next = new Set(current);
-                                                    if (event.target.checked) next.add(bid.id); else next.delete(bid.id);
-                                                    return next;
-                                                })}
-                                                className="h-4 w-4 shrink-0 accent-red-600" />
-                                            <button type="button" onClick={() => deleteBid(bid)} disabled={deletingId === bid.id}
-                                                title="Permanently delete bid"
-                                                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-50">
+                                            <input type="checkbox" checked={selectedIds.has(bid.id)} onChange={() => toggleSelectOne(bid.id)}
+                                                className="w-4 h-4 accent-red-500 cursor-pointer" />
+                                            <button
+                                                type="button"
+                                                onClick={() => handleDeleteOne(bid)}
+                                                disabled={deletingId === bid.id}
+                                                title="Delete bid"
+                                                className="w-8 h-8 flex items-center justify-center rounded-md bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                            >
                                                 {deletingId === bid.id ? (
-                                                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-red-200 border-t-red-600" />
+                                                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                                                    </svg>
                                                 ) : (
-                                                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                                                     </svg>
                                                 )}
@@ -638,3 +653,4 @@ export default function AnalyserDashboard({ product = "desktop" }) {
 
     );
 }
+

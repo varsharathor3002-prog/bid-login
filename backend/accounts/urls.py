@@ -60,6 +60,25 @@ from .views.Toner import (
     create_toner_bid,
     update_toner_bid,
     get_toner_bid,
+    list_toner_bids,
+    review_toner_bid,
+    admin_review_toner_bid,
+    delete_toner_bid,
+    match_toner_catalogue_models,
+    list_toner_catalogue_products,
+    save_toner_model_number,
+    generate_toner_documents,
+    update_toner_docs,
+)
+from .views.TonerGem import (
+    create_toner_gem_upload_job,
+    toner_gem_jobs,
+    toner_gem_job_detail,
+    extension_toner_jobs,
+    extension_toner_claim_job,
+    extension_toner_report_job,
+    retry_toner_gem_job,
+    update_toner_gem_status,
 )
 
 
@@ -178,10 +197,27 @@ urlpatterns = [
     path("gem/aio-jobs/<int:job_id>/retry/", retry_aio_gem_job, name="retry_aio_gem_job"),
     path("aio-bids/<int:bid_id>/", get_aio_bid, name="get_aio_bid"),
 
-    # Toner: only Create Bid + Config exist so far (Toner.py) — no
-    # list/review/gem/document routes yet, same as the two-step frontend flow.
+    # Toner: full lifecycle now (Toner.py + TonerGem.py), same shape as AIO's
+    # block above.
     path("toner-bids/create/", create_toner_bid, name="create_toner_bid"),
+    path("toner-bids/list/", list_toner_bids, name="list_toner_bids"),
     path("toner-bids/<int:bid_id>/update/", update_toner_bid, name="update_toner_bid"),
+    path("toner-bids/<int:bid_id>/review/", review_toner_bid, name="review_toner_bid"),
+    path("toner-bids/<int:bid_id>/admin-review/", admin_review_toner_bid, name="admin_review_toner_bid"),
+    path("toner-bids/<int:bid_id>/delete/", delete_toner_bid, name="delete_toner_bid"),
+    path("toner-bids/<int:bid_id>/match-catalogue/", match_toner_catalogue_models, name="match_toner_catalogue_models"),
+    path("toner-catalogue/", list_toner_catalogue_products, name="list_toner_catalogue_products"),
+    path("toner-bids/<int:bid_id>/save-model-number/", save_toner_model_number, name="save_toner_model_number"),
+    path("toner-bids/<int:bid_id>/generate-docs/", generate_toner_documents, name="generate_toner_documents"),
+    path("toner-bids/<int:bid_id>/update-docs/", update_toner_docs, name="update_toner_docs"),
+    path("toner-bids/<int:bid_id>/gem-jobs/", create_toner_gem_upload_job, name="create_toner_gem_upload_job"),
+    path("toner-bids/<int:bid_id>/gem-status/", update_toner_gem_status, name="update_toner_gem_status"),
+    path("gem/toner-jobs/", toner_gem_jobs, name="toner_gem_jobs"),
+    path("gem/toner-jobs/<int:job_id>/", toner_gem_job_detail, name="toner_gem_job_detail"),
+    path("gem/extension/toner-jobs/", extension_toner_jobs, name="extension_toner_jobs"),
+    path("gem/extension/toner-jobs/<int:job_id>/claim/", extension_toner_claim_job, name="extension_toner_claim_job"),
+    path("gem/extension/toner-jobs/<int:job_id>/report/", extension_toner_report_job, name="extension_toner_report_job"),
+    path("gem/toner-jobs/<int:job_id>/retry/", retry_toner_gem_job, name="retry_toner_gem_job"),
     path("toner-bids/<int:bid_id>/", get_toner_bid, name="get_toner_bid"),
 
 

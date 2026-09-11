@@ -635,7 +635,7 @@ def _fill_manufacturer_auth_body(page,fitz):
     y=region_y0+9
     y=_draw_inline_paragraph(page,x,y,line_height,max_width,[
         ("This is to confirm that we, ",False),("Laps N Tabs Technology Pvt. Ltd",True),
-        (", are Brand Holder of Brand ",False),("\"acxxel\"",True),(" and manufacturer.",False),
+        (", are Brand Holder of Brand ",False),("\"acxxel\"",True),(" and manufacturer",False),
     ],fitz,fontsize=fontsize)
     y+=line_height*1.4
     for item in ["i. All in one Computer","ii. Desktop Computer","iii. Workstation Computer","iv. Multi Function Laser Printer","v. Laser Printer","vi. Printer Toner"]:
@@ -730,6 +730,40 @@ def _fill_service_support_escalation(page,fitz):
     page.insert_text((x0,y),"Email:- lapsntabs123@gmail.com",fontsize=11,fontname="hebo",color=(0,0,0));y+=13.4
     page.insert_text((x0,y),"Contact No.:- 9918200166",fontsize=11,fontname="hebo",color=(0,0,0))
 
+def _fix_aio_service_support_onsite_note(page,fitz):
+    # Page 25's intro line under "TO WHOMSOEVER IT MAY CONCERN" is still the
+    # template's original Desktop-flavoured sentence even after
+    # _fix_aio_product_wording's word-level "Acxxel Desktops" -> "acxxel All
+    # in One PCs" swap ("This is certifying that acxxel All in One PCs offers
+    # on-site comprehensive warranty as said in bid document.") — replace the
+    # whole sentence with the buyer-facing wording instead of patching words.
+    lines=[]
+    for block in page.get_text("dict").get("blocks",[]):
+        if block.get("type")!=0:continue
+        for line in block.get("lines",[]):
+            text=" ".join(s.get("text","") for s in line.get("spans",[])).strip()
+            if text:lines.append((fitz.Rect(line["bbox"]),text))
+    lines.sort(key=lambda item:item[0].y0)
+    start_idx=next((i for i,(_,t) in enumerate(lines) if re.search(r"this\s+is\s+certifying",t,re.I)),None)
+    if start_idx is None:return
+    end_idx=start_idx
+    for i in range(start_idx,min(start_idx+3,len(lines))):
+        end_idx=i
+        if re.search(r"\bdocument\.?\s*$",lines[i][1],re.I):break
+    region_rects=[lines[i][0] for i in range(start_idx,end_idx+1)]
+    region=fitz.Rect(
+        min(r.x0 for r in region_rects)-2,region_rects[0].y0-2,
+        page.rect.width-36,region_rects[-1].y1+3,
+    )
+    page.add_redact_annot(region,fill=(1,1,1))
+    page.apply_redactions(images=0,graphics=0)
+    page.insert_textbox(
+        fitz.Rect(region.x0,region.y0+1,region.x1,region.y1+24),
+        "This is to certify that the acxxel AIO PC offered in the bid carries an on-site warranty as "
+        "per the terms and conditions of the bid document.",
+        fontsize=10.5,fontname="helv",color=(0,0,0),align=0,lineheight=1.15,
+    )
+
 def _add_service_support_bid_date(page,fitz,bid_no,date):
     if not (bid_no or date) or not page.search_for("Level 1"):return
     lines=[]
@@ -740,7 +774,7 @@ def _add_service_support_bid_date(page,fitz,bid_no,date):
             if text:lines.append((fitz.Rect(line["bbox"]),text))
     lines.sort(key=lambda item:item[0].y0)
     to_index=next((i for i,(_,text) in enumerate(lines) if text.rstrip(",").strip().lower()=="to"),None)
-    certify_index=next((i for i,(_,text) in enumerate(lines) if re.search(r"this\s+is\s+certifying",text,re.I)),None)
+    certify_index=next((i for i,(_,text) in enumerate(lines) if re.search(r"this\s+is\s+certifying|this\s+is\s+to\s+certify",text,re.I)),None)
     escalation_index=next((i for i,(_,text) in enumerate(lines) if re.search(r"escalation matrix",text,re.I)),None)
     if to_index is None or certify_index is None or certify_index<=to_index:return
 
@@ -752,6 +786,12 @@ def _add_service_support_bid_date(page,fitz,bid_no,date):
     certify_text=" ".join(text for _,text in lines[certify_index:certify_end]).strip()
     to_rect=lines[to_index][0]
     certify_rect=lines[certify_index][0]
+    # Captured before redaction — used below to push the "Escalation matrix..."
+    # line (and only that line, not the table under it) further down if the
+    # certify paragraph needs more room than the template originally left for
+    # it, instead of shrinking the certify text to fit a fixed gap.
+    escalation_rect=lines[escalation_index][0] if escalation_index is not None else None
+    escalation_text=lines[escalation_index][1] if escalation_index is not None else None
     block_bottom=max((rect.y1 for rect,_ in lines[certify_index:certify_end]),default=certify_rect.y1)
     page.add_redact_annot(
         fitz.Rect(min(to_rect.x0,certify_rect.x0)-3,to_rect.y0-2,page.rect.width-32,block_bottom+3),
@@ -769,10 +809,41 @@ def _add_service_support_bid_date(page,fitz,bid_no,date):
     y+=line_gap+2
     page.insert_text((x,y),f"Bid No: {bid_no or ''}    Dated: {date or ''}",fontsize=11.5,fontname="hebo",color=(0,0,0))
     y+=34
-    page.insert_textbox(
-        fitz.Rect(x,y-11,page.rect.width-36,y+18),certify_text,
-        fontsize=10.5,fontname="helv",color=(0,0,0),lineheight=1.15,
-    )
+
+    def _wrap(text,fontname,fontsize,max_width):
+        words=text.split(" ");out=[];cur=""
+        for w in words:
+            trial=(cur+" "+w).strip()
+            if fitz.get_text_length(trial,fontname=fontname,fontsize=fontsize)<=max_width:cur=trial
+            else:
+                if cur:out.append(cur)
+                cur=w
+        if cur:out.append(cur)
+        return out
+
+    max_width=page.rect.width-36-x
+    fontsize=11.0
+    wrapped=_wrap(certify_text,"helv",fontsize,max_width)
+    line_h=fontsize*1.24
+    certify_top=y-2
+    certify_bottom=certify_top+len(wrapped)*line_h
+
+    if escalation_rect is not None and certify_bottom+6>escalation_rect.y0:
+        shift=(certify_bottom+6)-escalation_rect.y0
+        page.add_redact_annot(
+            fitz.Rect(escalation_rect.x0-2,escalation_rect.y0-2,page.rect.width-32,escalation_rect.y1+2),
+            fill=(1,1,1),
+        )
+        page.apply_redactions(images=0,graphics=0)
+        page.insert_text(
+            (escalation_rect.x0,escalation_rect.y1+shift),escalation_text,
+            fontsize=11,fontname="helv",color=(0,0,0),
+        )
+
+    cy=certify_top
+    for ln in wrapped:
+        page.insert_text((x,cy),ln,fontsize=fontsize,fontname="helv",color=(0,0,0))
+        cy+=line_h
 
 def _add_service_support_last_page_bid_date(page,fitz,bid_no,date,dept_name="",organization="",full_address=""):
     if not (bid_no or date):return
@@ -1402,6 +1473,7 @@ def generate_aio_documents(r,bid_id):
                 if typ=="bidder_financial":_replace_bidder_financial_heading(p,fitz)
                 if typ=="service_support":
                     _erase_tender(p,fitz);_fill_service_support_escalation(p,fitz);_fill_service_support_availability(p,fitz)
+                    if pidx==0:_fix_aio_service_support_onsite_note(p,fitz)
                     if pidx==4:_add_aio_service_support_table_note(p,fitz)
                     for block in p.get_text("dict").get("blocks",[]):
                         for line in block.get("lines",[]):

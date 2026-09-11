@@ -1801,21 +1801,51 @@ def generate_workstation_certificates(request, bid_id):
                     fill=(1, 1, 1),
                 )
                 page.apply_redactions(images=0, graphics=0)
+                x = 72
                 y = 148
                 for value in ["To,", *service_recipient]:
                     if value:
-                        page.insert_text((72, y), value, fontsize=11.5, fontname="hebo", color=(0, 0, 0))
+                        page.insert_text((x, y), value, fontsize=11.5, fontname="hebo", color=(0, 0, 0))
                         y += 15
-                page.insert_textbox(
-                    fitz.Rect(72, 213, page.rect.width - 52, 252),
-                    "This is certifying that acxxel Workstation offers on-site comprehensive warranty as said in bid document.",
-                    fontsize=10.8,
-                    fontname="helv",
-                    color=(0, 0, 0),
-                    align=0,
+                y += 14
+
+                def _wrap(text, fontname, fontsize, max_width):
+                    words = text.split(" "); out = []; cur = ""
+                    for w in words:
+                        trial = (cur + " " + w).strip()
+                        if fitz.get_text_length(trial, fontname=fontname, fontsize=fontsize) <= max_width:
+                            cur = trial
+                        else:
+                            if cur: out.append(cur)
+                            cur = w
+                    if cur: out.append(cur)
+                    return out
+
+                # Same size as "Escalation matrix..." below it (10.8) instead of
+                # shrinking to fit a fixed box — if the recipient block above
+                # pushed this paragraph down further than usual, the escalation
+                # heading is pushed down to match instead.
+                fontsize = 10.8
+                max_width = (page.rect.width - 52) - x
+                wrapped = _wrap(
+                    "This is to certify that the acxxel Workstation offered in the bid carries an on-site "
+                    "warranty as per the terms and conditions of the bid document.",
+                    "helv", fontsize, max_width,
                 )
+                line_h = fontsize * 1.24
+                certify_top = y
+                cy = certify_top
+                for ln in wrapped:
+                    page.insert_text((x, cy), ln, fontsize=fontsize, fontname="helv", color=(0, 0, 0))
+                    cy += line_h
+                certify_bottom = cy
+
+                escalation_y = escalation.y1 + 14
+                if certify_bottom + 6 > escalation_y:
+                    escalation_y = certify_bottom + 6
+
                 page.insert_text(
-                    (escalation.x0, escalation.y1 + 14),
+                    (escalation.x0, escalation_y),
                     "Escalation matrix for service support is as follows:",
                     fontsize=10.8,
                     fontname="helv",

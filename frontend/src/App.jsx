@@ -39,6 +39,12 @@ import AioApprovedBiddingDetails from "./pages/Aio/Anlyser/AioApprovedBiddingDet
 import AioAnalyserDocument from "./pages/Aio/Anlyser/AioAnalyserDocument";
 import AioApprovedBidDownloads from "./pages/Aio/Anlyser/AioApprovedBidDownloads";
 import AioBidApproval from "./pages/Aio/Admin/AioBidApproval";
+import TonerAnalyserDashboard from "./pages/Toner/Anlyser/TonerAnalyserDashboard";
+import TonerBidDetailView from "./pages/Toner/Anlyser/TonerBidDetailView";
+import TonerApprovedBiddingDetails from "./pages/Toner/Anlyser/TonerApprovedBiddingDetails";
+import TonerAnalyserDocument from "./pages/Toner/Anlyser/TonerAnalyserDocument";
+import TonerApprovedBidDownloads from "./pages/Toner/Anlyser/TonerApprovedBidDownloads";
+import TonerBidApproval from "./pages/Toner/Admin/TonerBidApproval";
 
 import DocumentPrintView from "./pages/Documents/DocumentPrintView";
 import DisqualifiedBidsPanel from "./pages/Desktop/Analyser/DisqualifiedBidsPanel";
@@ -93,6 +99,9 @@ function App() {
           <Route path="aio" element={<AioAnalyserDashboard />} />
           <Route path="aio/bid/:id/downloads" element={<AioApprovedBidDownloads />} />
           <Route path="aio/bid/:id/approved-details" element={<AioApprovedBiddingDetails />} />
+          <Route path="toner" element={<TonerAnalyserDashboard />} />
+          <Route path="toner/bid/:id/downloads" element={<TonerApprovedBidDownloads />} />
+          <Route path="toner/bid/:id/approved-details" element={<TonerApprovedBiddingDetails />} />
           <Route path="workstation" element={<WorkstationAnalyserDashboard />} />
           <Route path="workstation/bid/:id/downloads" element={<WorkstationApprovedBidDownloads />} />
           <Route path="workstation/bid/:id/approved-details" element={<WorkstationApprovedBiddingDetails />} />
@@ -101,7 +110,6 @@ function App() {
           <Route path="printer/bid/:id/approved-details" element={<ApprovedBiddingDetails />} />
           <Route path="disqualified-bids" element={<DisqualifiedBidsPanel showProductFilter />} />
           <Route path="bid-not-participated" element={<BidNotParticipated />} />
-          <Route path="toner" element={<ComingSoon product="Toner" />} />
         </Route>
 
         <Route path="/analyser-dashboard/product" element={<AnalyserProductsPage />} />
@@ -109,6 +117,8 @@ function App() {
         <Route path="/analyser-dashboard/desktop/bid/:id" element={<BidDetailView product="desktop" />} />
         <Route path="/analyser-dashboard/aio/bid/:id" element={<AioBidDetailView />} />
         <Route path="/analyser-dashboard/aio/document" element={<AioAnalyserDocument />} />
+        <Route path="/analyser-dashboard/toner/bid/:id" element={<TonerBidDetailView />} />
+        <Route path="/analyser-dashboard/toner/document" element={<TonerAnalyserDocument />} />
         <Route path="/analyser-dashboard/workstation/bid/:id" element={<WorkstationBidDetailView />} />
         <Route path="/analyser-dashboard/workstation/bid/:id/documents" element={<WorkstationAnalyserDocument />} />
         <Route path="/analyser-dashboard/printer/bid/:id" element={<PrinterBidDetailView />} />
@@ -136,10 +146,12 @@ function App() {
 
         <Route path="/admin-dashboard/desktop-bid-approval" element={<DesktopBidApproval />} />
         <Route path="/admin-dashboard/aio-bid-approval" element={<AioBidApproval />} />
+        <Route path="/admin-dashboard/toner-bid-approval" element={<TonerBidApproval />} />
         <Route path="/admin-dashboard/workstation-bid-approval" element={<WorkstationBidApproval />} />
         <Route path="/admin-dashboard/printer-bid-approval" element={<PrinterBidApproval />} />
         <Route path="/desktop-bid-approval" element={<Navigate to="/admin-dashboard/desktop-bid-approval" replace />} />
         <Route path="/aio-bid-approval" element={<Navigate to="/admin-dashboard/aio-bid-approval" replace />} />
+        <Route path="/toner-bid-approval" element={<Navigate to="/admin-dashboard/toner-bid-approval" replace />} />
         <Route path="/workstation-bid-approval" element={<Navigate to="/admin-dashboard/workstation-bid-approval" replace />} />
         <Route path="/printer-bid-approval" element={<Navigate to="/admin-dashboard/printer-bid-approval" replace />} />
         <Route path="/print-doc/:product/:bidId/:docType" element={<DocumentPrintView />} />

@@ -6,10 +6,17 @@ const API_BASE = import.meta.env.VITE_API_URL;
 // Origin deliberately left out per that sheet's own note.
 export const BRANDS = ["HP", "Canon", "Brother", "Epson", "Samsung", "Xerox", "Ricoh", "Kyocera", "Acxxel", "Nargle"];
 export const CARTRIDGE_TYPES = ["Toner Cartridge", "Laser Toner", "Colour Toner"];
+export const PRODUCT_CLASSES = ["OEM", "Compatible"];
 export const COLOURS = ["Black", "Cyan", "Magenta", "Yellow", "All Colour"];
 export const TECHNOLOGIES = ["Laser"];
 export const PAGE_YIELDS = ["1,000", "1,500", "2,000", "2,500", "3,000", "5,000", "10,000", "30,000", "30,000+ Pages"];
-export const YIELD_STANDARDS = ["ISO/IEC 19752", "ISO/IEC 19798", "ISO/IEC 24711", "Manufacturer Rated"];
+export const YIELD_STANDARDS = [
+  "ISO 9001", "ISO 14001", "ISO 45001", "ISO/IEC 19752", "ISO/IEC 19798", "ISO/IEC 29102",
+  "ISO/IEC 28360", "ISO/IEC 27001", "ISO/IEC 17025", "ISO/IEC 24711", "CE Marking",
+  "RoHS (2011/65/EU)", "REACH", "WEEE Directive", "FCC", "BIS/ISI Mark", "CPSIA",
+  "UL Certification", "TÜV Mark", "GS Mark", "CB Scheme Certificate", "Energy Star", "EPEAT",
+  "FSC Certification", "ISTA Certification", "BIS CRS", "E-Waste EPR Registration", "Manufacturer Rated",
+];
 export const CHIPS = ["With Chip", "Without Chip"];
 export const PRINT_COVERAGES = ["5%"];
 export const WARRANTIES = ["6 Months", "1 Year", "2 Years", "3 Years", "5 Years"];
@@ -20,7 +27,7 @@ export const REPLACEMENT_POLICIES = ["7 Days", "15 Days", "30 Days", "Defective 
 export const YES_NO = ["Yes", "No"];
 
 const INITIAL_FORM = {
-  brand: "", cartridge_type: "", colour: "", compatibility: "", technology: "",
+  brand: "", cartridge_type: "", product_class: "", colour: "", compatibility: "", technology: "",
   page_yield: "", yield_standard: "", chip: "", print_coverage: "",
   warranty: "", warranty_type: "", refillable: "", qty_per_pack: "",
   hsn_code: "", compliance: "", replacement_policy: "",
@@ -140,6 +147,7 @@ export default function TonerConfig({ bidData, onBack, onNext }) {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4">
           <SelectField label="Brand" name="brand" options={BRANDS} required />
           <SelectField label="Cartridge Type" name="cartridge_type" options={CARTRIDGE_TYPES} required />
+          <SelectField label="Product Class" name="product_class" options={PRODUCT_CLASSES} required />
           <SelectField label="Colour" name="colour" options={COLOURS} required />
 
           <div className="col-span-1 md:col-span-3">

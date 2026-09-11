@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import TonerConfig from "./TonerConfig";
+import TonerBidSummary from "./TonerBidSummary";
+import TonerDocument from "./TonerDocument";
 
 const API_BASE = import.meta.env.VITE_API_URL;
 const DATA_KEY = "toner_bid_data";
@@ -13,8 +15,8 @@ const Input = (props) => <input {...props} className="w-full bg-white border bor
 // resumes on the next "Create Toner Bid" click.
 const clearBidStorage = () => { localStorage.removeItem(DATA_KEY); localStorage.removeItem(STEP_KEY); };
 
-// Only 2 steps for now (Create Bid info -> Config) — same shape as AIO's
-// flow, just stopped short before Summary/Documents until those are built.
+// Same 4-step shape as AIO's CreateAioBid.jsx: Create Bid info -> Config ->
+// Summary -> Documents.
 export default function CreateTonerBid() {
   const [step, setStep] = useState(() => Number(localStorage.getItem(STEP_KEY)) || 1);
   const [data, setData] = useState(() => { try { return JSON.parse(localStorage.getItem(DATA_KEY)) || {}; } catch { return {}; } });
@@ -44,17 +46,17 @@ export default function CreateTonerBid() {
     clearBidStorage();
     window.history.back();
   };
-  const done = () => { clearBidStorage(); alert("Toner Bid Configuration Saved Successfully"); window.location.href = "/user"; };
+  const done = () => { clearBidStorage(); alert("Toner Bid Created Successfully"); window.location.href = "/user"; };
 
   return <div className="min-h-screen bg-[#f8fafc] flex flex-col font-sans">
     <div className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-gray-200 px-8 py-4 shadow-sm">
       <div className="max-w-[1750px] mx-auto flex items-center justify-between">
-        <div className="flex items-center gap-6"><button type="button" onClick={back} className="flex items-center px-3 py-1.5 rounded-md border border-gray-300 bg-white text-gray-700 text-sm font-semibold hover:bg-slate-800 hover:text-white shadow-sm">Back</button><span className="text-lg font-black text-gray-900 tracking-tight">Create New Bid</span><div className="h-6 w-px bg-gray-200"/><span className="text-blue-600 font-bold text-sm">Step {step} of 2</span></div>
-        <div className="w-1/3 h-[6px] bg-gray-100 rounded-full overflow-hidden"><div className="h-full bg-blue-600 transition-all duration-500" style={{ width: `${step * 50}%` }}/></div>
+        <div className="flex items-center gap-6"><button type="button" onClick={back} className="flex items-center px-3 py-1.5 rounded-md border border-gray-300 bg-white text-gray-700 text-sm font-semibold hover:bg-slate-800 hover:text-white shadow-sm">Back</button><span className="text-lg font-black text-gray-900 tracking-tight">Create New Bid</span><div className="h-6 w-px bg-gray-200"/><span className="text-blue-600 font-bold text-sm">Step {step} of 4</span></div>
+        <div className="w-1/3 h-[6px] bg-gray-100 rounded-full overflow-hidden"><div className="h-full bg-blue-600 transition-all duration-500" style={{ width: `${step * 25}%` }}/></div>
       </div>
     </div>
     <div className="flex-1 w-full max-w-[1750px] mx-auto p-8 flex justify-center items-start">
-      {step === 1 && <Basic saved={sessionStarted ? data : {}} onNext={next}/>} {step === 2 && <TonerConfig bidData={data} onBack={() => setStep(1)} onNext={done}/>}
+      {step === 1 && <Basic saved={sessionStarted ? data : {}} onNext={next}/>} {step === 2 && <TonerConfig bidData={data} onBack={() => setStep(1)} onNext={next}/>} {step === 3 && <TonerBidSummary bidData={data} onBack={() => setStep(2)} onNext={next}/>} {step === 4 && <TonerDocument bidData={data} onBack={() => setStep(3)} onSuccess={done}/>}
     </div>
   </div>;
 }

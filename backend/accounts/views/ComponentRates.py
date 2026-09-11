@@ -14,7 +14,7 @@ from reportlab.platypus import LongTable, Paragraph, SimpleDocTemplate, TableSty
 from ..models import ComponentRate, ComponentRateHistory
 
 
-VALID_PRODUCTS = {"desktop", "workstation", "aio"}
+VALID_PRODUCTS = {"desktop", "workstation", "aio", "toner"}
 
 
 def _serialize(rate):
