@@ -146,9 +146,9 @@ export default function TonerConfig({ bidData, onBack, onNext }) {
       <form onSubmit={handleSubmit}>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4">
           <SelectField label="Brand" name="brand" options={BRANDS} required />
-          <SelectField label="Cartridge Type" name="cartridge_type" options={CARTRIDGE_TYPES} required />
-          <SelectField label="Product Class" name="product_class" options={PRODUCT_CLASSES} required />
-          <SelectField label="Colour" name="colour" options={COLOURS} required />
+          <SelectField label="Type of Cartridge" name="cartridge_type" options={CARTRIDGE_TYPES} required />
+          <SelectField label="Product Class of Cartridge" name="product_class" options={PRODUCT_CLASSES} required />
+          <SelectField label="Colour of Ink" name="colour" options={COLOURS} required />
 
           <div className="col-span-1 md:col-span-3">
             <div className="flex items-center gap-2 mb-1">
@@ -167,7 +167,6 @@ export default function TonerConfig({ bidData, onBack, onNext }) {
 
           <SelectField label="Technology" name="technology" options={TECHNOLOGIES} required />
           <SelectField label="Page Yield" name="page_yield" options={PAGE_YIELDS} required />
-          <SelectField label="Yield Standard" name="yield_standard" options={YIELD_STANDARDS} required />
           <SelectField label="Chip" name="chip" options={CHIPS} required />
           <SelectField label="Print Coverage" name="print_coverage" options={PRINT_COVERAGES} optional />
           <SelectField label="Warranty" name="warranty" options={WARRANTIES} required />
@@ -230,7 +229,7 @@ export default function TonerConfig({ bidData, onBack, onNext }) {
             disabled={saving}
             className="mt-8 mb-10 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold px-8 py-2.5 rounded-md text-sm transition shadow-lg active:scale-95 whitespace-nowrap"
           >
-            {saving ? "Saving..." : "Save Configuration"}
+            {saving ? "Saving..." : "View Bid Products at a Glance"}
           </button>
         </div>
       </form>

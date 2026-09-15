@@ -34,13 +34,20 @@ const OMIT_FIELDS = new Set([
   "gstin_number", "gst_number", "gstin",
 ]);
 
+// Synced address/department text sometimes carries a stray "?" left behind by a
+// mis-decoded dash or bullet character; strip it out rather than show it.
+function cleanText(value) {
+  if (!value) return "";
+  return value.replace(/\s*\?\s*/g, " ").replace(/\s+/g, " ").trim();
+}
+
 function Recipient({ bid }) {
   return (
     <div className="recipient">
       <strong>To,</strong>
-      <strong>{bid.dept_name || ""}</strong>
-      <strong>{bid.organization || ""}</strong>
-      <strong>{bid.address || ""}{bid.pincode ? `, ${bid.pincode}` : ""}</strong>
+      <strong>{cleanText(bid.dept_name)}</strong>
+      <strong>{cleanText(bid.organization)}</strong>
+      <strong>{cleanText(bid.address)}{bid.pincode ? `, ${bid.pincode}` : ""}</strong>
     </div>
   );
 }

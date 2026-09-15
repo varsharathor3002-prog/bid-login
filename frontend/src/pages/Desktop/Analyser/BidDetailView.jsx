@@ -141,7 +141,15 @@ function GeneralDocsViewPopup({ form }) {
     setGeneratingDocs((prev) => ({ ...prev, [docId]: true }));
     try {
       const pdfUrl = await getGeneratedPdfUrl(docId);
-      window.open(pdfUrl, "_blank", "noopener,noreferrer");
+      // Fetch fresh bytes (bypassing any HTTP/browser cache) and open as a
+      // blob URL instead of window.open(pdfUrl) directly — otherwise a
+      // previously-viewed doc_type at a stale URL can render cached content
+      // in the new tab even though the server just generated fresh output.
+      const fileResponse = await fetch(pdfUrl, { cache: "no-store" });
+      if (!fileResponse.ok) throw new Error("Unable to open document.");
+      const blob = await fileResponse.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      window.open(blobUrl, "_blank", "noopener,noreferrer");
     } catch (error) {
       alert(error.message || "Unable to open document.");
     } finally {
@@ -1281,7 +1289,7 @@ export default function BidDetailView({ product = "desktop" }) {
               disabled={gemStarting}
               className="ml-auto bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white font-semibold px-6 py-2.5 rounded-md text-sm transition"
             >
-              {gemStarting ? "Opening GeM..." : "Upload to GeM"}
+              {gemStarting ? "Opening GeM..." : "Upload to GeM Portal"}
             </button>
           )}
         </div>

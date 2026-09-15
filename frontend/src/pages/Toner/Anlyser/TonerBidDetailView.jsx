@@ -7,6 +7,11 @@ import {
   PAGE_YIELDS, YIELD_STANDARDS, CHIPS, PRINT_COVERAGES, WARRANTIES,
   WARRANTY_TYPES, QTY_PER_PACKS, COMPLIANCES, REPLACEMENT_POLICIES, YES_NO,
 } from "../User/TonerConfig";
+import iso9001Pdf from "../../../assets/9001.pdf?url";
+import iso14001Pdf from "../../../assets/14001.pdf?url";
+import iso19752Pdf from "../../../assets/ISO IEC 19752.pdf?url";
+import iso19798Pdf from "../../../assets/ISO IEC 19798.pdf?url";
+import iso27001Pdf from "../../../assets/ISO 27001.pdf?url";
 
 const API_BASE = import.meta.env.VITE_API_URL;
 
@@ -26,12 +31,30 @@ const GENERAL_DOCS = [
   { id: "preloaded_os", label: "PRELOADED OPERATING SYSTEM" },
 ];
 
+// Same source list as the User side's Document Upload step (TonerDocument.jsx)
+// — only these standards have a signed certificate PDF in src/assets so far.
+const YIELD_CERT_FILES = {
+  "ISO 9001": iso9001Pdf,
+  "ISO 14001": iso14001Pdf,
+  "ISO/IEC 19752": iso19752Pdf,
+  "ISO/IEC 19798": iso19798Pdf,
+  "ISO/IEC 27001": iso27001Pdf,
+};
+const slugify = (label) => label.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+const YIELD_STANDARD_DOCS = YIELD_STANDARDS.map((label) => ({
+  id: slugify(label),
+  label,
+  file: YIELD_CERT_FILES[label] || null,
+}));
+
 // Mirrors TonerConfig.jsx's own required/optional split — Print Coverage
 // and Compliance are marked *Optional there, so they stay out of this list.
+// Yield Standard dropped out entirely along with the Config field — the
+// bidder now sends certificates instead of picking one from a list.
 const REQUIRED_FIELDS = [
   "bid_no", "dept_name", "organization", "qty", "pincode", "address", "atc",
   "brand", "cartridge_type", "product_class", "colour", "compatibility", "technology",
-  "page_yield", "yield_standard", "chip", "warranty", "warranty_type",
+  "page_yield", "chip", "warranty", "warranty_type",
   "refillable", "qty_per_pack", "hsn_code", "replacement_policy", "date",
 ];
 
@@ -225,6 +248,93 @@ function GeneralDocsViewPopup({ form }) {
                 })
               ) : (
                 <div className="p-8 text-center text-gray-500 text-sm">No documents selected.</div>
+              )}
+            </div>
+            <div className="px-4 py-2 border-t border-gray-100 bg-gray-50 flex justify-end">
+              <button type="button" onClick={() => setOpen(false)} className="text-xs text-gray-500 hover:text-gray-700 font-medium px-3 py-1 rounded hover:bg-gray-200 transition">
+                Close Panel
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function YieldDocsViewPopup({ form }) {
+  const [open, setOpen] = useState(false);
+
+  const selectedIds = parseList(form?.selected_yield_standard_docs);
+  const docs = YIELD_STANDARD_DOCS.filter((doc) => selectedIds.includes(doc.id));
+  const selectedCount = docs.length;
+
+  // Certificate is a static file bundled in src/assets — open/download it
+  // directly, no backend generation round-trip like the general docs.
+  const handleDownload = (doc) => {
+    const link = document.createElement("a");
+    link.href = doc.file;
+    link.download = `${doc.id}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  };
+
+  return (
+    <div className="relative w-full">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={`w-full flex items-center justify-between p-4 rounded-lg border transition-all duration-200 group ${
+          open ? "bg-emerald-50 border-emerald-500 ring-1 ring-emerald-500" : "bg-white border-gray-200 hover:border-emerald-400 hover:shadow-md"
+        }`}
+      >
+        <div className="flex items-center gap-3">
+          <div className={`p-2 rounded-full ${open ? "bg-emerald-200 text-emerald-700" : "bg-emerald-100 text-emerald-600 group-hover:bg-emerald-200"}`}>📜</div>
+          <div className="text-left">
+            <div className="text-sm font-bold text-gray-800">Yield Standard Certificates</div>
+            <div className="text-xs text-gray-500">{selectedCount > 0 ? "Click to view selected certificates" : "No certificates selected"}</div>
+          </div>
+        </div>
+        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${selectedCount > 0 ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"}`}>
+          {selectedCount} Items
+        </span>
+      </button>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute top-full left-0 right-0 mt-2 z-50 w-full bg-white border border-gray-200 rounded-xl shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 bg-emerald-50 border-b border-emerald-100">
+              <span className="text-sm font-semibold text-emerald-800">Selected Yield Standard Certificates</span>
+              <span className="text-xs font-semibold px-2 py-[2px] rounded-full bg-green-100 text-green-700">{selectedCount} Total</span>
+            </div>
+            <div className="divide-y divide-gray-100 max-h-[320px] overflow-y-auto">
+              {docs.length > 0 ? (
+                docs.map((doc) => (
+                  <div key={doc.id} className="flex items-center gap-3 px-4 py-3 transition-colors bg-white hover:bg-green-50">
+                    <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 bg-green-500 text-white">✓</div>
+                    <span className="flex-1 text-sm text-gray-800 font-medium">{doc.label}</span>
+                    <div className="flex items-center gap-2">
+                      {doc.file ? (
+                        <>
+                          <a href={doc.file} target="_blank" rel="noreferrer"
+                            className="px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 transition">
+                            View File
+                          </a>
+                          <button type="button" onClick={() => handleDownload(doc)}
+                            className="px-3 py-1.5 text-xs font-medium text-white bg-green-600 rounded hover:bg-green-700 shadow-sm transition">
+                            Download
+                          </button>
+                        </>
+                      ) : (
+                        <span className="px-3 py-1.5 text-xs font-medium text-gray-400">Certificate not uploaded yet</span>
+                      )}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="p-8 text-center text-gray-500 text-sm">No certificates selected.</div>
               )}
             </div>
             <div className="px-4 py-2 border-t border-gray-100 bg-gray-50 flex justify-end">
@@ -640,7 +750,7 @@ export default function TonerBidDetailView() {
 
         <div className="md:col-span-2 lg:col-span-3">
           <Label>Compliance Documents</Label>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {form.atc_special_document ? (
               <SpecialDocView form={form} />
             ) : (
@@ -649,6 +759,7 @@ export default function TonerBidDetailView() {
               </div>
             )}
             <GeneralDocsViewPopup form={form} />
+            <YieldDocsViewPopup form={form} />
           </div>
         </div>
 
@@ -656,15 +767,15 @@ export default function TonerBidDetailView() {
           <Select name="brand" options={BRANDS} />
         </VerifiedInputWrapper>
 
-        <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="cartridge_type" label="Cartridge Type">
+        <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="cartridge_type" label="Type of Cartridge">
           <Select name="cartridge_type" options={CARTRIDGE_TYPES} />
         </VerifiedInputWrapper>
 
-        <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="product_class" label="Product Class">
+        <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="product_class" label="Product Class of Cartridge">
           <Select name="product_class" options={PRODUCT_CLASSES} />
         </VerifiedInputWrapper>
 
-        <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="colour" label="Colour">
+        <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="colour" label="Colour of Ink">
           <Select name="colour" options={COLOURS} />
         </VerifiedInputWrapper>
 
@@ -680,10 +791,6 @@ export default function TonerBidDetailView() {
 
         <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="page_yield" label="Page Yield">
           <Select name="page_yield" options={PAGE_YIELDS} />
-        </VerifiedInputWrapper>
-
-        <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="yield_standard" label="Yield Standard">
-          <Select name="yield_standard" options={YIELD_STANDARDS} />
         </VerifiedInputWrapper>
 
         <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="chip" label="Chip">
@@ -771,7 +878,7 @@ export default function TonerBidDetailView() {
                 disabled={gemStarting}
                 className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white font-semibold px-6 py-2.5 rounded-md text-sm transition"
               >
-                Upload to GeM
+                Upload to GeM Portal
               </button>
             </div>
           </div>

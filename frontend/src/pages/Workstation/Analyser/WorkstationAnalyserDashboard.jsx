@@ -200,7 +200,7 @@ export default function WorkstationAnalyserDashboard() {
         </div>
       )}
 
-      <div className="w-full overflow-hidden">
+      <div className="w-full overflow-x-auto">
         <table className={`w-full table-fixed text-left border-separate border-spacing-0 [&_th]:!px-2 [&_td]:!px-2 ${activeTab === "gem-transfer" ? "min-w-[1000px]" : ""}`}>
           <colgroup>
             <col className={isApprovedView ? "w-[5%]" : "w-[6%]"} />
@@ -210,7 +210,7 @@ export default function WorkstationAnalyserDashboard() {
             <col className={isApprovedView ? "w-[12%]" : "w-[15%]"} />
             <col className={isApprovedView ? "w-[11%]" : "w-[13%]"} />
             {!isApprovedView && <col className="w-[13%]" />}
-            <col className={activeTab === "gem-transfer" ? "w-[20%]" : isApprovedView ? "w-[10%]" : "w-[13%]"} />
+            <col className={activeTab === "gem-transfer" ? "w-[14%]" : isApprovedView ? "w-[10%]" : "w-[13%]"} />
             {isApprovedView && <col className="w-[14%]" />}
             {isApprovedView && <col className="w-[15%]" />}
             {activeTab === "approved" && <col className="w-[8%]" />}
@@ -330,10 +330,10 @@ export default function WorkstationAnalyserDashboard() {
                             ? window.open("https://sso.gem.gov.in/ARXSSO/oauth/doLogin", "_blank", "noopener,noreferrer")
                             : navigate(`/analyser-dashboard/workstation/bid/${bid.id}`, { state: { bid, readOnly: true } })}
                           className={activeTab === "gem-transfer"
-                            ? "bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-6 py-2.5 rounded-md text-sm transition whitespace-nowrap"
+                            ? "bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-3 py-2 rounded-md text-[11px] transition whitespace-nowrap"
                             : "bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded text-[11px] font-bold uppercase tracking-widest shadow-sm transition-all whitespace-nowrap"}
                         >
-                          {activeTab === "gem-transfer" ? "Upload to GeM" : "View"}
+                          {activeTab === "gem-transfer" ? "Upload to GeM Portal" : "View"}
                         </button>
                       ) : (
                         <button

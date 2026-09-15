@@ -1379,11 +1379,23 @@ def generate_workstation_certificates(request, bid_id):
             flags=re.IGNORECASE,
         ).strip(" ,;-")
         pincode = (bid.pincode or "").strip()
-        full_address = f"{address} - {pincode}" if pincode else address
+        full_address = address
         service_recipient = [
             re.sub(r"\s+", " ", value).strip().upper()
             for value in (dept_name, organization, full_address)
         ]
+
+        def _wrap_recipient_line(text, fontsize, max_width, fontname="hebo"):
+            # Same word/comma-aware wrap as the MAF certificate's recipient
+            # block (fix_manufacturer_auth_page, above) — a long address used
+            # to just get drawn as one line running off the page's right
+            # margin. Wraps at comma boundaries so a two-word state name
+            # like "Uttar Pradesh" never gets split mid-phrase. Delegates to
+            # the same wrapper AIO's own recipient blocks use instead of
+            # keeping a separate copy here, so the PIN/country tail trails
+            # onto the city's line whenever there's room for it.
+            from .Aio import _wrap_address_line
+            return _wrap_address_line(text, fitz, fontsize, max_width, fontname=fontname)
         model_number = (body.get("model_number") or body.get("model") or bid.model_number or "").strip()
         warranty_text = str(body.get("warranty") or bid.warranty or "").strip()
         local_content = str(body.get("local_content") or body.get("localContent") or "").strip()
@@ -1759,10 +1771,13 @@ def generate_workstation_certificates(request, bid_id):
 
             x = next_line.x0 if next_line else 48
             y = heading.y0
+            max_width = page.rect.width - 36 - x
             for value in ["To,", *service_recipient]:
                 if value:
-                    page.insert_text((x, y), value, fontsize=11 if value == "To," else 12, fontname="hebo", color=(0, 0, 0))
-                    y += 14
+                    fontsize = 11 if value == "To," else 12
+                    for ln in _wrap_recipient_line(value, fontsize, max_width):
+                        page.insert_text((x, y), ln, fontsize=fontsize, fontname="hebo", color=(0, 0, 0))
+                        y += 14
 
         def fix_service_support_page(page):
             remove_to_whomsoever_line(page)
@@ -1802,12 +1817,7 @@ def generate_workstation_certificates(request, bid_id):
                 )
                 page.apply_redactions(images=0, graphics=0)
                 x = 72
-                y = 148
-                for value in ["To,", *service_recipient]:
-                    if value:
-                        page.insert_text((x, y), value, fontsize=11.5, fontname="hebo", color=(0, 0, 0))
-                        y += 15
-                y += 14
+                max_width = page.rect.width - 36 - x
 
                 def _wrap(text, fontname, fontsize, max_width):
                     words = text.split(" "); out = []; cur = ""
@@ -1821,23 +1831,52 @@ def generate_workstation_certificates(request, bid_id):
                     if cur: out.append(cur)
                     return out
 
-                # Same size as "Escalation matrix..." below it (10.8) instead of
-                # shrinking to fit a fixed box — if the recipient block above
-                # pushed this paragraph down further than usual, the escalation
-                # heading is pushed down to match instead.
+                recipient_lines = []
+                for value in ["To,", *service_recipient]:
+                    if value:
+                        recipient_lines.extend(_wrap_recipient_line(value, 11.5, max_width))
                 fontsize = 10.8
-                max_width = (page.rect.width - 52) - x
-                wrapped = _wrap(
+                certify_max_width = (page.rect.width - 52) - x
+                certify_lines = _wrap(
                     "This is to certify that the acxxel Workstation offered in the bid carries an on-site "
                     "warranty as per the terms and conditions of the bid document.",
-                    "helv", fontsize, max_width,
+                    "helv", fontsize, certify_max_width,
                 )
-                line_h = fontsize * 1.24
+
+                # The escalation table below (drawn separately, at a fixed
+                # y=301) never moves, so this whole block — recipient lines,
+                # certify paragraph, then the "Escalation matrix..." heading
+                # — has to fit above it. A long wrapped address needs more
+                # lines than the template's original 1-line allowance, so
+                # pack everything tighter (never wider) instead of letting it
+                # run into the table below.
+                recipient_gap, para_gap, cert_line_h = 15, 14, fontsize * 1.24
+                bid_no_lines = 1 if (bid_no or bid_date_formatted) else 0
+                natural_height = (len(recipient_lines) + bid_no_lines) * recipient_gap + para_gap + len(certify_lines) * cert_line_h + 6 + 14
+                available_height = (301 - 14) - 148
+                if natural_height > available_height > 0:
+                    scale = available_height / natural_height
+                    recipient_gap = max(11.5, recipient_gap * scale)
+                    para_gap = max(10, para_gap * scale)
+                    cert_line_h = max(10.8, cert_line_h * scale)
+
+                y = 148
+                for ln in recipient_lines:
+                    page.insert_text((x, y), ln, fontsize=11.5, fontname="hebo", color=(0, 0, 0))
+                    y += recipient_gap
+                if bid_no or bid_date_formatted:
+                    page.insert_text(
+                        (x, y), f"Bid No: {bid_no or ''}    Dated: {bid_date_formatted or ''}",
+                        fontsize=11.5, fontname="hebo", color=(0, 0, 0),
+                    )
+                    y += recipient_gap
+                y += para_gap
+
                 certify_top = y
                 cy = certify_top
-                for ln in wrapped:
+                for ln in certify_lines:
                     page.insert_text((x, cy), ln, fontsize=fontsize, fontname="helv", color=(0, 0, 0))
-                    cy += line_h
+                    cy += cert_line_h
                 certify_bottom = cy
 
                 escalation_y = escalation.y1 + 14
@@ -1875,23 +1914,27 @@ def generate_workstation_certificates(request, bid_id):
                 page.apply_redactions(images=0, graphics=0)
 
                 y = y0 + 11
+                max_width = page.rect.width - 36 - x0
                 for value in service_recipient:
                     if value:
-                        page.insert_text((x0, y), value, fontsize=11.5, fontname="hebo", color=(0, 0, 0))
-                        y += 15
+                        for ln in _wrap_recipient_line(value, 11.5, max_width):
+                            page.insert_text((x0, y), ln, fontsize=11.5, fontname="hebo", color=(0, 0, 0))
+                            y += 15
 
         def fix_service_support_page_30(page):
-            page.add_redact_annot(fitz.Rect(68, 150, 360, 220), fill=(1, 1, 1))
+            values = ["To,", *service_recipient, f"Bid No: {bid_no}" if bid_no else ""]
+            max_width = page.rect.width - 36 - 72
+            wrapped_lines = [ln for value in values if value for ln in _wrap_recipient_line(value, 11.5, max_width)]
+            # 220 (the original fixed bottom) plus a little slack for one
+            # extra wrapped address line — stays clear of the "Service &
+            # Support" heading a bit further down the page.
+            box_bottom = min(228, 150 + max(70, len(wrapped_lines) * 15 + 16))
+            page.add_redact_annot(fitz.Rect(68, 150, page.rect.width - 36, box_bottom), fill=(1, 1, 1))
             page.apply_redactions(images=0, graphics=0)
             y = 166
-            for value in [
-                "To,",
-                *service_recipient,
-                f"Bid No: {bid_no}" if bid_no else "",
-            ]:
-                if value:
-                    page.insert_text((72, y), value, fontsize=11.5, fontname="hebo", color=(0, 0, 0))
-                    y += 15
+            for ln in wrapped_lines:
+                page.insert_text((72, y), ln, fontsize=11.5, fontname="hebo", color=(0, 0, 0))
+                y += 15
             # The "As per the Buyer ATC..." heading, the quoted availability
             # paragraph, the on-site closing paragraph, and the signature block
             # below it are all redrawn together by the shared
@@ -2037,6 +2080,14 @@ def generate_workstation_certificates(request, bid_id):
                         # under GeM Bid No. - ..." sentence) gets swept up and
                         # erased here too, before the doc-specific handler ever
                         # gets to redraw it.
+                        # Narrow to the matched text's own width (plus a
+                        # margin for the new value being a bit longer/
+                        # shorter), not the full page width — a full-width
+                        # rect at this y erases anything else sharing that
+                        # row, like the last line of a wrapped address that
+                        # a long dept_name/organization/address pushed down
+                        # far enough to land at the same height by
+                        # coincidence.
                         tender_line_rects.append(fitz.Rect(bbox.x0 - 2, bbox.y0 - 3, page.rect.width - 36, bbox.y1 + 4))
                         if first_rect is None:
                             first_rect = bbox
@@ -2077,22 +2128,151 @@ def generate_workstation_certificates(request, bid_id):
                 if block.get("type") != 0:
                     continue
                 for line in block.get("lines", []):
-                    text = " ".join(span.get("text", "") for span in line.get("spans", [])).strip()
+                    spans = line.get("spans", [])
+                    text = " ".join(span.get("text", "") for span in spans).strip()
                     if text:
-                        lines.append((fitz.Rect(line["bbox"]), text))
+                        line_size = spans[0].get("size", 11) if spans else 11
+                        line_bold = bool(spans[0].get("flags", 0) & 16) if spans else True
+                        lines.append((fitz.Rect(line["bbox"]), text, line_size, line_bold))
             lines.sort(key=lambda item: (item[0].y0, item[0].x0))
-            anchor = next((bbox for bbox, text in lines if text.strip().rstrip(",").lower() == "to"), None)
+            anchor = next((bbox for bbox, text, _size, _bold in lines if text.strip().rstrip(",").lower() == "to"), None)
             if not anchor:
                 return
-            next_anchor = next((bbox for bbox, text in lines if bbox.y0 > anchor.y0 and re.search(r"(Tender|Bid)\s*No|Subject|Dear", text, re.IGNORECASE)), None)
+            next_anchor = next((bbox for bbox, text, _size, _bold in lines if bbox.y0 > anchor.y0 and re.search(r"(Tender|Bid)\s*No|Subject|Dear", text, re.IGNORECASE)), None)
+
+            # The template only ever left room for its own short sample
+            # recipient block before that marker (and everything below it) —
+            # a longer dept_name/organization/wrapped-address combo can need
+            # more lines than that. Push the marker, and everything below it
+            # down the page, by however much extra room is needed, instead
+            # of cramming the new lines into whatever space was left.
+            if next_anchor is not None:
+                tail_lines_raw = [(bbox, text, size, bold) for bbox, text, size, bold in lines if bbox.y0 >= next_anchor.y0]
+                tail_lines_raw.sort(key=lambda item: item[0].y0)
+                row_groups = []
+                for bbox, text, size, bold in tail_lines_raw:
+                    if row_groups and abs(bbox.y0 - row_groups[-1][0]) <= 3:
+                        row_groups[-1][1].append((bbox, text, size, bold))
+                    else:
+                        row_groups.append([bbox.y0, [(bbox, text, size, bold)]])
+                tail_lines = []
+                for _, members in row_groups:
+                    # Always read left-to-right within a row, regardless of
+                    # which fragment's y0 happened to sort first (a bold
+                    # word-replacement can measure a fraction of a point off
+                    # from the plain text around it).
+                    members.sort(key=lambda m: m[0].x0)
+                    merged_rect = fitz.Rect(
+                        min(m[0].x0 for m in members), min(m[0].y0 for m in members),
+                        max(m[0].x1 for m in members), max(m[0].y1 for m in members),
+                    )
+                    # Smallest size among the row's fragments, and bold only
+                    # if every fragment was bold — a wrapped body paragraph
+                    # (regular weight, e.g. Preloaded OS's intro sentence)
+                    # redrawn at a flat bold 11pt (both bigger and wider than
+                    # its own original regular font) can overflow off the
+                    # page edge.
+                    row_size = min(m[2] for m in members)
+                    row_bold = all(m[3] for m in members)
+                    tail_lines.append((merged_rect, " ".join(m[1] for m in members), row_size, row_bold))
+                tail_bottom = max((rect.y1 for rect, _, _, _ in tail_lines), default=next_anchor.y1)
+                sig_bytes = sig_rect = None
+                for img in page.get_images(full=True):
+                    for r in page.get_image_rects(img[0]):
+                        if r.y0 >= next_anchor.y0 - 5 and (r.x1 - r.x0) < 300:
+                            sig_bytes = page.parent.extract_image(img[0]).get("image")
+                            sig_rect = r
+                            break
+                    if sig_bytes:
+                        break
+
+                approx_lines = sum(
+                    max(1, int(fitz.get_text_length(v, fontname="helv", fontsize=11) / (page.rect.width - 36 - anchor.x0)) + 1)
+                    for v in [dept_name, organization, full_address] if v
+                )
+                needed_height = approx_lines * 15
+                available_height = next_anchor.y0 - 4 - (anchor.y1 + 16)
+                # Always re-anchor the marker (and everything below it) to sit
+                # just past the actual recipient block, not only when it needs
+                # *more* room than the template's own sample content left —
+                # a short dept_name/organization/address (fewer lines than the
+                # template's sample) used to leave the marker stranded at the
+                # template's original position, well below where the real
+                # content actually ends.
+                delta = (needed_height - available_height) + 10
+                if abs(delta) > 1:
+                    erase_bottom = max(tail_bottom, sig_rect.y1 if sig_rect is not None else tail_bottom) + 4
+                    # Left edge of the erase box has to reach the leftmost
+                    # x0 actually among the tail lines, not just anchor.x0 —
+                    # a signature block ("Name:-.../Designation:-...") can
+                    # start further left than "To,", and clipping the erase
+                    # box to anchor.x0 leaves each of those lines' first
+                    # character behind as a stray leftover glyph.
+                    erase_left = min([anchor.x0] + [rect.x0 for rect, _, _, _ in tail_lines]) - 3
+                    page.add_redact_annot(fitz.Rect(erase_left, next_anchor.y0 - 2, page.rect.width - 32, erase_bottom), fill=(1, 1, 1))
+                    page.apply_redactions(images=0, graphics=0)
+                    # Redraw each pushed line at its own original size and
+                    # weight, not a flat 11pt bold — a wrapped body paragraph
+                    # (e.g. Preloaded OS's "You may kindly take reference..."
+                    # intro) was sized to just fit the page width at its own
+                    # (usually smaller, regular-weight) font; forcing it to
+                    # 11pt bold here widens it past the page edge. And the
+                    # template's own text is set in an embedded font
+                    # (Calibri, a CIDFont subset, ...) with no exact base-14
+                    # equivalent — helv/hebo at the "same" size can still
+                    # measure wider than the original did, so a line that
+                    # already spanned right up to the template's own margin
+                    # needs shrinking a touch to still fit.
+                    for rect, text, line_size, line_bold in tail_lines:
+                        fontname = "hebo" if line_bold else "helv"
+                        max_line_width = page.rect.width - 36 - rect.x0
+                        draw_size = line_size
+                        while draw_size > 6 and fitz.get_text_length(text, fontname=fontname, fontsize=draw_size) > max_line_width:
+                            draw_size -= 0.25
+                        page.insert_text((rect.x0, rect.y1 + delta), text, fontsize=draw_size, fontname=fontname, color=(0, 0, 0))
+                    if sig_bytes and sig_rect is not None:
+                        page.insert_image(
+                            fitz.Rect(sig_rect.x0, sig_rect.y0 + delta, sig_rect.x1, sig_rect.y1 + delta),
+                            stream=sig_bytes, keep_proportion=False,
+                        )
+                    next_anchor = fitz.Rect(next_anchor.x0, next_anchor.y0 + delta, next_anchor.x1, next_anchor.y1 + delta)
+
             if next_anchor:
                 page.add_redact_annot(fitz.Rect(anchor.x0, anchor.y1 + 2, page.rect.width - 36, next_anchor.y0 - 4), fill=(1, 1, 1))
                 page.apply_redactions()
             y = anchor.y1 + 16
+            max_width = page.rect.width - 36 - anchor.x0
+
+            # A long organization/address value used to just get drawn as one
+            # unwrapped line running off the page's right margin — wrap it by
+            # hand across as many lines as it actually needs instead. Reuses
+            # the same wrapper every other recipient block in these
+            # certificates uses (AIO's own MAF/Warranty/Service Support
+            # blocks) instead of keeping a separate copy here.
+            from .Aio import _wrap_address_line
+            all_lines = []
             for value in [dept_name, organization, full_address]:
                 if value:
-                    page.insert_text((anchor.x0, y), value, fontsize=11, fontname="hebo", color=(0, 0, 0))
-                    y += 15
+                    all_lines.extend(_wrap_address_line(value, fitz, 11, max_width, fontname="helv"))
+
+            # The template's own stale "Bid No/Dated" placeholder sits just
+            # below this block (untouched here on purpose, so
+            # force_tender_no_date can find and replace it afterwards) — if a
+            # long wrapped address needs more lines than the template's
+            # original 1-line allowance, pack the lines tighter instead of
+            # letting the last one land on top of that placeholder (their
+            # text would get merged into one PDF "line" and both erased
+            # together the next time that placeholder is redacted).
+            line_h = 15
+            if next_anchor is not None and all_lines:
+                available = (next_anchor.y0 - 4) - y
+                needed = len(all_lines) * line_h
+                if needed > available > 0:
+                    line_h = max(11, available / len(all_lines))
+
+            for ln in all_lines:
+                page.insert_text((anchor.x0, y), ln, fontsize=11, fontname="hebo", color=(0, 0, 0))
+                y += line_h
 
         def update_make_in_india(page):
             # Same approach as AIO's _fill_make_in_india_page (Aio.py) — find the
@@ -2550,12 +2730,12 @@ def generate_workstation_certificates(request, bid_id):
                     page.insert_text((304, 92), f"Model: {model_number}", fontsize=8.5, fontname="hebo", color=(0, 0, 0))
 
         def rewrite_warranty(page):
-            formatted_model = model_number or "quoted model"
+            normalized_warranty = specs['warranty_text'] or 'standard warranty'
             paragraph = (
-                "This is to certify that Laps N Tabs Technology Pvt. Ltd. is the OEM of acxxel "
-                f"Workstation Brand and will provide comprehensive warranty during entire standard "
-                f"warranty period i.e. {specs['warranty_text'] or 'standard warranty'} for quoted "
-                f"acxxel Workstation {formatted_model}, if the said bid award to us."
+                "This is to certify that the acxxel Workstation offered in the bid carries an "
+                f"on-site warranty during the entire standard warranty period, i.e. {normalized_warranty}, "
+                "as per the terms and conditions of the bid document. Escalation matrix for "
+                "service support is as follows"
             )
             redact_and_write(page, (82, 314, page.rect.width - 42, 374), paragraph, fontsize=10.5)
             page.add_redact_annot(fitz.Rect(58, 392, page.rect.width - 60, 452), fill=(1, 1, 1))
@@ -2686,9 +2866,16 @@ def generate_workstation_certificates(request, bid_id):
                 fix_service_support_page(page)
                 from .Aio import _fill_service_support_escalation
                 _fill_service_support_escalation(page, fitz)
-                if original_page == 25:
-                    from .Aio import _add_service_support_bid_date
-                    _add_service_support_bid_date(page, fitz, bid_no, bid_date_formatted)
+                # Note: _add_service_support_bid_date is deliberately NOT
+                # called here — fix_service_support_page's own "escalation"
+                # branch (above) already redraws the "To,"/recipient block,
+                # the certify paragraph, and the escalation heading as one
+                # unit, correctly leaving room above the fixed-position
+                # escalation table below. Re-running _add_service_support_
+                # bid_date afterwards would just re-detect and reprocess
+                # that same already-correct text using AIO's own layout
+                # assumptions, which don't know about this table's position
+                # and would push the heading down into it.
                 if original_page == 29:
                     add_service_support_table_note(page)
                 if original_page == 30:
@@ -2752,9 +2939,13 @@ def generate_workstation_certificates(request, bid_id):
                         replace_exact(page, match, model_number, fontsize=10)
             if doc_type == "manufacturer_auth" and original_page == 2:
                 fix_manufacturer_auth_page(page)
-            if doc_type == "manufacturer_auth":
+            if doc_type == "manufacturer_auth" and original_page != 2:
                 # Keep buyer/department names exactly as entered. Brand-name
                 # normalization is only intended for the certificate body.
+                # Page 2 (fix_manufacturer_auth_page, above) deliberately
+                # spells out "ACXXEL" in caps as its own call-out — same as
+                # Desktop/AIO's identical shared body text — so it's skipped
+                # here instead of being lowercased right back.
                 lowercase_acxxel(page, min_y=230)
             if doc_type == "data_sheet":
                 fill_data_sheet_page(page, page_index)

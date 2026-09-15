@@ -811,7 +811,7 @@ export default function WorkstationBidDetailView() {
               </div>
               <button type="button" onClick={handleGemJobUpload} disabled={gemStarting}
                 className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white font-semibold px-6 py-2.5 rounded-md text-sm transition">
-                {gemStarting ? "Opening GeM..." : "Upload to GeM"}
+                {gemStarting ? "Opening GeM..." : "Upload to GeM Portal"}
               </button>
             </div>
           </div>

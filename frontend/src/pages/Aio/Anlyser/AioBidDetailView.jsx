@@ -846,7 +846,7 @@ export default function AioBidDetailView() {
                 disabled={gemStarting}
                 className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white font-semibold px-6 py-2.5 rounded-md text-sm transition"
               >
-                Upload to GeM
+                Upload to GeM Portal
               </button>
             </div>
           </div>
