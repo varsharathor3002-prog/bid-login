@@ -6,9 +6,9 @@
 // description fields the way AIO's pro_descp/software1/gp do).
 const CONFIG_FIELDS = [
   { key: "brand", label: "Brand" },
-  { key: "cartridge_type", label: "Cartridge Type" },
-  { key: "product_class", label: "Product Class" },
-  { key: "colour", label: "Colour" },
+  { key: "cartridge_type", label: "Type of Cartridge" },
+  { key: "product_class", label: "Product Class of Cartridge" },
+  { key: "colour", label: "Colour of Ink" },
   { key: "technology", label: "Technology" },
   { key: "compatibility", label: "Compatibility" },
   { key: "page_yield", label: "Page Yield" },

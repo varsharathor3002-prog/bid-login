@@ -6,16 +6,37 @@ import {
   PAGE_YIELDS, YIELD_STANDARDS, CHIPS, PRINT_COVERAGES, WARRANTIES,
   WARRANTY_TYPES, QTY_PER_PACKS, COMPLIANCES, REPLACEMENT_POLICIES, YES_NO,
 } from "../User/TonerConfig";
+import iso9001Pdf from "../../../assets/9001.pdf?url";
+import iso14001Pdf from "../../../assets/14001.pdf?url";
+import iso19752Pdf from "../../../assets/ISO IEC 19752.pdf?url";
+import iso19798Pdf from "../../../assets/ISO IEC 19798.pdf?url";
+import iso27001Pdf from "../../../assets/ISO 27001.pdf?url";
 
 const API_BASE = import.meta.env.VITE_API_URL;
 
 const SPEC_OPTIONS = {
   brand: BRANDS, cartridge_type: CARTRIDGE_TYPES, product_class: PRODUCT_CLASSES,
   colour: COLOURS, technology: TECHNOLOGIES, page_yield: PAGE_YIELDS,
-  yield_standard: YIELD_STANDARDS, chip: CHIPS, print_coverage: PRINT_COVERAGES,
+  chip: CHIPS, print_coverage: PRINT_COVERAGES,
   warranty: WARRANTIES, warranty_type: WARRANTY_TYPES, refillable: YES_NO,
   qty_per_pack: QTY_PER_PACKS, compliance: COMPLIANCES, replacement_policy: REPLACEMENT_POLICIES,
 };
+
+// Same source list as the User side's Document Upload step (TonerDocument.jsx)
+// — only these standards have a signed certificate PDF in src/assets so far.
+const YIELD_CERT_FILES = {
+  "ISO 9001": iso9001Pdf,
+  "ISO 14001": iso14001Pdf,
+  "ISO/IEC 19752": iso19752Pdf,
+  "ISO/IEC 19798": iso19798Pdf,
+  "ISO/IEC 27001": iso27001Pdf,
+};
+const slugify = (label) => label.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+const YIELD_STANDARD_DOCS = YIELD_STANDARDS.map((label) => ({
+  id: slugify(label),
+  label,
+  file: YIELD_CERT_FILES[label] || null,
+}));
 
 const toPrice = (value) => {
   const parsed = Number(String(value ?? "").replace(/,/g, "").trim());
@@ -218,6 +239,99 @@ function GeneralDocsViewPopup({ form }) {
               })
             ) : (
               <div className="p-8 text-center text-gray-500 text-sm">No documents selected.</div>
+            )}
+          </div>
+          <div className="px-4 py-2 border-t border-gray-100 bg-gray-50 flex justify-end">
+            <button type="button" onClick={() => setOpen(false)} className="text-xs text-gray-500 hover:text-gray-700 font-medium px-3 py-1 rounded hover:bg-gray-200 transition">
+              Close Panel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function YieldDocsViewPopup({ form }) {
+  const [open, setOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  const selectedIds = parseList(form?.selected_yield_standard_docs);
+  const docs = YIELD_STANDARD_DOCS.filter((doc) => selectedIds.includes(doc.id));
+  const selectedCount = docs.length;
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const handleOutsideClick = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", handleOutsideClick);
+    return () => document.removeEventListener("pointerdown", handleOutsideClick);
+  }, [open]);
+
+  // Certificate is a static file bundled in src/assets — open/download it
+  // directly, no backend generation round-trip like the general docs.
+  const handleDownload = (doc) => {
+    const link = document.createElement("a");
+    link.href = doc.file;
+    link.download = `${doc.id}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  };
+
+  return (
+    <div ref={dropdownRef} className="relative w-full">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={`w-full flex items-center justify-between p-4 rounded-lg border transition-all duration-200 group ${
+          open ? "bg-emerald-50 border-emerald-500 ring-1 ring-emerald-500" : "bg-white border-gray-200 hover:border-emerald-400 hover:shadow-md"
+        }`}
+      >
+        <div className="flex items-center gap-3">
+          <div className={`p-2 rounded-full ${open ? "bg-emerald-200 text-emerald-700" : "bg-emerald-100 text-emerald-600 group-hover:bg-emerald-200"}`}>📜</div>
+          <div className="text-left">
+            <div className="text-sm font-bold text-gray-800">Yield Standard Certificates</div>
+            <div className="text-xs text-gray-500">{selectedCount > 0 ? "Selected certificates" : "No certificates selected"}</div>
+          </div>
+        </div>
+        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${selectedCount > 0 ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"}`}>
+          {selectedCount} Items
+        </span>
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 right-0 mt-2 z-50 w-full bg-white border border-gray-200 rounded-xl shadow-2xl overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 bg-emerald-50 border-b border-emerald-100">
+            <span className="text-sm font-semibold text-emerald-800">Selected Yield Standard Certificates</span>
+            <span className="text-xs font-semibold px-2 py-[2px] rounded-full bg-green-100 text-green-700">{selectedCount} Total</span>
+          </div>
+          <div className="divide-y divide-gray-100 max-h-[320px] overflow-y-auto">
+            {docs.length > 0 ? (
+              docs.map((doc) => (
+                <div key={doc.id} className="flex items-center gap-3 px-4 py-3 transition-colors bg-white hover:bg-green-50">
+                  <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 bg-green-500 text-white text-xs">✓</div>
+                  <span className="flex-1 text-sm text-gray-800 font-medium">{doc.label}</span>
+                  <div className="flex items-center gap-2">
+                    {doc.file ? (
+                      <>
+                        <a href={doc.file} target="_blank" rel="noreferrer"
+                          className="px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 transition">
+                          View File
+                        </a>
+                        <button type="button" onClick={() => handleDownload(doc)}
+                          className="px-3 py-1.5 text-xs font-medium text-white bg-green-600 rounded hover:bg-green-700 shadow-sm transition">
+                          Download
+                        </button>
+                      </>
+                    ) : (
+                      <span className="px-3 py-1.5 text-xs font-medium text-gray-400">Certificate not uploaded yet</span>
+                    )}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="p-8 text-center text-gray-500 text-sm">No certificates selected.</div>
             )}
           </div>
           <div className="px-4 py-2 border-t border-gray-100 bg-gray-50 flex justify-end">
@@ -846,7 +960,7 @@ export default function TonerBidApproval() {
                 </div>
                 <div className="md:col-span-2 lg:col-span-3">
                   <label className="block text-sm font-medium text-gray-700 mb-2">Compliance Documents</label>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     {form?.atc_special_document ? (
                       <SpecialDocView form={form} />
                     ) : (
@@ -855,6 +969,7 @@ export default function TonerBidApproval() {
                       </div>
                     )}
                     <GeneralDocsViewPopup form={form} />
+                    <YieldDocsViewPopup form={form} />
                     {/* Make in India stays Admin-only, same as AIO's — Warranty/
                         Technical Compliance/Data Sheet are generated by the
                         Analyser on the Step 2/2 General Documents page instead. */}
@@ -864,13 +979,12 @@ export default function TonerBidApproval() {
                 </div>
 
                 <SpecField label="Brand" name="brand" options={SPEC_OPTIONS.brand} form={form} handleChange={handleChange} />
-                <SpecField label="Cartridge Type" name="cartridge_type" options={SPEC_OPTIONS.cartridge_type} form={form} handleChange={handleChange} />
-                <SpecField label="Product Class" name="product_class" options={SPEC_OPTIONS.product_class} form={form} handleChange={handleChange} />
-                <SpecField label="Colour" name="colour" options={SPEC_OPTIONS.colour} form={form} handleChange={handleChange} />
+                <SpecField label="Type of Cartridge" name="cartridge_type" options={SPEC_OPTIONS.cartridge_type} form={form} handleChange={handleChange} />
+                <SpecField label="Product Class of Cartridge" name="product_class" options={SPEC_OPTIONS.product_class} form={form} handleChange={handleChange} />
+                <SpecField label="Colour of Ink" name="colour" options={SPEC_OPTIONS.colour} form={form} handleChange={handleChange} />
                 <SpecField label="Technology" name="technology" options={SPEC_OPTIONS.technology} form={form} handleChange={handleChange} />
                 <SpecField label="Compatibility" name="compatibility" isTextArea form={form} handleChange={handleChange} />
                 <SpecField label="Page Yield" name="page_yield" options={SPEC_OPTIONS.page_yield} form={form} handleChange={handleChange} />
-                <SpecField label="Yield Standard" name="yield_standard" options={SPEC_OPTIONS.yield_standard} form={form} handleChange={handleChange} />
                 <SpecField label="Chip" name="chip" options={SPEC_OPTIONS.chip} form={form} handleChange={handleChange} />
                 <SpecField label="Print Coverage" name="print_coverage" options={SPEC_OPTIONS.print_coverage} optional form={form} handleChange={handleChange} />
                 <SpecField label="Warranty" name="warranty" options={SPEC_OPTIONS.warranty} form={form} handleChange={handleChange} />

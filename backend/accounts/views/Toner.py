@@ -728,7 +728,7 @@ def generate_toner_documents(r,bid_id):
         return JsonResponse({"error":"Only approved bids can be downloaded"},status=403)
     try:
         import fitz
-        out=os.path.join(settings.MEDIA_ROOT,"generated","toner");os.makedirs(out,exist_ok=True);name=f"toner_{b.id}_{typ}.pdf";path=os.path.join(out,name);date=b.date.strftime("%d-%m-%Y") if b.date else "";addr=f"{b.address} - {b.pincode}" if b.pincode else str(b.address or "")
+        out=os.path.join(settings.MEDIA_ROOT,"generated","toner");os.makedirs(out,exist_ok=True);name=f"toner_{b.id}_{typ}.pdf";path=os.path.join(out,name);date=b.date.strftime("%d-%m-%Y") if b.date else "";addr=str(b.address or "")
         model_number=f"{b.model_no}{b.model}".strip()
         local_content=str(_data(r).get("local_content") or b.local_content or "").strip()
         if typ in static:
@@ -736,7 +736,7 @@ def generate_toner_documents(r,bid_id):
                  else os.path.join(settings.MEDIA_ROOT,"templates","static_documents",static[typ]))
             if typ!="atc_acceptance_letter":shutil.copyfile(src,path)
             else:
-                d=fitz.open(src);p=d[0];p.add_redact_annot(fitz.Rect(65,96,535,235),fill=(1,1,1));p.apply_redactions();p.insert_textbox(fitz.Rect(72,102,525,235),"\n".join(["To,",b.dept_name,b.organization,str(b.address or ""),"",f"Bid No:- {b.bid_no}",f"Dated:- {date}"]),fontsize=10.5,fontname="hebo",lineheight=1.28);d.save(path);d.close()
+                d=fitz.open(src);p=d[0];p.add_redact_annot(fitz.Rect(65,96,535,235),fill=(1,1,1));p.apply_redactions();p.insert_textbox(fitz.Rect(72,102,525,235),"\n".join(["To,",b.dept_name,b.organization,str(b.address or ""),"",f"Bid No:- {b.bid_no}            Dated:- {date}"]),fontsize=10.5,fontname="hebo",lineheight=1.28);d.save(path);d.close()
         elif typ in ("warranty","make_in_india"):
             src=os.path.join(settings.MEDIA_ROOT,"templates","documents.pdf");m=fitz.open(src);d=fitz.open();start,end=ranges[typ];d.insert_pdf(m,from_page=start-1,to_page=end-1)
             p=d[0]

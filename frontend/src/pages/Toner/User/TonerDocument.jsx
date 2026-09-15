@@ -4,6 +4,7 @@ import iso14001Pdf from "../../../assets/14001.pdf?url";
 import iso19752Pdf from "../../../assets/ISO IEC 19752.pdf?url";
 import iso19798Pdf from "../../../assets/ISO IEC 19798.pdf?url";
 import iso27001Pdf from "../../../assets/ISO 27001.pdf?url";
+import { YIELD_STANDARDS } from "./TonerConfig";
 
 const API_BASE = import.meta.env.VITE_API_URL;
 
@@ -23,16 +24,26 @@ const GENERAL_DOCS = [
   { id: "preloaded_os", label: "PRELOADED OPERATING SYSTEM" },
 ];
 
-// Static certificate PDFs shipped in src/assets — these are the actual
-// signed certificates, not backend-generated documents, so "View" just
-// opens the bundled file as-is (no server round-trip, no edits to it).
-const YIELD_STANDARD_DOCS = [
-  { id: "iso_9001", label: "ISO 9001", file: iso9001Pdf },
-  { id: "iso_14001", label: "ISO 14001", file: iso14001Pdf },
-  { id: "iso_19752", label: "ISO/IEC 19752", file: iso19752Pdf },
-  { id: "iso_19798", label: "ISO/IEC 19798", file: iso19798Pdf },
-  { id: "iso_27001", label: "ISO/IEC 27001", file: iso27001Pdf },
-];
+// Only these standards have an actual signed certificate PDF in src/assets
+// so far — "View" opens the bundled file as-is (no server round-trip, no
+// edits to it). The rest of YIELD_STANDARDS are listed below too (checkbox
+// only, no PDF yet) so the full set is visible; wire up their files here as
+// they're added.
+const YIELD_CERT_FILES = {
+  "ISO 9001": iso9001Pdf,
+  "ISO 14001": iso14001Pdf,
+  "ISO/IEC 19752": iso19752Pdf,
+  "ISO/IEC 19798": iso19798Pdf,
+  "ISO/IEC 27001": iso27001Pdf,
+};
+
+const slugify = (label) => label.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+
+const YIELD_STANDARD_DOCS = YIELD_STANDARDS.map((label) => ({
+  id: slugify(label),
+  label,
+  file: YIELD_CERT_FILES[label] || null,
+}));
 
 export default function TonerDocument({ bidData, onSuccess }) {
   const [modal, setModal] = useState(null);
@@ -106,8 +117,11 @@ export default function TonerDocument({ bidData, onSuccess }) {
   };
 
   // Certificate already sits in src/assets as a finished PDF — just open it,
-  // no backend generation needed like the general-docs certificates.
+  // no backend generation needed like the general-docs certificates. Some
+  // standards don't have a certificate uploaded yet (file is null) — the
+  // button stays disabled for those until one is added.
   const handleViewYieldCertificate = (doc) => {
+    if (!doc.file) return;
     window.open(doc.file, "_blank", "noopener,noreferrer");
   };
 
@@ -217,13 +231,13 @@ export default function TonerDocument({ bidData, onSuccess }) {
         .upload-btn-general:hover { background: linear-gradient(135deg, #ffedd5 0%, #fed7aa 100%); border-color: #ea580c; transform: translateY(-2px); box-shadow: 0 8px 24px rgba(251,146,60,0.25); }
         .upload-btn-special { background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%); border-color: #8b5cf6; }
         .upload-btn-special:hover { background: linear-gradient(135deg, #ede9fe 0%, #ddd6fe 100%); border-color: #7c3aed; transform: translateY(-2px); box-shadow: 0 8px 24px rgba(139,92,246,0.25); }
-        .upload-btn-yield { background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%); border-color: #10b981; flex-direction: row; padding: 16px 20px; }
+        .upload-btn-yield { background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%); border-color: #10b981; }
         .upload-btn-yield:hover { background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); border-color: #059669; transform: translateY(-2px); box-shadow: 0 8px 24px rgba(16,185,129,0.25); }
         .icon-ring { width: 52px; height: 52px; border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: transform 0.2s; }
         .upload-btn:hover .icon-ring { transform: scale(1.1); }
         .icon-ring-general { background: rgba(251,146,60,0.18); }
         .icon-ring-special { background: rgba(139,92,246,0.18); }
-        .icon-ring-yield { background: rgba(16,185,129,0.18); width: 40px; height: 40px; flex-shrink: 0; }
+        .icon-ring-yield { background: rgba(16,185,129,0.18); }
         .badge-count { position: absolute; top: 10px; right: 10px; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: #fff; }
         .btn-submit { width: 100%; padding: 14px; border-radius: 12px; border: none; background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 60%, #3b82f6 100%); color: #fff; font-size: 14px; font-weight: 700; letter-spacing: 0.3px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: all 0.2s; box-shadow: 0 4px 16px rgba(37,99,235,0.35); font-family: 'DM Sans', sans-serif; }
         .btn-submit:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(37,99,235,0.45); background: linear-gradient(135deg, #1e40af 0%, #1d4ed8 60%, #2563eb 100%); }
@@ -255,7 +269,7 @@ export default function TonerDocument({ bidData, onSuccess }) {
         .drop-zone:hover { background: #ede9fe; border-color: #7c3aed; }
       `}</style>
 
-      <div className="doc-wrap" style={{ width: "100%", maxWidth: 580 }}>
+      <div className="doc-wrap" style={{ width: "100%", maxWidth: 760 }}>
         <div className="doc-card">
           <div
             style={{
@@ -315,7 +329,7 @@ export default function TonerDocument({ bidData, onSuccess }) {
             )}
 
             <form onSubmit={handleSubmit}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 24 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, marginBottom: 24 }}>
                 <button type="button" className="upload-btn upload-btn-general" onClick={() => setModal("general")}>
                   {selectedGeneralDocsCount > 0 && (
                     <span className="badge-count" style={{ background: "#f97316" }}>
@@ -364,19 +378,14 @@ export default function TonerDocument({ bidData, onSuccess }) {
                   </div>
                 </button>
 
-                <button
-                  type="button"
-                  className="upload-btn upload-btn-yield"
-                  style={{ gridColumn: "1 / -1" }}
-                  onClick={() => setModal("yield")}
-                >
+                <button type="button" className="upload-btn upload-btn-yield" onClick={() => setModal("yield")}>
                   {selectedYieldDocsCount > 0 && (
                     <span className="badge-count" style={{ background: "#10b981" }}>
                       {selectedYieldDocsCount}
                     </span>
                   )}
                   <div className="icon-ring icon-ring-yield">
-                    <svg width="18" height="18" fill="none" stroke="#059669" viewBox="0 0 24 24">
+                    <svg width="22" height="22" fill="none" stroke="#059669" viewBox="0 0 24 24">
                       <path
                         strokeLinecap="round"
                         strokeLinejoin="round"
@@ -385,10 +394,10 @@ export default function TonerDocument({ bidData, onSuccess }) {
                       />
                     </svg>
                   </div>
-                  <div style={{ textAlign: "left" }}>
+                  <div>
                     <div style={{ fontSize: 13, fontWeight: 700, color: "#047857" }}>Yield Standard Certificates</div>
                     <div style={{ fontSize: 11, color: "#059669", marginTop: 2 }}>
-                      {selectedYieldDocsCount > 0 ? `${selectedYieldDocsCount} selected` : "Select certificates to view / send"}
+                      {selectedYieldDocsCount > 0 ? `${selectedYieldDocsCount} selected` : "Select certificates"}
                     </div>
                   </div>
                 </button>
@@ -821,7 +830,13 @@ export default function TonerDocument({ bidData, onSuccess }) {
                     <button
                       type="button"
                       className="view-btn"
-                      style={{ borderColor: "#10b981", background: "#ecfdf5", color: "#047857" }}
+                      disabled={!doc.file}
+                      title={doc.file ? "" : "Certificate not uploaded yet"}
+                      style={
+                        doc.file
+                          ? { borderColor: "#10b981", background: "#ecfdf5", color: "#047857" }
+                          : { borderColor: "#cbd5e1", background: "#f8fafc", color: "#94a3b8", cursor: "not-allowed" }
+                      }
                       onClick={() => handleViewYieldCertificate(doc)}
                     >
                       <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -833,7 +848,7 @@ export default function TonerDocument({ bidData, onSuccess }) {
                           d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
                         />
                       </svg>
-                      View PDF
+                      {doc.file ? "View PDF" : "No PDF Yet"}
                     </button>
                   </div>
                 );
