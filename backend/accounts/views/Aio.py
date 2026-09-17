@@ -433,6 +433,24 @@ def _fix_aio_product_wording(page,fitz):
                 new_text=text
                 for pat,repl in _AIO_WORDING_FIXES:new_text=pat.sub(repl,new_text)
                 if new_text!=text:
+                    # The template's own text can carry a curly quote/dash/
+                    # bullet (e.g. the OEM declaration page's ".ACXXEL." using
+                    # U+201C/U+201D) that renders fine in its own embedded
+                    # font — but this gets redrawn below in a base-14 "helv"/
+                    # "hebo" font that has no glyph for those, which MuPDF
+                    # silently swaps for a stray middle dot. Normalise to the
+                    # plain ASCII equivalent so the redrawn text still shows
+                    # a real quote mark instead of a dot either side of it.
+                    new_text=new_text.translate({
+                        0x2010:"-",0x2011:"-",0x2012:"-",0x2013:"-",0x2014:"-",0x2015:"-",0x2212:"-",
+                        0x2018:"'",0x2019:"'",0x201C:'"',0x201D:'"',0x2022:"-",0x00A0:" ",
+                    })
+                    # The OEM declaration page's brand-name mention ends with
+                    # a stray period stuck directly to the closing quote
+                    # (…"acxxel". It is also…, no space before the period) —
+                    # drop it, matching how every other "acxxel" mention on
+                    # this page reads.
+                    new_text=re.sub(r'"\s*\.$',r'"',new_text)
                     is_bold=bool(span.get("flags",0)&16)
                     edits.append((fitz.Rect(span["bbox"]),text,new_text,span.get("size",10.5),is_bold))
     if not edits:return
@@ -658,6 +676,108 @@ def _erase_tender(page,fitz):
                 x=fitz.Rect(line["bbox"]);page.add_redact_annot(fitz.Rect(x.x0-3,x.y0-3,page.rect.width-36,x.y1+4),fill=(1,1,1))
     page.apply_redactions()
 
+def _add_signature_gap(page,fitz,min_gap=72,min_image_gap=22,known_sig=None):
+    # These narrative certificates' template pages end the body paragraph
+    # ("...Regards.") right up against the signature block ("Auth.
+    # Signatory..."/signature image/Name-Designation-Email-Contact) with
+    # only a few points between them — cramped enough that the Non
+    # Blacklisting certificate got flagged for it. The signature image
+    # itself (a scanned stamp with "For Laps n tabs Technology Pvt.
+    # Ltd."/"Director" baked into the graphic) also starts almost flush
+    # against the "For Laps N Tabs Technology Pvt. Ltd." text line above
+    # it, which reads as a duplicated caption sitting right on top of the
+    # text. Push the block down for breathing room above it, and push the
+    # image (plus everything below it: Name/Designation/Email/Contact) down
+    # an extra bit further so it clears that text line too.
+    lines=[]
+    for block in page.get_text("dict").get("blocks",[]):
+        if block.get("type")!=0:continue
+        for line in block.get("lines",[]):
+            spans=line.get("spans",[])
+            text=" ".join(s.get("text","") for s in spans).strip()
+            if text:lines.append((fitz.Rect(line["bbox"]),text,spans))
+    lines.sort(key=lambda it:it[0].y0)
+    auth_idx=next((i for i,(bbox,text,spans) in enumerate(lines) if re.match(r"auth\.?\s*signatory",text,re.I)),None)
+    if auth_idx is None or auth_idx==0:return
+    prev_bottom=lines[auth_idx-1][0].y1
+    current_gap=lines[auth_idx][0].y0-prev_bottom
+    delta1=max(0,min_gap-current_gap)
+    for_laps_idx=next((i for i in range(auth_idx,len(lines)) if re.search(r"for\s+laps\s*n?\s*tabs",lines[i][1],re.I)),auth_idx)
+    tail=lines[auth_idx:]
+    tail_bottom=max(bbox.y1 for bbox,_,_ in tail)
+    if known_sig is not None:
+        # Handed directly by a caller that just drew this image itself
+        # (e.g. _fill_service_support_escalation) instead of scanned for
+        # below — page.get_images()/get_image_rects() doesn't reliably
+        # reflect an insert_image call from moments earlier on a live,
+        # unsaved page, so that scan kept finding a stale placement (or
+        # nothing) instead of the one the caller actually just drew.
+        sig_bytes,sig_rect=known_sig
+    else:
+        sig_bytes=sig_rect=None
+        for img in page.get_images(full=True):
+            for r in page.get_image_rects(img[0]):
+                if r.y0>=lines[auth_idx][0].y0-5 and (r.x1-r.x0)<300:
+                    sig_bytes=page.parent.extract_image(img[0]).get("image")
+                    sig_rect=r
+                    break
+            if sig_bytes:break
+    for_laps_bottom=lines[for_laps_idx][0].y1
+    image_gap=(sig_rect.y0-for_laps_bottom) if sig_rect is not None else min_image_gap
+    delta2=delta1+max(0,min_image_gap-image_gap)
+    if delta1<=0 and delta2<=0:return
+    erase_bottom=max(tail_bottom,sig_rect.y1 if sig_rect is not None else tail_bottom)+4+delta2
+    erase_left=min(bbox.x0 for bbox,_,_ in tail)-3
+    page.add_redact_annot(fitz.Rect(erase_left,lines[auth_idx][0].y0-2,page.rect.width-32,erase_bottom),fill=(1,1,1))
+    # Remove (not preserve) any image inside the box — the signature image
+    # is extracted above before this call and gets explicitly reinserted at
+    # its shifted position below, so the stale original placement has to go,
+    # not sit underneath a white patch as a leftover duplicate.
+    page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_REMOVE,graphics=0)
+    for i,(bbox,text,spans) in enumerate(tail,start=auth_idx):
+        line_delta=delta1 if i<=for_laps_idx else delta2
+        cursor_x=bbox.x0
+        for s in spans:
+            stext=s.get("text","")
+            if not stext:continue
+            bold=bool(s.get("flags",0)&16)
+            fontname="hebo" if bold else "helv"
+            fontsize=s.get("size",10.5)
+            c=s.get("color",0)
+            rgb=(((c>>16)&255)/255.0,((c>>8)&255)/255.0,(c&255)/255.0) if c else (0,0,0)
+            page.insert_text((cursor_x,bbox.y1+line_delta),stext,fontsize=fontsize,fontname=fontname,color=rgb)
+            cursor_x+=fitz.get_text_length(stext,fontname=fontname,fontsize=fontsize)
+    if sig_bytes and sig_rect is not None:
+        page.insert_image(fitz.Rect(sig_rect.x0,sig_rect.y0+delta2,sig_rect.x1,sig_rect.y1+delta2),stream=sig_bytes,keep_proportion=False)
+
+def _fix_non_return_hdd_page(page,fitz):
+    # Same redraw Desktop/Workstation both do for this page — bigger body
+    # text, and the signature block (still the template's own untouched
+    # "For Laps N Tabs..."/image/Name-Designation-Email-Contact) pushed
+    # down for a real gap below it instead of nearly touching.
+    body_rect=fitz.Rect(86,258,page.rect.width-52,360)
+    write_x,write_y=90,274
+    page.add_redact_annot(body_rect,fill=(1,1,1))
+    page.apply_redactions(images=0,graphics=0)
+    page.insert_text((write_x,write_y),"Dear Sir,",fontsize=11,fontname="hebo",color=(0,0,0))
+    paragraph=(
+        "We undertake that, as per Buyer Organization's Security Policy, Faulty Hard Disk of "
+        "Servers/Desktop Computers/ All in One Computers etc. will not be "
+        "returned back to the OEM/supplier against warranty replacement."
+    )
+    para_rect=fitz.Rect(write_x,write_y+24,page.rect.width-52,write_y+200)
+    spare=page.insert_textbox(para_rect,paragraph,fontsize=13,fontname="helv",color=(0,0,0),align=0,lineheight=1.3)
+    # "Auth. Signatory" positioned off wherever the paragraph actually
+    # ended, not a fixed y — a bigger font needs more lines than the
+    # template's original layout budgeted for that fixed position, and a
+    # stale hardcoded y here previously landed the two on top of each
+    # other, which then made _add_signature_gap's own redaction below wipe
+    # the paragraph's last line along with it (never redrawn, since it
+    # isn't part of the signature block being relocated).
+    auth_y=para_rect.y0+(para_rect.height-spare)+20
+    page.insert_text((write_x,auth_y),"Auth. Signatory",fontsize=11,fontname="hebo",color=(0,0,0))
+    _add_signature_gap(page,fitz)
+
 def _replace_bidder_financial_heading(page,fitz):
     old_headings=("BIDDER FINANCIAL UNDERSTANDINGS","BIDDER FINANCIAL UNDERTAKINGS")
     replacements=[]
@@ -697,16 +817,23 @@ def _force_tender_no_date(page,fitz,bid_no,date,recipient_bottom=None):
     # like Warranty have this line much higher up than the other templates.
     if not (bid_no or date):return
     tender_text=f"Bid No: {bid_no or ''} Dated: {date or ''}"
-    tender_rects=[];first_rect=None;subject_rect=None
+    scan_lines=[]
     for block in page.get_text("dict").get("blocks",[]):
         for line in block.get("lines",[]):
             t=" ".join(s.get("text","") for s in line.get("spans",[])).strip()
-            if not t:continue
-            bbox=fitz.Rect(line["bbox"])
-            if subject_rect is None and re.search(r"\bSubject\b|Subject-",t,re.I):subject_rect=bbox
-            if re.search(r"Tender\s*No|GEM/\d{4}/[A-Z]/\d+|Dated\s*:?\s*\d{2}-\d{2}-\d{4}",t,re.I):
-                tender_rects.append(fitz.Rect(bbox.x0-2,bbox.y0-3,page.rect.width-36,bbox.y1+4))
-                if first_rect is None:first_rect=bbox
+            if t:scan_lines.append((fitz.Rect(line["bbox"]),t))
+    # Topmost match wins for each marker below, not whichever happened to
+    # come first in the page's internal block-iteration order — that order
+    # isn't guaranteed to be top-to-bottom, so an unsorted scan could latch
+    # onto a stray "Tender No"/GEM-number mention that sits lower on the
+    # page than the real marker line.
+    scan_lines.sort(key=lambda item:item[0].y0)
+    tender_rects=[];first_rect=None;subject_rect=None
+    for bbox,t in scan_lines:
+        if subject_rect is None and re.search(r"\bSubject\b|Subject-",t,re.I):subject_rect=bbox
+        if re.search(r"Tender\s*No|GEM/\d{4}/[A-Z]/\d+|Dated\s*:?\s*\d{2}-\d{2}-\d{4}",t,re.I):
+            tender_rects.append(fitz.Rect(bbox.x0-2,bbox.y0-3,page.rect.width-36,bbox.y1+4))
+            if first_rect is None:first_rect=bbox
     if tender_rects:
         for rect in tender_rects:page.add_redact_annot(rect,fill=(1,1,1))
         page.apply_redactions()
@@ -714,11 +841,18 @@ def _force_tender_no_date(page,fitz,bid_no,date,recipient_bottom=None):
     else:
         insert_x,insert_y=128,(subject_rect.y0-28 if subject_rect else 330)
     if recipient_bottom is not None:
-        # recipient_bottom is the BASELINE of the recipient block's last
-        # line, not its visible bottom edge — a gap smaller than one full
-        # line pitch here lands the new line's top right on top of that
-        # last line's descenders (e.g. a "g"/"y" in the address).
-        insert_y=min(insert_y,recipient_bottom+18)
+        # recipient_bottom is the BASELINE of the recipient block's actual
+        # last drawn line (tracked by _fill_recipient_block as it draws,
+        # right above) — anchor directly off it rather than only clamping
+        # a rescanned marker position down to it. The scanned position
+        # (first_rect, above) reflects wherever the template's own stale
+        # marker line happened to sit, or wherever a previous pass already
+        # moved it to — neither reliably tracks how many lines the address
+        # actually wrapped to, so relying on it (even via min()) left a gap
+        # that didn't scale with the address: too large for a short address
+        # whose recipient_bottom sits well above that scanned position, and
+        # too small (or overlapping) for a long one that pushes past it.
+        insert_y=recipient_bottom+18
     page.insert_text((insert_x,insert_y),tender_text,fontsize=11,fontname="hebo",color=(0,0,0))
 
 # The MAF page's own title ("MAF/AUTHORIZATIONLETTER", one baked-in template
@@ -797,14 +931,14 @@ def _fill_manufacturer_auth_body(page,fitz):
         y+=line_height
     y+=line_height*0.4
     y=_draw_inline_paragraph(page,x,y,line_height,max_width,[
-        ("All above products are listed on Gem under ",False),("Brand \"acxxel\"",True),(".",False),
+        ("All above products are listed on Gem under Brand ",False),("\"acxxel\"",True),(".",False),
     ],fitz,fontsize=fontsize)
     y+=line_height*1.4
     y=_draw_inline_paragraph(page,x,y,line_height,max_width,[
         ("Being OEM of the above products, we are directly participating. OEM are not required to "
          "furnish any authorization. The copy of the Brand Registration Certificate is attached.",False),
     ],fitz,fontsize=fontsize)
-    y+=line_height*1.7
+    y+=line_height*4
 
     page.insert_text((x,y),"Auth. Signatory",fontsize=10.5,fontname="hebo",color=(0,0,0));y+=line_height
     page.insert_text((x,y),"For Laps N Tabs Technology Pvt. Ltd.",fontsize=10.5,fontname="hebo",color=(0,0,0))
@@ -846,7 +980,7 @@ def _fill_service_support_escalation(page,fitz):
     # room, which used to leave this table drawn on top of it. Start below
     # wherever that heading actually ended up instead of the fixed offset.
     escalation_bottom=next((rect.y1 for rect,t in lines if re.search(r"escalation matrix",t,re.I)),None)
-    table_top=max(301.0,escalation_bottom+10) if escalation_bottom is not None else 301.0
+    table_top=max(301.0,escalation_bottom+24) if escalation_bottom is not None else 301.0
     block_bottom=565+(table_top-301.0)
 
     sig_bytes=sig_w=sig_h=None
@@ -858,8 +992,19 @@ def _fill_service_support_escalation(page,fitz):
                 break
         if sig_bytes:break
 
-    page.add_redact_annot(fitz.Rect(x0-2,table_top-2,x1+2,block_bottom),fill=(1,1,1))
-    page.apply_redactions()
+    # Redaction top always reaches at least the template's own default table
+    # position (301), never just table_top — table_top can now sit further
+    # down than that (see the gap added above), and the template's stock
+    # grey row background between 301 and the new table_top would otherwise
+    # never get cleared, left behind as a stray grey band.
+    # Images explicitly removed (not the default blank-in-place) — the
+    # original signature stamp captured above gets redrawn fresh below, and
+    # leaving its old placement merely blanked-out-but-still-present here
+    # is what previously confused _add_signature_gap's own later image scan
+    # into finding this stale, pixels-only placement instead of the fresh
+    # one this function draws.
+    page.add_redact_annot(fitz.Rect(x0-2,min(301.0,table_top)-2,x1+2,block_bottom),fill=(1,1,1))
+    page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_REMOVE)
 
     rows=[
         ("Level 1","Toll free number","1800-313-9020",29,11),
@@ -882,8 +1027,10 @@ def _fill_service_support_escalation(page,fitz):
     page.insert_text((x0,y),"Auth. Signatory",fontsize=11,fontname="hebo",color=(0,0,0));y+=13.4
     page.insert_text((x0,y),"For Laps N Tabs Technology Pvt. Ltd.",fontsize=11,fontname="hebo",color=(0,0,0))
     sig_y=y+9
+    sig_rect_drawn=None
     if sig_bytes:
-        page.insert_image(fitz.Rect(x0+1.5,sig_y,x0+1.5+(sig_w or 141),sig_y+(sig_h or 43)),stream=sig_bytes,keep_proportion=False)
+        sig_rect_drawn=fitz.Rect(x0+1.5,sig_y,x0+1.5+(sig_w or 141),sig_y+(sig_h or 43))
+        page.insert_image(sig_rect_drawn,stream=sig_bytes,keep_proportion=False)
         y=sig_y+(sig_h or 43)+9
     else:
         y=sig_y+9
@@ -891,6 +1038,13 @@ def _fill_service_support_escalation(page,fitz):
     page.insert_text((x0,y),"Designation:- Director",fontsize=11,fontname="hebo",color=(0,0,0));y+=13.4
     page.insert_text((x0,y),"Email:- lapsntabs123@gmail.com",fontsize=11,fontname="hebo",color=(0,0,0));y+=13.4
     page.insert_text((x0,y),"Contact No.:- 9918200166",fontsize=11,fontname="hebo",color=(0,0,0))
+    # Handed straight to _add_signature_gap below (as known_sig) instead of
+    # having it re-detect this image via page.get_images() afterwards —
+    # get_images()/get_image_rects() on a live, unsaved page doesn't
+    # reliably reflect an insert_image call from moments earlier, so that
+    # scan kept finding this block's OLD, now-superseded signature
+    # placement (or nothing at all) instead of the one just drawn here.
+    return (sig_bytes,sig_rect_drawn) if sig_bytes else None
 
 def _fix_aio_service_support_onsite_note(page,fitz):
     # Page 25's intro line under "TO WHOMSOEVER IT MAY CONCERN" is still the
@@ -1629,6 +1783,8 @@ def generate_aio_documents(r,bid_id):
     try:
         import fitz
         out=os.path.join(settings.MEDIA_ROOT,"generated","aio");os.makedirs(out,exist_ok=True);name=f"aio_{b.id}_{typ}.pdf";path=os.path.join(out,name);date=b.date.strftime("%d-%m-%Y") if b.date else "";addr=str(b.address or "")
+        pincode=str(b.pincode or "").strip()
+        if pincode and pincode not in addr:addr=f"{addr}, {pincode}".strip(", ")
         model_number=f"{b.model_no}{b.model}".strip()
         # Same as Desktop's generate_certificates: prefer whatever the Admin
         # has just typed into the still-unsaved form (so clicking Generate
@@ -1641,7 +1797,27 @@ def generate_aio_documents(r,bid_id):
                  else os.path.join(settings.MEDIA_ROOT,"templates","static_documents",static[typ]))
             if typ!="atc_acceptance_letter":shutil.copyfile(src,path)
             else:
-                d=fitz.open(src);p=d[0];p.add_redact_annot(fitz.Rect(65,96,535,235),fill=(1,1,1));p.apply_redactions();p.insert_textbox(fitz.Rect(72,102,525,235),"\n".join(["To,",b.dept_name,b.organization,str(b.address or ""),"",f"Bid No:- {b.bid_no}            Dated:- {date}"]),fontsize=10.5,fontname="hebo",lineheight=1.28);d.save(path);d.close()
+                # addr already has the bid's pincode appended (see above) —
+                # use it here too instead of the raw b.address, and normalise
+                # any curly dash/quote it carries (e.g. "Uttar Pradesh –
+                # 226016") since insert_textbox draws this in a base-14
+                # "hebo" font that has no glyph for those and silently swaps
+                # them for a "?" at render time.
+                addr_display=addr.translate({
+                    0x2010:"-",0x2011:"-",0x2012:"-",0x2013:"-",0x2014:"-",0x2015:"-",0x2212:"-",
+                    0x2018:"'",0x2019:"'",0x201C:'"',0x201D:'"',0x2022:"-",0x00A0:" ",
+                })
+                d=fitz.open(src);p=d[0];p.add_redact_annot(fitz.Rect(65,96,535,235),fill=(1,1,1));p.apply_redactions()
+                atc_rect=fitz.Rect(72,102,525,235)
+                atc_spare=p.insert_textbox(atc_rect,"\n".join(["To,",b.dept_name,b.organization,addr_display]),fontsize=10.5,fontname="hebo",lineheight=1.28)
+                # Draw "Bid No/Dated" as its own textbox just below wherever
+                # the recipient block actually ended, with a small explicit
+                # gap — not joined into the same block with a blank "\n\n"
+                # line (too big a gap) or immediately appended (no gap,
+                # cramped).
+                atc_bid_no_y0=atc_rect.y0+(atc_rect.height-atc_spare)+9
+                p.insert_textbox(fitz.Rect(atc_rect.x0,atc_bid_no_y0,atc_rect.x1,atc_bid_no_y0+20),f"Bid No:- {b.bid_no}            Dated:- {date}",fontsize=10.5,fontname="hebo",lineheight=1.28)
+                d.save(path);d.close()
         elif typ in ("warranty","make_in_india"):
             src=os.path.join(settings.MEDIA_ROOT,"templates","documents.pdf");m=fitz.open(src);d=fitz.open();start,end=ranges[typ];d.insert_pdf(m,from_page=start-1,to_page=end-1)
             p=d[0]
@@ -1704,7 +1880,9 @@ def generate_aio_documents(r,bid_id):
                     # and the table needs to start below wherever the heading actually
                     # lands, not at a position computed before that push happened.
                     _fill_service_support_escalation(p,fitz)
-                    if pidx==len(d)-1:_add_service_support_last_page_bid_date(p,fitz,b.bid_no,date,b.dept_name,b.organization,addr)
+                    if pidx==len(d)-1:
+                        _add_service_support_last_page_bid_date(p,fitz,b.bid_no,date,b.dept_name,b.organization,addr)
+                        _add_signature_gap(p,fitz)
                 elif typ=="manufacturer_auth" and pidx==2:
                     # Template page 4 = the official Trade Mark Certificate, a legal
                     # source document — must stay byte-for-byte visually unchanged
@@ -1721,6 +1899,10 @@ def generate_aio_documents(r,bid_id):
                     _force_tender_no_date(p,fitz,b.bid_no,date,recipient_bottom)
                     if typ=="manufacturer_auth" and pidx==0:
                         _fill_manufacturer_auth_body(p,fitz)
+                    if typ in ("non_blacklisting","ipv6"):
+                        _add_signature_gap(p,fitz)
+                    if typ=="non_return_hdd":
+                        _fix_non_return_hdd_page(p,fitz)
             d.save(path);d.close();m.close()
         elif typ=="approved_price_paper":
             # Same to same as Desktop's own "approved_price_paper" (Desktop.py)

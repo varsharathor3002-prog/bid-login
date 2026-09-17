@@ -1081,6 +1081,14 @@ def generate_workstation_certificates(request, bid_id):
             pincode = str(bid.pincode or "").strip()
             if pincode and pincode not in address:
                 address = f"{address} - {pincode}" if address else pincode
+            # Normalise any curly dash/quote the address carries (e.g. "Uttar
+            # Pradesh – 226016") — insert_textbox draws this in a base-14
+            # "hebo" font that has no glyph for those and silently swaps
+            # them for a "?" at render time.
+            address = address.translate({
+                0x2010: "-", 0x2011: "-", 0x2012: "-", 0x2013: "-", 0x2014: "-", 0x2015: "-", 0x2212: "-",
+                0x2018: "'", 0x2019: "'", 0x201C: '"', 0x201D: '"', 0x2022: "-", 0x00A0: " ",
+            })
 
             recipient_lines = [
                 "To,",
@@ -1090,16 +1098,28 @@ def generate_workstation_certificates(request, bid_id):
             recipient_lines.extend(
                 line.strip() for line in re.split(r"[\r\n]+", address) if line.strip()
             )
-            recipient_lines.extend([
-                "",
-                f"Bid No:- {str(bid.bid_no or '').strip()}            Dated:- {bid_date}",
-            ])
-            page.insert_textbox(
-                fitz.Rect(72, 102, 525, 235),
+            recipient_rect = fitz.Rect(72, 102, 525, 235)
+            recipient_fontsize = 10.5
+            recipient_lineheight = 1.28
+            spare_height = page.insert_textbox(
+                recipient_rect,
                 "\n".join(line for line in recipient_lines if line is not None),
-                fontsize=10.5,
+                fontsize=recipient_fontsize,
                 fontname="hebo",
-                lineheight=1.28,
+                lineheight=recipient_lineheight,
+                align=0,
+            )
+            # Draw "Bid No/Dated" as its own textbox just below wherever the
+            # recipient block actually ended, with a small explicit gap —
+            # not joined into the same block with a blank "\n\n" line (too
+            # big a gap) or immediately appended (no gap at all, cramped).
+            bid_no_y0 = recipient_rect.y0 + (recipient_rect.height - spare_height) + 9
+            page.insert_textbox(
+                fitz.Rect(recipient_rect.x0, bid_no_y0, recipient_rect.x1, bid_no_y0 + 20),
+                f"Bid No:- {str(bid.bid_no or '').strip()}            Dated:- {bid_date}",
+                fontsize=recipient_fontsize,
+                fontname="hebo",
+                lineheight=recipient_lineheight,
                 align=0,
             )
 
@@ -1380,6 +1400,8 @@ def generate_workstation_certificates(request, bid_id):
         ).strip(" ,;-")
         pincode = (bid.pincode or "").strip()
         full_address = address
+        if pincode and pincode not in full_address:
+            full_address = f"{full_address}, {pincode}".strip(", ")
         service_recipient = [
             re.sub(r"\s+", " ", value).strip().upper()
             for value in (dept_name, organization, full_address)
@@ -1960,15 +1982,26 @@ def generate_workstation_certificates(request, bid_id):
                 "Servers / Desktop Computers / Laptops / Workstation / Printer / Toner etc. will not be "
                 "returned back to the OEM/supplier against warranty replacement."
             )
-            page.insert_textbox(
-                fitz.Rect(write_x, write_y + 24, page.rect.width - 52, write_y + 100),
-                paragraph,
-                fontsize=10.5,
-                fontname="helv",
-                color=(0, 0, 0),
-                align=0,
-                lineheight=1.15,
+            para_rect = fitz.Rect(write_x, write_y + 24, page.rect.width - 52, write_y + 200)
+            spare = page.insert_textbox(
+                para_rect, paragraph, fontsize=13, fontname="helv", color=(0, 0, 0), align=0, lineheight=1.3,
             )
+            # "Auth. Signatory" positioned off wherever the paragraph
+            # actually ended, not a fixed y — a bigger font needs more
+            # lines than the template's original layout budgeted for that
+            # fixed position, and a stale hardcoded y here previously
+            # landed the two on top of each other, which then made
+            # _add_signature_gap's own redaction below wipe the
+            # paragraph's last line along with it (never redrawn, since it
+            # isn't part of the signature block being relocated). Then push
+            # it and everything below (the template's own untouched "For
+            # Laps N Tabs..."/signature image/Name-Designation-Email-
+            # Contact, all at their original fixed positions) down together
+            # for a real gap below the now-taller paragraph.
+            auth_y = para_rect.y0 + (para_rect.height - spare) + 20
+            page.insert_text((write_x, auth_y), "Auth. Signatory", fontsize=11, fontname="hebo", color=(0, 0, 0))
+            from .Aio import _add_signature_gap
+            _add_signature_gap(page, fitz)
 
         def fix_non_obsolete_duration(page):
             # The residual-market-life guarantee still says "3 (Three)
@@ -2036,61 +2069,91 @@ def generate_workstation_certificates(request, bid_id):
                         return True
             return False
 
+        # Bug fix (recipient-block-to-Bid-No/Dated spacing): force_customer_block
+        # records the actual y-position where it finished drawing each page's
+        # recipient block here (keyed by page.number). force_tender_no_date then
+        # anchors the "Bid No/Dated" line directly off that real position
+        # instead of the page-rescan-based guess it used to rely on
+        # exclusively — see force_tender_no_date below for why that guess
+        # produced an inconsistent gap.
+        _customer_block_bottoms = {}
+
         def force_tender_no_date(page):
             tender_text = f"Bid No: {bid_no}            Dated: {bid_date_formatted}".strip()
             if not tender_text:
                 return
-            tender_line_rects = []
-            first_rect = None
-            subject_rect = None
-            address_rect = None
-            to_rect = None
+            # The recipient block's own actual last-line position — recorded
+            # by force_customer_block right after it drew that block, earlier
+            # in this same document pass — is ground truth for where this
+            # line belongs: a fixed, small gap below it. It's preferred below
+            # over the rescan/pincode-substring position, since neither the
+            # rescanned marker's stale template position nor the
+            # pincode-substring match (the bid's pincode is frequently a
+            # separate field that never appears literally inside the
+            # free-text address) reliably tracks how many lines the address
+            # actually wrapped to — that's what let the gap balloon for a
+            # short address and nearly vanish (or overlap) for a long one.
+            customer_block_bottom = _customer_block_bottoms.get(page.number)
+
+            scan_lines = []
             for block in page.get_text("dict").get("blocks", []):
                 if block.get("type") != 0:
                     continue
                 for line in block.get("lines", []):
                     line_text = " ".join(span.get("text", "") for span in line.get("spans", [])).strip()
-                    if not line_text:
-                        continue
-                    bbox = fitz.Rect(line["bbox"])
-                    if line_text.strip().rstrip(", ").upper() == "TO":
-                        to_rect = bbox
-                    if subject_rect is None and re.search(r"\bSubject\b|Subject-", line_text, re.IGNORECASE):
-                        subject_rect = bbox
-                    if (
-                        to_rect
-                        and pincode
-                        and pincode in line_text
-                        and to_rect.y0 < bbox.y0 < to_rect.y0 + 120
-                    ):
-                        address_rect = bbox
-                    if (
-                        bbox.y0 < 300
-                        and (
-                            re.search(r"(Tender|Bid)\s*No", line_text, re.IGNORECASE)
-                            or re.search(r"GEM/\d{4}/[A-Z]/\d+", line_text)
-                            or re.search(r"\bDated\s*:?\s*\d{2}-\d{2}-\d{4}", line_text, re.IGNORECASE)
-                        )
-                    ):
-                        # The real "Tender No: ... Dated: ..." template line always
-                        # sits near the top of the page (right below the "To,"
-                        # recipient block). Without this y0 cutoff, a Bid No /
-                        # GeM-number mention inside a certificate's own body text
-                        # further down the page (e.g. Make in India's "Quoted
-                        # under GeM Bid No. - ..." sentence) gets swept up and
-                        # erased here too, before the doc-specific handler ever
-                        # gets to redraw it.
-                        # Narrow to the matched text's own width (plus a
-                        # margin for the new value being a bit longer/
-                        # shorter), not the full page width — a full-width
-                        # rect at this y erases anything else sharing that
-                        # row, like the last line of a wrapped address that
-                        # a long dept_name/organization/address pushed down
-                        # far enough to land at the same height by
-                        # coincidence.
-                        tender_line_rects.append(fitz.Rect(bbox.x0 - 2, bbox.y0 - 3, page.rect.width - 36, bbox.y1 + 4))
-                        if first_rect is None:
-                            first_rect = bbox
+                    if line_text:
+                        scan_lines.append((fitz.Rect(line["bbox"]), line_text))
+            # Topmost match wins for each marker below, not whichever
+            # happened to come first in the page's internal block-iteration
+            # order — that order isn't guaranteed to be top-to-bottom, so an
+            # unsorted scan could latch onto a stray match lower on the page
+            # than the real marker line.
+            scan_lines.sort(key=lambda item: item[0].y0)
+
+            tender_line_rects = []
+            first_rect = None
+            subject_rect = None
+            address_rect = None
+            to_rect = None
+            for bbox, line_text in scan_lines:
+                if line_text.strip().rstrip(", ").upper() == "TO":
+                    to_rect = bbox
+                if subject_rect is None and re.search(r"\bSubject\b|Subject-", line_text, re.IGNORECASE):
+                    subject_rect = bbox
+                if (
+                    to_rect
+                    and pincode
+                    and pincode in line_text
+                    and to_rect.y0 < bbox.y0 < to_rect.y0 + 120
+                ):
+                    address_rect = bbox
+                if (
+                    bbox.y0 < 300
+                    and (
+                        re.search(r"(Tender|Bid)\s*No", line_text, re.IGNORECASE)
+                        or re.search(r"GEM/\d{4}/[A-Z]/\d+", line_text)
+                        or re.search(r"\bDated\s*:?\s*\d{2}-\d{2}-\d{4}", line_text, re.IGNORECASE)
+                    )
+                ):
+                    # The real "Tender No: ... Dated: ..." template line always
+                    # sits near the top of the page (right below the "To,"
+                    # recipient block). Without this y0 cutoff, a Bid No /
+                    # GeM-number mention inside a certificate's own body text
+                    # further down the page (e.g. Make in India's "Quoted
+                    # under GeM Bid No. - ..." sentence) gets swept up and
+                    # erased here too, before the doc-specific handler ever
+                    # gets to redraw it.
+                    # Narrow to the matched text's own width (plus a
+                    # margin for the new value being a bit longer/
+                    # shorter), not the full page width — a full-width
+                    # rect at this y erases anything else sharing that
+                    # row, like the last line of a wrapped address that
+                    # a long dept_name/organization/address pushed down
+                    # far enough to land at the same height by
+                    # coincidence.
+                    tender_line_rects.append(fitz.Rect(bbox.x0 - 2, bbox.y0 - 3, page.rect.width - 36, bbox.y1 + 4))
+                    if first_rect is None:
+                        first_rect = bbox
 
             if address_rect and subject_rect and address_rect.y0 >= subject_rect.y0:
                 address_rect = None
@@ -2099,11 +2162,14 @@ def generate_workstation_certificates(request, bid_id):
                 for rect in tender_line_rects:
                     page.add_redact_annot(rect, fill=(1, 1, 1))
                 page.apply_redactions()
+                insert_x = address_rect.x0 if address_rect else first_rect.x0
+                insert_y = address_rect.y1 + 14 if address_rect else first_rect.y1 - 2
+                if customer_block_bottom is not None:
+                    if not address_rect:
+                        insert_x = to_rect.x0 if to_rect else insert_x
+                    insert_y = customer_block_bottom + 18
                 page.insert_text(
-                    (
-                        address_rect.x0 if address_rect else first_rect.x0,
-                        address_rect.y1 + 14 if address_rect else first_rect.y1 - 2,
-                    ),
+                    (insert_x, insert_y),
                     tender_text,
                     fontsize=11,
                     fontname="hebo",
@@ -2120,6 +2186,10 @@ def generate_workstation_certificates(request, bid_id):
             if "Bid No" not in page.get_text("text") and "Tender No" not in page.get_text("text"):
                 insert_x = address_rect.x0 if address_rect else 72
                 insert_y = address_rect.y1 + 14 if address_rect else (subject_rect.y0 - 28 if subject_rect else 118)
+                if customer_block_bottom is not None:
+                    if not address_rect:
+                        insert_x = to_rect.x0 if to_rect else insert_x
+                    insert_y = customer_block_bottom + 18
                 page.insert_text((insert_x, insert_y), tender_text, fontsize=11, fontname="hebo", color=(0, 0, 0))
 
         def force_customer_block(page):
@@ -2139,6 +2209,24 @@ def generate_workstation_certificates(request, bid_id):
             if not anchor:
                 return
             next_anchor = next((bbox for bbox, text, _size, _bold in lines if bbox.y0 > anchor.y0 and re.search(r"(Tender|Bid)\s*No|Subject|Dear", text, re.IGNORECASE)), None)
+
+            # Wrap the actual recipient-block text up front (instead of only
+            # just before drawing it, further down) so the space reserved
+            # below it is sized off the real wrapped line count, not a rough
+            # text-length/max_width estimate. That estimate (the old
+            # `approx_lines`) doesn't match how _wrap_address_line actually
+            # wraps (comma-aware, not a flat division) — it could over- or
+            # under-count by a line or more, which is exactly what produced
+            # an inconsistent To/Bid-No gap: a short address got the marker
+            # pushed down for more lines than were really drawn (too much
+            # gap), while a long address didn't get enough room reserved
+            # (barely any gap, or overlap).
+            from .Aio import _wrap_address_line
+            max_width = page.rect.width - 36 - anchor.x0
+            all_lines = []
+            for value in [dept_name, organization, full_address]:
+                if value:
+                    all_lines.extend(_wrap_address_line(value, fitz, 11, max_width, fontname="helv"))
 
             # The template only ever left room for its own short sample
             # recipient block before that marker (and everything below it) —
@@ -2186,11 +2274,7 @@ def generate_workstation_certificates(request, bid_id):
                     if sig_bytes:
                         break
 
-                approx_lines = sum(
-                    max(1, int(fitz.get_text_length(v, fontname="helv", fontsize=11) / (page.rect.width - 36 - anchor.x0)) + 1)
-                    for v in [dept_name, organization, full_address] if v
-                )
-                needed_height = approx_lines * 15
+                needed_height = len(all_lines) * 15
                 available_height = next_anchor.y0 - 4 - (anchor.y1 + 16)
                 # Always re-anchor the marker (and everything below it) to sit
                 # just past the actual recipient block, not only when it needs
@@ -2241,19 +2325,6 @@ def generate_workstation_certificates(request, bid_id):
                 page.add_redact_annot(fitz.Rect(anchor.x0, anchor.y1 + 2, page.rect.width - 36, next_anchor.y0 - 4), fill=(1, 1, 1))
                 page.apply_redactions()
             y = anchor.y1 + 16
-            max_width = page.rect.width - 36 - anchor.x0
-
-            # A long organization/address value used to just get drawn as one
-            # unwrapped line running off the page's right margin — wrap it by
-            # hand across as many lines as it actually needs instead. Reuses
-            # the same wrapper every other recipient block in these
-            # certificates uses (AIO's own MAF/Warranty/Service Support
-            # blocks) instead of keeping a separate copy here.
-            from .Aio import _wrap_address_line
-            all_lines = []
-            for value in [dept_name, organization, full_address]:
-                if value:
-                    all_lines.extend(_wrap_address_line(value, fitz, 11, max_width, fontname="helv"))
 
             # The template's own stale "Bid No/Dated" placeholder sits just
             # below this block (untouched here on purpose, so
@@ -2273,6 +2344,13 @@ def generate_workstation_certificates(request, bid_id):
             for ln in all_lines:
                 page.insert_text((anchor.x0, y), ln, fontsize=11, fontname="hebo", color=(0, 0, 0))
                 y += line_h
+
+            # Actual bottom of the last recipient-block line just drawn (its
+            # baseline) — the ground truth force_tender_no_date anchors the
+            # Bid No/Dated line off, instead of re-deriving a position from a
+            # rescan of the page (see there for why).
+            if all_lines:
+                _customer_block_bottoms[page.number] = y - line_h
 
         def update_make_in_india(page):
             # Same approach as AIO's _fill_make_in_india_page (Aio.py) — find the
@@ -2794,7 +2872,27 @@ def generate_workstation_certificates(request, bid_id):
         service_signature_block = None
         service_signature_rect = None
         if doc_type == "service_support" and len(source_doc) >= 30:
-            source_signature_page = source_doc[24]
+            # Snapshotted into its own throwaway single-page doc, not read
+            # straight off `source_doc[24]` — `source_doc` itself gets
+            # copied wholesale into `doc` below (page 24 becomes the new
+            # doc's own page 0, the consignee/escalation-matrix page), so
+            # mutating page 24 in place here to add the signature gap was
+            # leaking that shift into that unrelated page too, which every
+            # position-aware fix further down then ran against expecting
+            # the template's original, un-shifted layout — producing
+            # overlapping text there instead.
+            _sig_snapshot_doc = fitz.open()
+            _sig_snapshot_doc.insert_pdf(source_doc, from_page=24, to_page=24)
+            source_signature_page = _sig_snapshot_doc[0]
+            # Same cramped "For Laps N Tabs Technology Pvt. Ltd." text vs.
+            # signature-image-with-its-own-baked-in-caption spacing as the
+            # narrative certificates (Non Blacklisting etc.) — this page's
+            # signature block gets flattened to a single image below and
+            # pasted onto the actual output page, so the gap has to be
+            # added here, on the source page, before that snapshot is
+            # taken, not on the output afterwards.
+            from .Aio import _add_signature_gap
+            _add_signature_gap(source_signature_page, fitz)
             auth_areas = source_signature_page.search_for("Auth. Signatory")
             contact_areas = source_signature_page.search_for("Contact No.:- 9918200166")
             service_signature_rect = fitz.Rect(58, 540, 365, 735)
@@ -2810,6 +2908,7 @@ def generate_workstation_certificates(request, bid_id):
                 clip=service_signature_rect,
                 alpha=False,
             ).tobytes("png")
+            _sig_snapshot_doc.close()
         doc = fitz.open()
         doc.insert_pdf(source_doc, from_page=page_from - 1, to_page=page_to - 1)
         source_doc.close()
@@ -2836,6 +2935,24 @@ def generate_workstation_certificates(request, bid_id):
                     continue
                 lowered = re.sub(r"acxxel", "acxxel", text, flags=re.IGNORECASE)
                 if lowered != text:
+                    # A word like the OEM declaration page's curly-quoted
+                    # ".ACXXEL." carries its quote marks as part of the same
+                    # whitespace-delimited token — those render fine in the
+                    # template's own embedded font, but the redraw below uses
+                    # a base-14 "hebo" font with no glyph for them, which
+                    # MuPDF silently swaps for a stray middle dot. Normalise
+                    # to plain ASCII first so the redrawn word still shows a
+                    # real quote mark instead of a dot either side of it.
+                    lowered = lowered.translate({
+                        0x2010: "-", 0x2011: "-", 0x2012: "-", 0x2013: "-", 0x2014: "-", 0x2015: "-", 0x2212: "-",
+                        0x2018: "'", 0x2019: "'", 0x201C: '"', 0x201D: '"', 0x2022: "-", 0x00A0: " ",
+                    })
+                    # The OEM declaration page's brand-name mention ends with
+                    # a stray period stuck directly to the closing quote
+                    # (…"ACXXEL". It is also…, no space before the period) —
+                    # drop it, matching how every other "acxxel" mention on
+                    # this page reads.
+                    lowered = re.sub(r'"\s*\.$', '"', lowered)
                     matches.append((fitz.Rect(word[:4]), lowered))
             if not matches:
                 return
@@ -2865,7 +2982,7 @@ def generate_workstation_certificates(request, bid_id):
             if doc_type == "service_support":
                 fix_service_support_page(page)
                 from .Aio import _fill_service_support_escalation
-                _fill_service_support_escalation(page, fitz)
+                escalation_sig = _fill_service_support_escalation(page, fitz)
                 # Note: _add_service_support_bid_date is deliberately NOT
                 # called here — fix_service_support_page's own "escalation"
                 # branch (above) already redraws the "To,"/recipient block,
@@ -2876,6 +2993,9 @@ def generate_workstation_certificates(request, bid_id):
                 # that same already-correct text using AIO's own layout
                 # assumptions, which don't know about this table's position
                 # and would push the heading down into it.
+                if original_page == 25:
+                    from .Aio import _add_signature_gap
+                    _add_signature_gap(page, fitz, known_sig=escalation_sig)
                 if original_page == 29:
                     add_service_support_table_note(page)
                 if original_page == 30:
@@ -3283,6 +3403,11 @@ def generate_workstation_certificates(request, bid_id):
                 ):
                     continue
                 force_tender_no_date(page)
+
+        if doc_type in ("non_blacklisting", "ipv6"):
+            from .Aio import _add_signature_gap
+            for page in doc:
+                _add_signature_gap(page, fitz)
 
         out_dir = os.path.join(settings.MEDIA_ROOT, "generated_docs")
         os.makedirs(out_dir, exist_ok=True)
