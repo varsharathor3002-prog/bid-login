@@ -27,6 +27,7 @@ from .Aio import (
     _add_aio_service_support_table_note as _add_service_support_table_note,
     _fill_service_support_availability, _format_model_number, _normalize_warranty_text,
     _shrink_for_cell, _get_cell_bg_color, _text_width, _draw_inline_paragraph, _add_authorized_signatory,
+    _add_signature_gap, _wrap_address_line, _dedupe_stacked_signature_images,
 )
 
 # Same to same as AioBid (Aio.py) — Config-step fields swapped for Toner's
@@ -736,7 +737,24 @@ def generate_toner_documents(r,bid_id):
                  else os.path.join(settings.MEDIA_ROOT,"templates","static_documents",static[typ]))
             if typ!="atc_acceptance_letter":shutil.copyfile(src,path)
             else:
-                d=fitz.open(src);p=d[0];p.add_redact_annot(fitz.Rect(65,96,535,235),fill=(1,1,1));p.apply_redactions();p.insert_textbox(fitz.Rect(72,102,525,235),"\n".join(["To,",b.dept_name,b.organization,str(b.address or ""),"",f"Bid No:- {b.bid_no}            Dated:- {date}"]),fontsize=10.5,fontname="hebo",lineheight=1.28);d.save(path);d.close()
+                d=fitz.open(src);p=d[0];p.add_redact_annot(fitz.Rect(65,96,535,235),fill=(1,1,1));p.apply_redactions()
+                atc_rect=fitz.Rect(72,102,525,235);atc_fontsize=11;atc_line_height=15
+                # Wrap dept_name/organization/address the same way as every
+                # other certificate's recipient block (MAF, Warranty, ...) —
+                # this used to hand the raw address straight to
+                # insert_textbox, which wraps at plain word/space boundaries
+                # instead of comma boundaries, so the exact same address
+                # broke at a different point here than it did in the MAF
+                # letter, looking inconsistent between documents.
+                atc_wrapped=["To,"]
+                for value in [b.dept_name,b.organization,b.address]:
+                    if value:atc_wrapped.extend(_wrap_address_line(str(value),fitz,atc_fontsize,atc_rect.width,fontname="hebo"))
+                atc_y=atc_rect.y0+10
+                for ln in atc_wrapped:
+                    p.insert_text((atc_rect.x0,atc_y),ln,fontsize=atc_fontsize,fontname="hebo",color=(0,0,0));atc_y+=atc_line_height
+                atc_bid_no_y0=(atc_y-atc_line_height)+26
+                p.insert_text((atc_rect.x0,atc_bid_no_y0),f"Bid No:- {b.bid_no}            Dated:- {date}",fontsize=atc_fontsize,fontname="hebo",color=(0,0,0))
+                d.save(path);d.close()
         elif typ in ("warranty","make_in_india"):
             src=os.path.join(settings.MEDIA_ROOT,"templates","documents.pdf");m=fitz.open(src);d=fitz.open();start,end=ranges[typ];d.insert_pdf(m,from_page=start-1,to_page=end-1)
             p=d[0]
@@ -746,6 +764,7 @@ def generate_toner_documents(r,bid_id):
                 _fill_toner_warranty_page(p,fitz,b.bid_no,model_number,b.warranty)
             else:
                 _fill_toner_make_in_india_page(p,fitz,b.bid_no,model_number,b.dept_name,b.organization,addr,date,local_content)
+            _dedupe_stacked_signature_images(d,fitz)
             d.save(path);d.close();m.close()
         elif typ in ("technical_compliance","data_sheet"):
             src=os.path.join(settings.MEDIA_ROOT,"templates","documents.pdf");m=fitz.open(src)
@@ -791,11 +810,13 @@ def generate_toner_documents(r,bid_id):
                     pass
                 elif typ=="manufacturer_auth" and pidx==1:
                     _erase_tender(p,fitz)
+                    _add_signature_gap(p,fitz)
                 else:
                     recipient_bottom=_fill_recipient_block(p,fitz,b.dept_name,b.organization,addr)
                     _force_tender_no_date(p,fitz,b.bid_no,date,recipient_bottom)
                     if typ=="manufacturer_auth" and pidx==0:
                         _fill_manufacturer_auth_body(p,fitz)
+            _dedupe_stacked_signature_images(d,fitz)
             d.save(path);d.close();m.close()
         elif typ=="approved_price_paper":
             try:final_price=float(str(b.total_price or "").replace(",","").strip())

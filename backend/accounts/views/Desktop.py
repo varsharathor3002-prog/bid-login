@@ -493,6 +493,10 @@ def generate_certificates(request, bid_id):
                 str(local_number), fontsize=9, fontname="hebo", align=2,
             )
 
+    def _dedupe_stacked_signature_images(document):
+        from .Aio import _dedupe_stacked_signature_images as dedupe
+        dedupe(document, fitz)
+
     APPROVED_DOWNLOADS = {
         "approved_atc_documents",
         "approved_price_paper",
@@ -2200,9 +2204,13 @@ def generate_certificates(request, bid_id):
 
         x = to_line.x0
         y = to_line.y1 + 16
-        maf_layout = doc_type == "manufacturer_auth"
-        line_height = 15 if maf_layout else 16
-        font_size = 11 if maf_layout else 12
+        # Same recipient-block size/line-height as the MAF letter (and every
+        # other doc type across every product line) for every doc type that
+        # shares this function — previously warranty/bidder_financial/
+        # non_obsolete/non_return_hdd drew this block a size bigger (12pt vs
+        # MAF's 11pt), which read as inconsistent between certificates.
+        line_height = 15
+        font_size = 11
         max_width = page.rect.width - 36 - x
 
         # Wrap the actual recipient-block text up front (instead of only
@@ -2305,6 +2313,22 @@ def generate_certificates(request, bid_id):
                     draw_size -= 0.25
                 page.insert_text((bbox.x0, bbox.y1 + delta), text, fontsize=draw_size, fontname=fontname, color=(0, 0, 0))
             if sig_bytes and sig_rect is not None:
+                # NOTE: the original signature stamp is deliberately left in
+                # place here (images=0 above skips it) rather than removed —
+                # a targeted redaction of just sig_rect was tried and reverted
+                # twice: for manufacturer_auth it broke _fill_manufacturer_auth_body's
+                # own re-extraction of this same image (a live, unsaved
+                # page's get_images() can't reliably see an insert_image from
+                # moments earlier), and for warranty/bidder_financial it
+                # somehow wiped unrelated Name/Designation/Email text drawn
+                # by a doc-type-specific pass further down this same
+                # function. This function is shared by too many downstream
+                # post-processing steps to safely dedupe the image here —
+                # leaves a visible duplicate stamp on pages where the
+                # recipient block needed pushing down, but doesn't risk
+                # losing real content. Needs a more isolated fix (e.g. a
+                # final dedupe pass over the saved PDF) rather than patching
+                # this shared function again.
                 page.insert_image(
                     fitz.Rect(sig_rect.x0, sig_rect.y0 + delta, sig_rect.x1, sig_rect.y1 + delta),
                     stream=sig_bytes, keep_proportion=False,
@@ -2426,9 +2450,14 @@ def generate_certificates(request, bid_id):
         # and nearly vanish (or overlap) for a long one.
         customer_block_bottom = _customer_block_bottoms.get(page.number)
         if customer_block_bottom is not None:
-            if not (tender_rects or address_rect):
-                insert_x = to_rect.x0 if to_rect else insert_x
-            insert_y = customer_block_bottom + 18
+            # Always line this up with the recipient block itself once we
+            # know where it actually ended — not only when no stale marker/
+            # pincode match was found. Falling back to first_rect.x0 (the
+            # template's own leftover "Tender No/Bid No" position) whenever
+            # tender_rects matched left this line visibly indented
+            # differently from the address lines directly above it.
+            insert_x = to_rect.x0 if to_rect else insert_x
+            insert_y = customer_block_bottom + 26
 
         page.insert_text(
             (insert_x, insert_y),
@@ -2702,15 +2731,71 @@ def generate_certificates(request, bid_id):
         # wipe the paragraph's last line along with it (never redrawn,
         # since it isn't part of the signature block being relocated).
         auth_y = para_rect.y0 + (para_rect.height - spare) + 20
-        page.insert_text((write_x, auth_y), "Auth. Signatory", fontsize=11, fontname="hebo", color=(0, 0, 0))
         # "For Laps N Tabs Technology Pvt. Ltd."/the signature image/Name-
         # Designation-Email-Contact below are still the template's own
-        # untouched elements at their original fixed positions — push the
-        # whole signature block (including those) down together for a real
-        # gap below the now-taller paragraph, instead of hardcoding "Auth.
-        # Signatory" to some fixed lower y and running straight into them.
-        from .Aio import _add_signature_gap
-        _add_signature_gap(page, fitz)
+        # untouched elements at their original fixed positions. When the
+        # paragraph runs long enough that auth_y lands at or past that
+        # block's own position, push the whole block down FIRST — calling
+        # _add_signature_gap afterward can't fix this itself: it assumes
+        # "Auth. Signatory" sits above the block it's meant to push, and
+        # once inserted at a y that instead overlaps or passes the block,
+        # its own scan (sorted by y0) picks up "For Laps..." as if it were
+        # the line *before* "Auth. Signatory", which produced exactly the
+        # overlapping/garbled text seen here instead of a real gap.
+        lines = []
+        for block in page.get_text("dict").get("blocks", []):
+            if block.get("type") != 0:
+                continue
+            for line in block.get("lines", []):
+                spans = line.get("spans", [])
+                text = " ".join(s.get("text", "") for s in spans).strip()
+                if text:
+                    lines.append((fitz.Rect(line["bbox"]), text, spans))
+        lines.sort(key=lambda it: it[0].y0)
+        for_laps_idx = next(
+            (i for i, (bbox, text, spans) in enumerate(lines) if re.search(r"for\s+laps\s*n?\s*tabs", text, re.I)),
+            None,
+        )
+        if for_laps_idx is not None and lines[for_laps_idx][0].y0 < auth_y + 20:
+            tail = lines[for_laps_idx:]
+            tail_bottom = max(bbox.y1 for bbox, _, _ in tail)
+            sig_bytes = sig_rect = None
+            for img in page.get_images(full=True):
+                for r in page.get_image_rects(img[0]):
+                    if r.y0 >= lines[for_laps_idx][0].y0 - 5 and (r.x1 - r.x0) < 300:
+                        sig_bytes = page.parent.extract_image(img[0]).get("image")
+                        sig_rect = r
+                        break
+                if sig_bytes:
+                    break
+            delta = (auth_y + 20) - lines[for_laps_idx][0].y0 + 4
+            erase_bottom = max(tail_bottom, sig_rect.y1 if sig_rect is not None else tail_bottom) + 4
+            erase_left = min(bbox.x0 for bbox, _, _ in tail) - 3
+            page.add_redact_annot(
+                fitz.Rect(erase_left, lines[for_laps_idx][0].y0 - 2, page.rect.width - 32, erase_bottom),
+                fill=(1, 1, 1),
+            )
+            page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_REMOVE, graphics=0)
+            for bbox, text, spans in tail:
+                cursor_x = bbox.x0
+                for span in spans:
+                    span_text = span.get("text", "")
+                    if not span_text:
+                        continue
+                    bold = bool(span.get("flags", 0) & 16)
+                    fontname = "hebo" if bold else "helv"
+                    fontsize = span.get("size", 10.5)
+                    page.insert_text(
+                        (cursor_x, bbox.y1 + delta), span_text,
+                        fontsize=fontsize, fontname=fontname, color=(0, 0, 0),
+                    )
+                    cursor_x += fitz.get_text_length(span_text, fontname=fontname, fontsize=fontsize)
+            if sig_bytes and sig_rect is not None:
+                page.insert_image(
+                    fitz.Rect(sig_rect.x0, sig_rect.y0 + delta, sig_rect.x1, sig_rect.y1 + delta),
+                    stream=sig_bytes, keep_proportion=False,
+                )
+        page.insert_text((write_x, auth_y), "Auth. Signatory", fontsize=11, fontname="hebo", color=(0, 0, 0))
 
     def _render_service_support_clause_page(page):
         page.add_redact_annot(
@@ -2887,11 +2972,11 @@ def generate_certificates(request, bid_id):
             from .Aio import _wrap_address_line
             block_values = []
             if dept_name:
-                block_values.append(re.sub(r"\s+", " ", dept_name).strip().upper())
+                block_values.append(re.sub(r"\s+", " ", dept_name).strip())
             if organization:
-                block_values.append(re.sub(r"\s+", " ", organization).strip().upper())
+                block_values.append(re.sub(r"\s+", " ", organization).strip())
             if full_address:
-                block_values.append(re.sub(r"\s+", " ", full_address).strip().upper())
+                block_values.append(re.sub(r"\s+", " ", full_address).strip())
 
             line_height = 14
             gap_before_content = 24
@@ -2901,7 +2986,8 @@ def generate_certificates(request, bid_id):
                 block_lines.extend(_wrap_address_line(value, fitz, 12, max_width, fontname="hebo"))
             if include_bid_no and bid_no:
                 block_lines.append(f"Bid No: {bid_no}")
-            block_height = line_height * len(block_lines)
+            bid_reference_gap = 12 if include_bid_no and bid_no else 0
+            block_height = line_height * len(block_lines) + bid_reference_gap
 
             # A long address can now need more lines than the template's
             # original 1-line allowance — if that would push the block past
@@ -2913,8 +2999,8 @@ def generate_certificates(request, bid_id):
             if next_line_bbox is not None:
                 available_height = (next_line_bbox.y0 - gap_before_content) - heading_bbox.y0
                 if block_height > available_height > 0:
-                    line_height = max(9, available_height / len(block_lines))
-                    block_height = line_height * len(block_lines)
+                    line_height = max(9, (available_height - bid_reference_gap) / len(block_lines))
+                    block_height = line_height * len(block_lines) + bid_reference_gap
                 block_bottom_y = next_line_bbox.y0 - gap_before_content
                 insert_y = block_bottom_y - block_height + line_height
                 insert_y = max(insert_y, heading_bbox.y0)
@@ -2922,6 +3008,8 @@ def generate_certificates(request, bid_id):
                 insert_y = heading_bbox.y0
             cur_y = insert_y
             for idx, bl in enumerate(block_lines):
+                if bid_reference_gap and idx == len(block_lines) - 1:
+                    cur_y += bid_reference_gap
                 page.insert_text(
                     (insert_x, cur_y),
                     bl,
@@ -3186,6 +3274,18 @@ def generate_certificates(request, bid_id):
 
             if doc_type == "manufacturer_auth" and original_page_number == 2:
                 _fix_manufacturer_auth_page(page)
+                page_text_raw = page.get_text("text")
+
+            if doc_type == "manufacturer_auth" and original_page_number == 3:
+                # Page 3 = "Declaration of OEM Status on GeM" — unlike page 2
+                # (MAF letter, handled above via _fill_manufacturer_auth_body,
+                # which already lays out its own signature block/image), this
+                # page's signature block is still the template's own
+                # untouched layout with only a few points of gap above the
+                # "Auth. Signatory" line and its stamp image, same issue
+                # _add_signature_gap already fixes elsewhere in this file.
+                from .Aio import _add_signature_gap
+                _add_signature_gap(page, fitz)
                 page_text_raw = page.get_text("text")
 
             if suppress_tender_on_page:
@@ -3767,9 +3867,12 @@ def generate_certificates(request, bid_id):
                 )
                 page.add_redact_annot(r, fill=(1, 1, 1))
                 page.apply_redactions()
+                # Same 11pt as every other document's recipient block (MAF,
+                # Warranty, ATC, ...) — this used to draw at 12pt, a visibly
+                # bigger size than the rest.
                 page.insert_text(
                     (dept_line[0][0], dept_line[0][3] - 2),
-                    dept_name, fontsize=12, fontname="hebo", color=(0, 0, 0),
+                    dept_name, fontsize=11, fontname="hebo", color=(0, 0, 0),
                 )
 
             if org_line and organization:
@@ -3781,7 +3884,7 @@ def generate_certificates(request, bid_id):
                 page.apply_redactions()
                 page.insert_text(
                     (org_line[0][0], org_line[0][3] - 2),
-                    organization, fontsize=12, fontname="hebo", color=(0, 0, 0),
+                    organization, fontsize=11, fontname="hebo", color=(0, 0, 0),
                 )
 
             if full_address:
@@ -3825,23 +3928,56 @@ def generate_certificates(request, bid_id):
                             addr_erase.insert(0, r)
                         break
 
+                address_bottom = None
                 if addr_erase and write_x is not None:
                     for rect in addr_erase:
                         page.add_redact_annot(rect, fill=(1, 1, 1))
                     page.apply_redactions()
-                    addr_rect = fitz.Rect(
-                        write_x, write_y, page.rect.width - 36, write_y + 120
+                    # Wrap the same way as every other document's recipient
+                    # block (MAF, Warranty, ATC, ...) instead of handing the
+                    # raw address to insert_textbox, which wraps at plain
+                    # word/space boundaries instead of comma boundaries — the
+                    # same address used to break at a different point here
+                    # than everywhere else. Same 11pt/15pt line height too
+                    # (this drew at 11.5pt before).
+                    from .Aio import _wrap_address_line
+                    address_fontsize = 11
+                    address_line_height = 15
+                    address_max_width = page.rect.width - 36 - write_x
+                    wrapped_address = _wrap_address_line(
+                        full_address, fitz, address_fontsize, address_max_width, fontname="hebo"
                     )
-                    page.insert_textbox(
-                        addr_rect,
-                        full_address,
-                        fontsize=11.5, fontname="hebo", color=(0, 0, 0), align=0,
-                    )
+                    address_y = write_y + 10
+                    for line in wrapped_address:
+                        page.insert_text(
+                            (write_x, address_y), line,
+                            fontsize=address_fontsize, fontname="hebo", color=(0, 0, 0),
+                        )
+                        address_y += address_line_height
+                    address_bottom = address_y - address_line_height
+                    # Doc types that never go through _force_customer_to_block
+                    # (non_blacklisting, ipv6, preloaded_os) leave
+                    # _customer_block_bottoms empty, so the _force_tender_no_date
+                    # call further down this function falls back to its
+                    # rescan/pincode guess instead of this address block's real,
+                    # actual last line — same "gap balloons or vanishes"
+                    # failure mode described there, just for a different set of
+                    # doc types. Record it here too so that call gets the same
+                    # ground truth every other doc type already gets.
+                    _customer_block_bottoms[page.number] = address_bottom
 
                 if needs_fallback and (bid_no or bid_date_formatted):
                     tender_text = f"Bid No: {bid_no if bid_no else ''}            Dated: {bid_date_formatted if bid_date_formatted else ''}"
 
-                    if write_x is not None and write_y is not None:
+                    if address_bottom is not None:
+                        # Anchor off the recipient block's actual last drawn
+                        # line, with the same 26pt gap used everywhere else —
+                        # not a fixed offset from the address block's *top*,
+                        # which left this line touching (or overlapping) the
+                        # address whenever it wrapped to more than one line.
+                        tender_x = write_x
+                        tender_y = address_bottom + 26
+                    elif write_x is not None and write_y is not None:
                         tender_x = write_x
                         tender_y = write_y + 45
                     else:
@@ -3851,7 +3987,7 @@ def generate_certificates(request, bid_id):
                     page.insert_text(
                         (tender_x, tender_y),
                         tender_text,
-                        fontsize=10,
+                        fontsize=11,
                         fontname="hebo",
                         color=(0, 0, 0),
                     )
@@ -3886,6 +4022,33 @@ def generate_certificates(request, bid_id):
         output_filename = f"bid_{bid_id}_{doc_type}.pdf"
         output_path = os.path.join(output_dir, output_filename)
         _number_pages_from_one(new_doc)
+        _dedupe_stacked_signature_images(new_doc)
+        if doc_type == "non_return_hdd":
+            from .Aio import _add_signature_gap
+            for page in new_doc:
+                # Finish spacing after recipient reflow and duplicate cleanup.
+                # The lower placement is the surviving, shifted signature.
+                signatures = [
+                    (rect, img[0])
+                    for img in page.get_images(full=True)
+                    for rect in page.get_image_rects(img[0])
+                    if rect.width < 300
+                ]
+                if signatures:
+                    rect, xref = max(signatures, key=lambda item: item[0].y0)
+                    # Cleanup may have cropped an older copy's image resource.
+                    # Always take the stamp pixels from the untouched template.
+                    with fitz.open(os.path.join(settings.MEDIA_ROOT, "templates", "documents.pdf")) as source:
+                        stamp_page = source[16]
+                        stamp_xref = next(
+                            image[0] for image in stamp_page.get_images(full=True)
+                            if any(r.width < 300 for r in stamp_page.get_image_rects(image[0]))
+                        )
+                        stamp = source.extract_image(stamp_xref)["image"]
+                    _add_signature_gap(
+                        page, fitz, min_gap=26, min_image_gap=14,
+                        known_sig=(stamp, rect),
+                    )
         new_doc.save(output_path)
         new_doc.close()
 

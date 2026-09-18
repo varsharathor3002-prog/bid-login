@@ -1090,37 +1090,38 @@ def generate_workstation_certificates(request, bid_id):
                 0x2018: "'", 0x2019: "'", 0x201C: '"', 0x201D: '"', 0x2022: "-", 0x00A0: " ",
             })
 
-            recipient_lines = [
-                "To,",
-                str(bid.dept_name or "").strip(),
-                str(bid.organization or "").strip(),
-            ]
-            recipient_lines.extend(
-                line.strip() for line in re.split(r"[\r\n]+", address) if line.strip()
-            )
             recipient_rect = fitz.Rect(72, 102, 525, 235)
-            recipient_fontsize = 10.5
-            recipient_lineheight = 1.28
-            spare_height = page.insert_textbox(
-                recipient_rect,
-                "\n".join(line for line in recipient_lines if line is not None),
-                fontsize=recipient_fontsize,
-                fontname="hebo",
-                lineheight=recipient_lineheight,
-                align=0,
-            )
-            # Draw "Bid No/Dated" as its own textbox just below wherever the
-            # recipient block actually ended, with a small explicit gap —
-            # not joined into the same block with a blank "\n\n" line (too
-            # big a gap) or immediately appended (no gap at all, cramped).
-            bid_no_y0 = recipient_rect.y0 + (recipient_rect.height - spare_height) + 9
-            page.insert_textbox(
-                fitz.Rect(recipient_rect.x0, bid_no_y0, recipient_rect.x1, bid_no_y0 + 20),
+            recipient_fontsize = 11
+            recipient_line_height = 15
+            # Wrap dept_name/organization/address the same way as every
+            # other certificate's recipient block (MAF, Warranty, ...) —
+            # this used to hand the raw address straight to insert_textbox,
+            # which wraps at plain word/space boundaries instead of comma
+            # boundaries, so the exact same address broke at a different
+            # point here than it did in the MAF letter, looking
+            # inconsistent between documents.
+            from .Aio import _wrap_address_line
+            wrapped_recipient = ["To,"]
+            for value in [str(bid.dept_name or "").strip(), str(bid.organization or "").strip(), address]:
+                if value:
+                    wrapped_recipient.extend(
+                        _wrap_address_line(value, fitz, recipient_fontsize, recipient_rect.width, fontname="hebo")
+                    )
+
+            y = recipient_rect.y0 + 10
+            for line in wrapped_recipient:
+                page.insert_text((recipient_rect.x0, y), line, fontsize=recipient_fontsize, fontname="hebo", color=(0, 0, 0))
+                y += recipient_line_height
+
+            # Draw "Bid No/Dated" just below wherever the recipient block
+            # actually ended, with the same gap used everywhere else.
+            bid_no_y0 = (y - recipient_line_height) + 26
+            page.insert_text(
+                (recipient_rect.x0, bid_no_y0),
                 f"Bid No:- {str(bid.bid_no or '').strip()}            Dated:- {bid_date}",
                 fontsize=recipient_fontsize,
                 fontname="hebo",
-                lineheight=recipient_lineheight,
-                align=0,
+                color=(0, 0, 0),
             )
 
             filename = f"workstation_{bid.id}_atc_acceptance_letter.pdf"
@@ -1403,7 +1404,7 @@ def generate_workstation_certificates(request, bid_id):
         if pincode and pincode not in full_address:
             full_address = f"{full_address}, {pincode}".strip(", ")
         service_recipient = [
-            re.sub(r"\s+", " ", value).strip().upper()
+            re.sub(r"\s+", " ", value).strip()
             for value in (dept_name, organization, full_address)
         ]
 
@@ -2165,9 +2166,14 @@ def generate_workstation_certificates(request, bid_id):
                 insert_x = address_rect.x0 if address_rect else first_rect.x0
                 insert_y = address_rect.y1 + 14 if address_rect else first_rect.y1 - 2
                 if customer_block_bottom is not None:
-                    if not address_rect:
-                        insert_x = to_rect.x0 if to_rect else insert_x
-                    insert_y = customer_block_bottom + 18
+                    # Always line this up with the recipient block itself
+                    # once we know where it actually ended, not only when no
+                    # pincode/address_rect match was found — otherwise this
+                    # line reads as indented differently from the address
+                    # lines directly above it whenever a stale template
+                    # marker was also matched.
+                    insert_x = to_rect.x0 if to_rect else insert_x
+                    insert_y = customer_block_bottom + 26
                 page.insert_text(
                     (insert_x, insert_y),
                     tender_text,
@@ -2187,9 +2193,8 @@ def generate_workstation_certificates(request, bid_id):
                 insert_x = address_rect.x0 if address_rect else 72
                 insert_y = address_rect.y1 + 14 if address_rect else (subject_rect.y0 - 28 if subject_rect else 118)
                 if customer_block_bottom is not None:
-                    if not address_rect:
-                        insert_x = to_rect.x0 if to_rect else insert_x
-                    insert_y = customer_block_bottom + 18
+                    insert_x = to_rect.x0 if to_rect else insert_x
+                    insert_y = customer_block_bottom + 26
                 page.insert_text((insert_x, insert_y), tender_text, fontsize=11, fontname="hebo", color=(0, 0, 0))
 
         def force_customer_block(page):
@@ -3059,6 +3064,16 @@ def generate_workstation_certificates(request, bid_id):
                         replace_exact(page, match, model_number, fontsize=10)
             if doc_type == "manufacturer_auth" and original_page == 2:
                 fix_manufacturer_auth_page(page)
+            if doc_type == "manufacturer_auth" and original_page == 3:
+                # Page 3 = "Declaration of OEM Status on GeM" — unlike page 2
+                # (handled above via fix_manufacturer_auth_page, which
+                # already lays out its own signature block), this page's
+                # signature block is still the template's own untouched
+                # layout with barely any gap above "Auth. Signatory"/its
+                # stamp image, same issue _add_signature_gap already fixes
+                # elsewhere in this file.
+                from .Aio import _add_signature_gap
+                _add_signature_gap(page, fitz)
             if doc_type == "manufacturer_auth" and original_page != 2:
                 # Keep buyer/department names exactly as entered. Brand-name
                 # normalization is only intended for the certificate body.
@@ -3414,6 +3429,8 @@ def generate_workstation_certificates(request, bid_id):
         filename = f"workstation_{bid.id}_{doc_type}.pdf"
         path = os.path.join(out_dir, filename)
         number_pages_from_one(doc)
+        from .Aio import _dedupe_stacked_signature_images
+        _dedupe_stacked_signature_images(doc, fitz)
         doc.save(path)
         doc.close()
         return JsonResponse({
