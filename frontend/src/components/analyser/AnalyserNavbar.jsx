@@ -16,7 +16,6 @@ import {
   FaExclamationTriangle,
   FaChartLine,
   FaTachometerAlt,
-  FaBan,
 } from "react-icons/fa";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -359,40 +358,6 @@ const AnalyserNavbar = () => {
           >
             <span className="text-lg"><FaTachometerAlt /></span>
             <span className="text-sm font-medium">Dashboard</span>
-          </div>
-
-          <div
-            onClick={() => navigate("/analyser-dashboard/disqualified-bids")}
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-all duration-200 mb-2 focus:outline-none focus:ring-0 no-highlight select-none ${
-              location.pathname === "/analyser-dashboard/disqualified-bids"
-                ? "bg-gray-700/50 text-white"
-                : "hover:bg-gray-700/50 text-gray-200"
-            }`}
-          >
-            <span className="text-lg text-red-400"><FaBan /></span>
-            <span className="text-sm font-medium">Disqualified Bid</span>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => navigate("/analyser-dashboard/financial-rankings")}
-            aria-current={location.pathname === "/analyser-dashboard/financial-rankings" ? "page" : undefined}
-            className={`flex w-full items-center gap-3 px-4 py-3 rounded-xl transition-all mb-2 text-left ${location.pathname === "/analyser-dashboard/financial-rankings" ? "bg-gray-700/50 text-white" : "hover:bg-gray-700/50 text-gray-200"}`}
-          >
-            <span className="text-lg text-emerald-400"><FaChartLine /></span>
-            <span className="text-sm font-medium">Financial Ranking</span>
-          </button>
-
-          <div
-            onClick={() => navigate("/analyser-dashboard/bid-not-participated")}
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-all duration-200 mb-2 focus:outline-none focus:ring-0 no-highlight select-none ${
-              location.pathname === "/analyser-dashboard/bid-not-participated"
-                ? "bg-gray-700/50 text-white"
-                : "hover:bg-gray-700/50 text-gray-200"
-            }`}
-          >
-            <span className="text-lg text-amber-400"><FaClipboardList /></span>
-            <span className="text-sm font-medium">Bid To Be Participated</span>
           </div>
 
           <div

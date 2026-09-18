@@ -2,6 +2,7 @@ import json
 import re
 
 from django.http import JsonResponse
+from django.utils.dateparse import parse_date
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
@@ -9,6 +10,8 @@ from ..models import GemFinancialRanking
 from .Gem import _require_role
 
 COMPANY = "LAPS N TABS TECHNOLOGY PRIVATE LIMITED"
+SOURCE_TYPES = {"financial_evaluated", "bid_ra_awarded"}
+SELLER_STATUSES = {"unknown", "qualified", "not_evaluated", "non_qualified", "disqualified"}
 
 
 def company_key(value):
@@ -32,7 +35,10 @@ def result_data(row):
     matches = [seller for seller in row.sellers if company_key(seller["sellerName"]) == COMPANY]
     return {
         "id": row.id, "bid_no": row.bid_no, "lot_key": row.lot_key,
-        "ra_no": row.ra_no, "technical_status": row.technical_status,
+        "ra_no": row.ra_no, "source_type": row.source_type,
+        "technical_status": row.technical_status,
+        "start_date": row.start_date.isoformat() if row.start_date else None,
+        "end_date": row.end_date.isoformat() if row.end_date else None,
         "item_name": row.item_name, "sellers": row.sellers,
         "company_rank": matches[0]["rank"] if len(matches) == 1 else None,
         "company_match": "matched" if len(matches) == 1 else "ambiguous" if matches else "not_found",
@@ -43,11 +49,17 @@ def result_data(row):
 @csrf_exempt
 @require_http_methods(["GET", "POST"])
 def financial_rankings(request):
-    _, error = _require_role(request, {"analyser", "admin"})
+    _, error = _require_role(request, {"analyser", "admin", "management"})
     if error:
         return error
     if request.method == "GET":
-        results = [result_data(row) for row in GemFinancialRanking.objects.all()]
+        rows = GemFinancialRanking.objects.order_by("-start_date", "-end_date", "-id")
+        source_type = request.GET.get("source_type", "")
+        if source_type:
+            if source_type not in SOURCE_TYPES:
+                return JsonResponse({"error": "Invalid source type."}, status=400)
+            rows = rows.filter(source_type=source_type)
+        results = [result_data(row) for row in rows]
         if request.GET.get("qualified_only") == "1":
             results = [row for row in results if row["technical_status"] == "qualified"]
         return JsonResponse({"company_name": COMPANY, "results": results})
@@ -58,8 +70,11 @@ def financial_rankings(request):
         bid_no = body.get("bid_no", "")
         if not isinstance(bid_no, str) or not re.fullmatch(r"GEM/\d{4}/B/\d+", bid_no) or len(bid_no) > 100:
             raise ValueError("A valid GeM bid number is required.")
+        source_type = body.get("source_type", "financial_evaluated")
+        if source_type not in SOURCE_TYPES:
+            raise ValueError("Invalid source type.")
         technical_status = body.get("technical_status", "unknown")
-        if technical_status not in ("unknown", "qualified", "disqualified"):
+        if technical_status not in SELLER_STATUSES:
             raise ValueError("Invalid technical status.")
         ra_no = body.get("ra_no", "")
         if not isinstance(ra_no, str) or len(ra_no) > 100 or (ra_no and not re.fullmatch(r"GEM/\d{4}/R/\d+", ra_no)):
@@ -67,6 +82,12 @@ def financial_rankings(request):
         for key, limit in [("lot_key", 100), ("item_name", 500)]:
             if not isinstance(body.get(key, ""), str) or len(body.get(key, "")) > limit:
                 raise ValueError(f"Invalid {key}.")
+        start_date = parse_date(body.get("start_date", "")) if isinstance(body.get("start_date", ""), str) else None
+        end_date = parse_date(body.get("end_date", "")) if isinstance(body.get("end_date", ""), str) else None
+        if source_type == "bid_ra_awarded" and (not start_date or not end_date):
+            raise ValueError("Awarded Bid/RA results require valid Start Date and End Date.")
+        if start_date and end_date and end_date < start_date:
+            raise ValueError("End Date cannot be before Start Date.")
         sellers = body.get("sellers")
         if not isinstance(sellers, list) or not 1 <= len(sellers) <= 1000:
             raise ValueError("Provide between 1 and 1000 seller rows.")
@@ -83,12 +104,26 @@ def financial_rankings(request):
                 raise ValueError("Total price must be a decimal string with two decimal places.")
             if seller.get("currency", "INR") != "INR":
                 raise ValueError("Only INR results are supported.")
-            cleaned.append({key: seller[key] for key in ["sellerName", "offeredItem", "rank", "totalPrice"]} | {"currency": "INR"})
+            seller_status = seller.get("status", "unknown")
+            if seller_status not in SELLER_STATUSES:
+                raise ValueError("Invalid seller status.")
+            cleaned.append(
+                {key: seller[key] for key in ["sellerName", "offeredItem", "rank", "totalPrice"]}
+                | {"currency": "INR", "status": seller_status}
+            )
     except (ValueError, UnicodeDecodeError) as exc:
         return JsonResponse({"error": str(exc)}, status=400)
     row, created = GemFinancialRanking.objects.update_or_create(
         bid_no=bid_no, lot_key=body.get("lot_key", ""),
-        defaults={"item_name": body.get("item_name", ""), "sellers": cleaned, "technical_status": technical_status, "ra_no": ra_no},
+        defaults={
+            "item_name": body.get("item_name", ""),
+            "sellers": cleaned,
+            "source_type": source_type,
+            "technical_status": technical_status,
+            "ra_no": ra_no,
+            "start_date": start_date,
+            "end_date": end_date,
+        },
     )
     return JsonResponse(result_data(row), status=201 if created else 200)
 
@@ -96,7 +131,7 @@ def financial_rankings(request):
 @csrf_exempt
 @require_http_methods(["DELETE"])
 def delete_financial_ranking(request, result_id):
-    _, error = _require_role(request, {"analyser", "admin"})
+    _, error = _require_role(request, {"analyser", "admin", "management"})
     if error:
         return error
     row = GemFinancialRanking.objects.filter(id=result_id).first()

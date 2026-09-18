@@ -3,7 +3,7 @@ import { FaEye, FaEyeSlash } from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
 import loginImg from "../../assets/images.png";
 
-export default function Login() {
+export default function Login({ showRoleSelector = true, fixedRole = null }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState("user");
@@ -11,6 +11,8 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
 
   const navigate = useNavigate();
+
+  const effectiveRole = fixedRole || (showRoleSelector ? role : null);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -20,7 +22,9 @@ export default function Login() {
       const res = await fetch(`${import.meta.env.VITE_API_URL}/login/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, role }),
+        body: JSON.stringify(
+          effectiveRole ? { email, password, role: effectiveRole } : { email, password }
+        ),
       });
 
       const data = await res.json();
@@ -31,7 +35,7 @@ export default function Login() {
         return;
       }
 
-      if (data.role !== role) {
+      if (effectiveRole && data.role !== effectiveRole) {
         alert("Selected role is incorrect ❌");
         return;
       }
@@ -45,9 +49,11 @@ export default function Login() {
       localStorage.removeItem("user_username");
       localStorage.removeItem("analyser_username");
       localStorage.removeItem("admin_username");
+      localStorage.removeItem("management_username");
       sessionStorage.removeItem("user_username");
       sessionStorage.removeItem("analyser_username");
       sessionStorage.removeItem("admin_username");
+      sessionStorage.removeItem("management_username");
 
             localStorage.setItem("role", loginRole);
       localStorage.setItem("username", loginName);
@@ -77,6 +83,10 @@ export default function Login() {
         localStorage.setItem("admin_username", loginName);
         sessionStorage.setItem("admin_username", loginName);
         navigate("/admin-dashboard");
+      } else if (loginRole === "management") {
+        localStorage.setItem("management_username", loginName);
+        sessionStorage.setItem("management_username", loginName);
+        navigate("/management-dashboard");
       }
     } catch (error) {
       console.log("Login Error:", error);
@@ -140,29 +150,31 @@ export default function Login() {
             <h2 style={{ fontSize: "1.7rem", fontWeight: 700, textAlign: "center", marginBottom: "4px" }}>Welcome Back</h2>
             <p style={{ fontSize: "0.82rem", color: "#CBD5E1", textAlign: "center", marginBottom: "20px" }}>Login to your account</p>
 
-            <div style={{ display: "flex", gap: "8px", marginBottom: "18px" }}>
-              {["user", "analyser", "admin"].map((r) => (
-                <button
-                  key={r}
-                  type="button"
-                  onClick={() => setRole(r)}
-                  style={{
-                    flex: 1,
-                    padding: "8px 0",
-                    borderRadius: "999px",
-                    fontSize: "0.72rem",
-                    fontWeight: 600,
-                    border: "none",
-                    cursor: "pointer",
-                    transition: "all 0.2s",
-                    background: role === r ? "#FFFFFF" : "rgba(255,255,255,0.18)",
-                    color: role === r ? "#1F4D4D" : "#FFFFFF",
-                  }}
-                >
-                  {r === "user" ? "Bid Data Feeding" : r === "analyser" ? "Bid Analyser" : "Admin"}
-                </button>
-              ))}
-            </div>
+            {showRoleSelector && (
+              <div style={{ display: "flex", gap: "8px", marginBottom: "18px" }}>
+                {["user", "analyser", "admin"].map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => setRole(r)}
+                    style={{
+                      flex: 1,
+                      padding: "8px 0",
+                      borderRadius: "999px",
+                      fontSize: "0.72rem",
+                      fontWeight: 600,
+                      border: "none",
+                      cursor: "pointer",
+                      transition: "all 0.2s",
+                      background: role === r ? "#FFFFFF" : "rgba(255,255,255,0.18)",
+                      color: role === r ? "#1F4D4D" : "#FFFFFF",
+                    }}
+                  >
+                    {r === "user" ? "Bid Data Feeding" : r === "analyser" ? "Bid Analyser" : "Admin"}
+                  </button>
+                ))}
+              </div>
+            )}
 
             <form onSubmit={handleLogin}>
               <div style={{ marginBottom: "14px" }}>

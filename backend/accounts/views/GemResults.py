@@ -83,7 +83,7 @@ def _result_data(result):
 @csrf_exempt
 @require_http_methods(["GET", "POST", "DELETE"])
 def gem_bid_results(request):
-    user, error = _require_role(request, {"admin", "analyser"})
+    user, error = _require_role(request, {"admin", "analyser", "management"})
     if error:
         return error
 
@@ -234,7 +234,7 @@ def gem_bid_results(request):
 @csrf_exempt
 @require_http_methods(["DELETE"])
 def delete_gem_bid_result(request, result_id):
-    user, error = _require_role(request, {"admin", "analyser"})
+    user, error = _require_role(request, {"admin", "analyser", "management"})
     if error:
         return error
     result = GemBidResult.objects.filter(id=result_id, is_disqualified=True).first()

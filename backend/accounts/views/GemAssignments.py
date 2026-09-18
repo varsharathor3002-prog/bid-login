@@ -10,6 +10,7 @@ from django.views.decorators.http import require_http_methods
 
 from ..models import GemBidAssignment, GemBidAssignmentHistory, GemBidOpportunity, User
 from .Gem import _require_role
+from .GemOpportunityCleanup import delete_expired_bid_opportunities
 
 
 FINAL_STATUSES = {"participated", "skipped", "expired"}
@@ -85,36 +86,30 @@ def _assignment_data(row):
 @csrf_exempt
 @require_http_methods(["GET", "POST"])
 def gem_bid_assignments(request):
-    user, error = _require_role(request, {"admin", "analyser", "user"})
+    user, error = _require_role(request, {"admin", "user", "management"})
     if error:
         return error
 
     if request.method == "GET":
-        now = timezone.localtime()
-        expiring = GemBidAssignment.objects.filter(
-            opportunity__end_date__lte=now,
-            status__in=["assigned", "in_progress"],
-        )
-        if expiring.exists():
-            expiring.update(status="expired", completed_at=now)
+        delete_expired_bid_opportunities()
         assignments = GemBidAssignment.objects.select_related("opportunity", "assigned_to", "assigned_by")
         if user.role == "user":
             assignments = assignments.filter(assigned_to=user, hidden_for_user=False)
-        elif user.role == "analyser":
-            assignments = assignments.filter(hidden_for_analyser=False)
         elif user.role == "admin":
             assignments = assignments.filter(hidden_for_admin=False)
+        elif user.role == "management":
+            assignments = assignments.filter(hidden_for_management=False)
         status = request.GET.get("status", "").strip()
         if status in VALID_STATUSES:
             assignments = assignments.filter(status=status)
         elif user.role == "user":
             assignments = assignments.exclude(status="skipped")
         employee_id = request.GET.get("employee", "").strip()
-        if employee_id.isdigit() and user.role in {"admin", "analyser"}:
+        if employee_id.isdigit() and user.role in ("admin", "management"):
             assignments = assignments.filter(assigned_to_id=int(employee_id))
 
         employees = []
-        if user.role in {"admin", "analyser"}:
+        if user.role in ("admin", "management"):
             employees = list(User.objects.filter(role="user").order_by("username", "id").values("id", "username", "email"))
             employee_counts = Counter(
                 GemBidAssignment.objects.exclude(status__in=FINAL_STATUSES)
@@ -134,8 +129,8 @@ def gem_bid_assignments(request):
     action = str(body.get("action") or "assign")
 
     if action == "assign":
-        if user.role != "analyser":
-            return JsonResponse({"error": "Only an analyser can assign bids."}, status=403)
+        if user.role not in ("admin", "management"):
+            return JsonResponse({"error": "Only an admin or management can assign bids."}, status=403)
         opportunity_ids = list(dict.fromkeys(body.get("opportunity_ids") or []))
         if not opportunity_ids:
             return JsonResponse({"error": "Select at least one bid."}, status=400)
@@ -174,7 +169,12 @@ def gem_bid_assignments(request):
         rows = list(rows)
         if len(rows) != len(assignment_ids):
             return JsonResponse({"error": "One or more selected bids are not available to this account."}, status=403)
-        field = {"user": "hidden_for_user", "analyser": "hidden_for_analyser", "admin": "hidden_for_admin"}[user.role]
+        field = {
+            "user": "hidden_for_user",
+            "analyser": "hidden_for_analyser",
+            "admin": "hidden_for_admin",
+            "management": "hidden_for_management",
+        }[user.role]
         now = timezone.now()
         with transaction.atomic():
             GemBidAssignment.objects.filter(id__in=assignment_ids).update(**{field: True, "updated_at": now})
@@ -214,6 +214,7 @@ def gem_bid_assignments(request):
             "user": "hidden_for_user",
             "analyser": "hidden_for_analyser",
             "admin": "hidden_for_admin",
+            "management": "hidden_for_management",
         }[user.role]
         setattr(assignment, field, True)
         assignment.save(update_fields=[field, "updated_at"])
@@ -224,7 +225,7 @@ def gem_bid_assignments(request):
         )
         return JsonResponse({"hidden": True})
 
-    if action == "reassign" and user.role == "analyser":
+    if action == "reassign" and user.role in ("admin", "management"):
         employee = User.objects.filter(id=body.get("assigned_to"), role="user").first()
         if not employee:
             return JsonResponse({"error": "Select a valid user."}, status=400)

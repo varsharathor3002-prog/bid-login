@@ -6,12 +6,53 @@
     try { const url = new URL(value); return url.protocol === 'https:' && url.hostname.endsWith('.gem.gov.in'); }
     catch { return false; }
   };
+  const COMPANY_KEYS = new Set(['LAPS N TABS TECHNOLOGY PRIVATE LIMITED', 'LAPS N TABS TECHNOLOGY PVT LTD']);
+  const sellerKey = (value) => String(value || '').replace(/\s+/g, ' ').trim().toUpperCase()
+    .replace(/(?:\s*\([^)]*\))+\s*(?:UNDER\s+PMA)?\s*$/i, '')
+    .replace(/\s+UNDER\s+PMA\s*$/i, '').trim();
+  const isCompany = (seller) => COMPANY_KEYS.has(sellerKey(seller?.sellerName));
+  const validSellerStatus = (value) => ['qualified', 'not_evaluated', 'non_qualified', 'disqualified'].includes(value) ? value : 'unknown';
+  const validIsoDate = (value) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return false;
+    const [year, month, day] = value.split('-').map(Number);
+    const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+    const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    return year >= 2000 && month >= 1 && month <= 12 && day >= 1 && day <= days[month - 1];
+  };
+  function combineRankingAndEvaluation(ranking, evaluation, cardStatus = 'unknown') {
+    const evaluatedRows = evaluation?.evaluations?.length ? evaluation.evaluations : evaluation?.sellers || [];
+    const evaluatedBySeller = new Map(evaluatedRows.map((seller) => [sellerKey(seller.sellerName), validSellerStatus(seller.status)]));
+    const sellers = (ranking?.sellers || []).map((seller) => {
+      const evaluated = evaluatedBySeller.get(sellerKey(seller.sellerName));
+      return { ...seller, status: evaluated && evaluated !== 'unknown' ? evaluated : validSellerStatus(seller.status) };
+    });
+    const evaluatedCompany = evaluatedRows.find(isCompany);
+    const rankedCompany = sellers.find(isCompany);
+    // The seller-bids card is the logged-in company's authoritative Technical
+    // Status. Bid Result is only a fallback when that card label is absent.
+    let companyStatus = validSellerStatus(cardStatus);
+    if (companyStatus === 'unknown') companyStatus = validSellerStatus(evaluatedCompany?.status);
+    if (companyStatus === 'unknown') companyStatus = validSellerStatus(rankedCompany?.status);
+    if (companyStatus === 'unknown' && rankedCompany) companyStatus = 'qualified';
+    return { sellers: sellers.map((seller) => isCompany(seller) ? { ...seller, status: companyStatus } : seller), companyStatus };
+  }
   async function update(run, status, message) {
     run.status = status;
     run.message = message;
     await chrome.storage.local.set({ [KEY]: { status, message, tabId: run.tabId || null, listTabId: run.listTabId || null, page: run.page || 0, saved: run.saved || 0, updatedAt: Date.now() } });
   }
-  function check(run) { if (run.cancelled) throw new Error('Financial scan stopped.'); }
+  function resumeSignal(run) {
+    return new Promise((resolve) => { (run.resumeWaiters || (run.resumeWaiters = [])).push(resolve); });
+  }
+  async function check(run) {
+    if (run.cancelled) throw new Error('Awarded Bid/RA scan stopped.');
+    if (run.paused) {
+      await update(run, 'paused', 'Awarded Bid/RA scan paused by user.');
+      await resumeSignal(run);
+      if (run.cancelled) throw new Error('Awarded Bid/RA scan stopped.');
+      await update(run, 'running', 'Awarded Bid/RA scan resumed.');
+    }
+  }
 
   async function inject(tabId, allFrames = false) {
     await chrome.scripting.executeScript({ target: { tabId, allFrames }, files: [
@@ -24,7 +65,7 @@
     let result;
     let lastResultUrl = '';
     while (Date.now() < deadline) {
-      check(run);
+      await check(run);
       const current = await chrome.tabs.get(run.tabId);
       if (current.status === 'complete') {
         if (!gemUrl(current.url)) throw new Error('Result tab left GeM. Log in and retry.');
@@ -83,9 +124,74 @@
     throw error;
   }
 
+  async function rememberForegroundTab(run, owned) {
+    try {
+      const [foreground] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!foreground?.id || owned.has(foreground.id)) return;
+      run.foregroundTabId = foreground.id;
+      run.foregroundWindowId = foreground.windowId;
+    } catch { /* Keep the last known foreground tab. */ }
+  }
+
+  function restoreForegroundTab(run, resultTab, focusWindow = false) {
+    const foregroundTabId = run.foregroundTabId;
+    if (!foregroundTabId || foregroundTabId === resultTab.id) return;
+    chrome.tabs.update(foregroundTabId, { active: true }).then(() => {
+      if (focusWindow && Number.isInteger(run.foregroundWindowId) && chrome.windows?.update) {
+        return chrome.windows.update(run.foregroundWindowId, { focused: true });
+      }
+      return null;
+    }).catch(() => {});
+  }
+
+  const acxxelTab = (tab) => {
+    try {
+      const url = new URL(tab?.url || '');
+      return ['localhost:5173', '127.0.0.1:5173', 'acxxelbidding.com', 'www.acxxelbidding.com'].includes(url.host);
+    } catch { return false; }
+  };
+
+  async function createWorkerWindow(run, source) {
+    const originalTabs = await chrome.tabs.query({ windowId: source.windowId });
+    const candidates = originalTabs.filter((tab) => tab.id !== source.id);
+    candidates.sort((left, right) => Number(acxxelTab(right)) - Number(acxxelTab(left))
+      || Math.abs((left.index ?? 0) - (source.index ?? 0)) - Math.abs((right.index ?? 0) - (source.index ?? 0)));
+    const foreground = candidates[0];
+    if (!foreground?.id) throw new Error('Keep the Acxxel software tab open beside GeM before starting the background scan.');
+    run.foregroundTabId = foreground.id;
+    run.foregroundWindowId = source.windowId;
+    run.originalListWindowId = source.windowId;
+    run.originalListIndex = source.index ?? -1;
+    const worker = await chrome.windows.create({
+      tabId: source.id,
+      type: 'popup',
+      state: 'minimized',
+      focused: false,
+    });
+    if (!Number.isInteger(worker?.id)) throw new Error('Chrome could not create the background result worker. Scan was not started.');
+    run.workerWindowId = worker.id;
+    await chrome.tabs.update(foreground.id, { active: true });
+    await chrome.windows.update(source.windowId, { focused: true });
+  }
+
+  async function restoreListTabAndCloseWorker(run) {
+    if (!run.workerWindowId) return;
+    let restored = false;
+    if (run.listTabId && Number.isInteger(run.originalListWindowId)) {
+      try {
+        await chrome.tabs.create({ url: 'about:blank', active: true, windowId: run.workerWindowId });
+        await chrome.tabs.move(run.listTabId, { windowId: run.originalListWindowId, index: run.originalListIndex });
+        restoreForegroundTab(run, { id: run.listTabId }, false);
+        restored = true;
+      } catch { /* Preserve the GeM list in its worker if its original window was closed. */ }
+    }
+    if (restored) await chrome.windows.remove(run.workerWindowId).catch(() => {});
+    else await chrome.windows.update(run.workerWindowId, { state: 'normal', focused: false }).catch(() => {});
+  }
+
   async function openTaskResult(run, task, kind, directUrl, owned) {
     if (directUrl) {
-      const tab = await chrome.tabs.create({ url: directUrl, active: false });
+      const tab = await chrome.tabs.create({ url: directUrl, active: false, windowId: run.workerWindowId });
       owned.add(tab.id);
       run.tabId = tab.id;
       return tab.id;
@@ -98,10 +204,11 @@
     let opened = false;
     const deadline = Date.now() + 20000;
     while (Date.now() < deadline && !opened) {
-      check(run);
+      await check(run);
       const current = await chrome.tabs.get(run.listTabId);
       if (current.status === 'complete' && gemUrl(current.url)) {
         await inject(run.listTabId);
+        await rememberForegroundTab(run, owned);
         run.awaitingResultChild = true;
         try {
           // Re-scan and click in one synchronous page execution. GeM's Angular
@@ -126,7 +233,7 @@
       }
       if (!opened) await sleep(1000);
     }
-    if (!opened) throw new Error(`[v3.59 fresh-click] View ${kind === 'bid' ? 'Bid' : 'RA'} Results was not found for this bid.`);
+    if (!opened) throw new Error(`[v${chrome.runtime.getManifest().version} awarded-fresh-click] View ${kind === 'bid' ? 'Bid' : 'RA'} Results was not found for this bid.`);
     return run.tabId || tab.id;
   }
 
@@ -138,7 +245,7 @@
     let lastError;
     let retryUrl = directUrl || null;
     for (let attempt = 1; attempt <= 3; attempt++) {
-      check(run);
+      await check(run);
       const existingTabs = new Set(owned);
       let usedListTab = false;
       try {
@@ -179,10 +286,10 @@
     let stable = '';
     let stableCount = 0;
     while (Date.now() < deadline) {
-      check(run);
+      await check(run);
       const tab = await chrome.tabs.get(run.listTabId);
       if (tab.status === 'complete') {
-        if (!gemUrl(tab.url) || !/^\/seller-bids\/?$/.test(new URL(tab.url).pathname)) throw new Error('Dedicated list tab left seller-bids. Log in to GeM and retry.');
+        if (!gemUrl(tab.url) || !/^\/seller-bids\/?$/.test(new URL(tab.url).pathname)) throw new Error('Selected GeM list tab left seller-bids. Return to the awarded list and retry.');
         const state = await listSnapshot(run.listTabId);
         if (JSON.stringify(state.filters.filter((item) => item.checked).map((item) => item.key).sort()) !== JSON.stringify(expectedFilters.filter((item) => item.checked).map((item) => item.key).sort())) throw new Error('GeM filters changed during pagination. Scan stopped to avoid saving a different bid list.');
         if (state.signature && (!previous || state.signature !== previous.signature) && (!expectedPage || state.page === expectedPage)) {
@@ -209,7 +316,7 @@
     }
     const loadDeadline = Date.now() + 60000;
     while (Date.now() < loadDeadline) {
-      check(run);
+      await check(run);
       tab = await chrome.tabs.get(run.listTabId);
       if (tab.status === 'complete' && gemUrl(tab.url) && /^\/seller-bids\/?$/.test(new URL(tab.url).pathname)) break;
       await sleep(1000);
@@ -218,16 +325,16 @@
     const filterDeadline = Date.now() + 45000;
     let ready = false;
     while (Date.now() < filterDeadline && !ready) {
-      check(run);
+      await check(run);
       const response = await chrome.scripting.executeScript({ target: { tabId: run.listTabId }, args: [run.expectedFilters], func: (expected) => globalThis.AcxxelFinancialList.restoreFilters(document, expected) });
       ready = Boolean(response[0]?.result?.ready);
       if (!ready) await sleep(1500);
     }
-    if (!ready) throw new Error('Could not restore the Financial Evaluated filters after closing an inline RA result.');
+    if (!ready) throw new Error('Could not restore the Bid/RA Awarded filters after closing an inline result.');
     await chrome.scripting.executeScript({ target: { tabId: run.listTabId }, args: [run.page], func: (page) => { document.location.hash = `#page-${page}`; } });
     const deadline = Date.now() + 45000;
     while (Date.now() < deadline) {
-      check(run);
+      await check(run);
       const state = await listSnapshot(run.listTabId);
       if (state.page === run.page && state.signature) return;
       await sleep(1000);
@@ -247,11 +354,14 @@
     // Part A ordering: real Next click, wait for cards, late-response wait,
     // second click only if still unchanged, then hash recovery and final wait.
     for (let attempt = 1; attempt <= 2; attempt++) {
-      check(run);
+      await check(run);
       const latest = await listSnapshot(run.listTabId);
-      if (latest.signature && latest.signature !== previous.signature && latest.page === expectedPage) return verify(latest);
+      if (latest.signature && latest.page === expectedPage && (direction === 'first' || latest.signature !== previous.signature)) return verify(latest);
       const result = await chrome.scripting.executeScript({ target: { tabId: run.listTabId }, args: [direction], func: (direction) => globalThis.AcxxelFinancialList.navigate(document, direction) });
       const navigation = result[0]?.result;
+      if (direction === 'first' && navigation === 'already') {
+        return verify(await waitList(run, expectedFilters, null, 15000, 1));
+      }
       if (!['clicked', 'routed'].includes(navigation)) {
         if (navigation !== 'missing') throw new Error(`Cannot navigate ${direction}: ${navigation || 'missing pagination'}. Scan is incomplete.`);
         await update(run, 'running', `Page ${previous.page}: Next is temporarily missing. Waiting before route recovery (${run.saved || 0} saved)...`);
@@ -274,13 +384,13 @@
     // completely, restore the captured filters, and verify the exact next page
     // before continuing. The user's visible GeM tab is never reloaded.
     for (let reloadAttempt = 1; reloadAttempt <= 3; reloadAttempt++) {
-      check(run);
+      await check(run);
       await update(run, 'running', `Page ${previous.page}: GeM list stalled. Reloading the background list and restoring filters (${reloadAttempt}/3)...`);
       await chrome.tabs.reload(run.listTabId);
       const loadDeadline = Date.now() + 60000;
       let loaded = false;
       while (Date.now() < loadDeadline) {
-        check(run);
+        await check(run);
         const tab = await chrome.tabs.get(run.listTabId);
         if (tab.status === 'complete') {
           if (!gemUrl(tab.url) || !/^\/seller-bids\/?$/.test(new URL(tab.url).pathname)) {
@@ -297,7 +407,7 @@
       const filterDeadline = Date.now() + 45000;
       let filtersReady = false;
       while (Date.now() < filterDeadline && !filtersReady) {
-        check(run);
+        await check(run);
         const response = await chrome.scripting.executeScript({
           target: { tabId: run.listTabId },
           args: [expectedFilters],
@@ -321,10 +431,15 @@
 
   async function scan(run) {
     const owned = new Set();
+    const workerFocused = (windowId) => {
+      if (!run.workerWindowId || windowId !== run.workerWindowId) return;
+      chrome.windows.update(run.workerWindowId, { state: 'minimized', focused: false }).catch(() => {});
+      if (Number.isInteger(run.foregroundWindowId)) chrome.windows.update(run.foregroundWindowId, { focused: true }).catch(() => {});
+    };
     const childCreated = (tab) => {
       // Some GeM window.open paths omit openerTabId. During the tightly scoped
       // result-click window, the only extension-created tab is its result.
-      if (owned.has(tab.openerTabId) || run.awaitingResultChild) {
+      if (tab.openerTabId === run.listTabId || owned.has(tab.openerTabId) || run.awaitingResultChild) {
         owned.add(tab.id);
         run.tabId = tab.id;
         // GeM opens result tabs through its own window.open call, which Chrome
@@ -332,59 +447,54 @@
         // on, including the Acxxel site itself. Push it back to the background
         // immediately so the scan never disturbs the user's current tab.
         chrome.tabs.update(tab.id, { active: false }).catch(() => {});
+        restoreForegroundTab(run, tab);
+        if (run.workerWindowId && tab.windowId !== run.workerWindowId) {
+          chrome.tabs.move(tab.id, { windowId: run.workerWindowId, index: -1 }).catch(() => {});
+        }
       }
     };
     chrome.tabs.onCreated.addListener(childCreated);
+    chrome.windows.onFocusChanged.addListener(workerFocused);
     let savedCount = 0;
+    let createdCount = 0;
+    let updatedCount = 0;
     const failures = [];
     let lastFailure = '';
     try {
-      await update(run, 'starting', 'Preparing all-page qualified RA scan in a separate list tab...');
+      await update(run, 'starting', 'Preparing all-page scan in the selected Bid/RA Awarded tab...');
       const saved = await chrome.storage.local.get(['token', 'apiBase']);
       if (!saved.token) throw new Error('Log in to Acxxel and connect the extension first.');
       const base = new URL(saved.apiBase || 'http://127.0.0.1:8000/api');
       if (!['https://acxxelbidding.com', 'https://www.acxxelbidding.com', 'http://127.0.0.1:8000', 'http://localhost:8000'].includes(base.origin)) throw new Error('Unsupported Acxxel API address.');
       const [source] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (!gemUrl(source?.url) || new URL(source.url).pathname !== '/seller-bids') throw new Error('Open the seller-bids list with Financial Evaluated selected, then scan.');
+      if (!gemUrl(source?.url) || new URL(source.url).pathname !== '/seller-bids') throw new Error('Open the seller-bids list with Bid/RA Awarded selected, then scan.');
       // Read-only discovery: no filter changes, clicks, or navigation in the user's tab.
       await inject(source.id);
       const sourceState = await listSnapshot(source.id);
-      if (!sourceState.filters.some((item) => item.checked && /financial\s+evaluated/i.test(item.key))) throw new Error('Select Financial Evaluated in the GeM filter sidebar before scanning.');
+      if (!sourceState.filters.some((item) => item.checked && /bid\s*\/\s*ra\s+awarded/i.test(item.key))) throw new Error('Select Bid/RA Awarded in the GeM filter sidebar before scanning.');
       if (!sourceState.filters.some((item) => item.checked && /bids?\s*\/\s*ras?\s+already\s+submitted\s*\/\s*participated/i.test(item.key))) throw new Error('Select Bids/RAs Already Submitted/Participated before scanning.');
       if (!sourceState.signature) throw new Error('Wait for the GeM bid cards to load before scanning.');
       run.expectedFilters = sourceState.filters;
-      const listUrl = new URL(source.url);
-      listUrl.hash = 'page-1';
-      const listTab = await chrome.tabs.create({ url: listUrl.href, active: false });
-      run.listTabId = listTab.id;
-      // Reproduce checkbox/radio filters only in the dedicated list tab.
-      let restored = false;
-      let restoreReason = 'Waiting for dedicated GeM tab to load.';
-      const restoreDeadline = Date.now() + 60000;
-      while (Date.now() < restoreDeadline && !restored) {
-        check(run);
-        const tab = await chrome.tabs.get(run.listTabId);
-        if (tab.status === 'complete' && (!gemUrl(tab.url) || !/^\/seller-bids\/?$/.test(new URL(tab.url).pathname))) throw new Error('Dedicated tab redirected away from seller-bids. Log in to GeM again.');
-        if (tab.status === 'complete' && gemUrl(tab.url)) {
-          await inject(run.listTabId);
-          const response = await chrome.scripting.executeScript({ target: { tabId: run.listTabId }, args: [sourceState.filters], func: (expected) => globalThis.AcxxelFinancialList.restoreFilters(document, expected) });
-          restored = response[0]?.result?.ready;
-          restoreReason = response[0]?.result?.reason || 'Waiting for filter update.';
-          if (!restored) await update(run, 'starting', restoreReason);
-        }
-        if (!restored) await sleep(1500);
-      }
-      if (!restored) throw new Error(`Could not reproduce selected filters: ${restoreReason} (v${chrome.runtime.getManifest().version}).`);
-      let pageState = await waitList(run, sourceState.filters);
+      // GeM does not serialize Bid/RA Awarded into the URL and keeps that
+      // checkbox disabled in a freshly copied tab. Use the user's already
+      // filtered seller-list tab directly; only result documents get separate
+      // background tabs. The source tab is never owned or closed by this run.
+      run.listTabId = source.id;
+      run.usesSourceListTab = true;
+      await createWorkerWindow(run, source);
+      let pageState = sourceState;
       if (pageState.page !== 1) pageState = await moveList(run, 'first', sourceState.filters, pageState);
       const seenPages = new Set();
       const seenBids = new Set();
       let checkedCount = 0;
-      let companyQualifiedCount = 0;
+      let skippedBeforeDate = 0;
+      let skippedMissingDate = 0;
+      let stoppedAtPageLimit = false;
+      const companyStatusCounts = { qualified: 0, not_evaluated: 0, non_qualified: 0, disqualified: 0, unknown: 0 };
       let pageCount = 0;
       let repeatedRecoveryCount = 0;
       while (true) {
-        check(run);
+        await check(run);
         if (seenPages.has(pageState.signature)) {
           repeatedRecoveryCount += 1;
           if (repeatedRecoveryCount > 3) throw new Error(`GeM repeatedly returned old bid cards for page ${pageState.page || run.page + 1}. Scan stopped before processing duplicates.`);
@@ -399,35 +509,58 @@
         pageCount++;
         run.page = pageState.page;
         checkedCount += pageState.cards.length;
-        // This is the logged-in seller's own seller-bids list. Therefore the
-        // card-level Technical Status is Laps N Tabs' qualification status.
-        // Do not add an unrelated View Bid Results gate before the RA result.
-        const tasks = pageState.cards.filter((card) => card.technical_status === 'qualified' && !seenBids.has(`${card.bid_no}:${card.ra_no}`));
-        companyQualifiedCount += tasks.length;
-        await update(run, 'running', `Page ${run.page}: ${tasks.length} Laps N Tabs-qualified bids found; ${savedCount} financial rankings saved, ${failures.length} failed so far.${lastFailure ? ` Last failure: ${lastFailure}` : ''}`);
+        const tasks = [];
+        for (const card of pageState.cards) {
+          const key = `${card.bid_no}:${card.ra_no}`;
+          if (seenBids.has(key)) continue;
+          if (!card.start_date) { skippedMissingDate += 1; seenBids.add(key); continue; }
+          if (card.start_date < run.startDateFrom) { skippedBeforeDate += 1; seenBids.add(key); continue; }
+          tasks.push(card);
+        }
+        await update(run, 'running', `Page ${run.page}/${run.lastPage}: ${tasks.length} awarded bids on/after ${run.startDateFrom}; ${savedCount} saved, ${failures.length} failed, ${skippedBeforeDate + skippedMissingDate} date-skipped.${lastFailure ? ` Last failure: ${lastFailure}` : ''}`);
       for (const task of tasks) {
-        check(run);
+        await check(run);
         seenBids.add(`${task.bid_no}:${task.ra_no}`);
-        const resultKind = task.has_ra_result ? 'ra' : 'bid';
-        const resultLabel = resultKind === 'ra' ? 'View RA Results' : 'View Bid Results';
-        const resultUrl = resultKind === 'ra' ? task.ra_result_url : task.bid_result_url;
-        await update(run, 'running', `Page ${run.page}: opening ${task.bid_no} / ${task.ra_no || 'Bid'} via ${resultLabel} (${savedCount} saved)...`);
+        await update(run, 'running', `Page ${run.page}: reading awarded ${task.bid_no} / ${task.ra_no || 'Bid'} (${savedCount} saved)...`);
         try {
-          await update(run, 'running', `${task.bid_no}: Technical Status is Qualified. Reading L1/L2/L3 from ${resultLabel}...`);
-          const result = await readTaskWithRecovery(run, task, resultKind, resultUrl, readResult, owned);
-          check(run);
-          await update(run, 'saving', `Saving ${task.bid_no} financial report...`);
+          let bidEvaluation = null;
+          let raRanking = null;
+          const readErrors = [];
+          const cardStatus = validSellerStatus(task.technical_status);
+          const needsBidResult = !task.has_ra_result || cardStatus === 'unknown';
+          if (task.has_bid_result && needsBidResult) {
+            await update(run, 'running', `${task.bid_no}: reading seller status/ranking from View Bid Results (${savedCount} saved, ${failures.length} failed)...`);
+            try { bidEvaluation = await readTaskWithRecovery(run, task, 'bid', task.bid_result_url, readResult, owned); }
+            catch (error) { readErrors.push(`View Bid Results: ${error.message}`); }
+          }
+          if (task.has_ra_result) {
+            await update(run, 'running', `${task.bid_no}: Technical Status ${cardStatus}; reading final L1/L2/L3 from View RA Results (${savedCount} saved, ${failures.length} failed)...`);
+            try { raRanking = await readTaskWithRecovery(run, task, 'ra', task.ra_result_url, readResult, owned); }
+            catch (error) { readErrors.push(`View RA Results: ${error.message}`); }
+          }
+          if (task.has_ra_result && !raRanking) throw new Error(readErrors.join(' | ') || 'View RA Results could not be read.');
+          const ranking = raRanking || bidEvaluation;
+          if (!ranking) throw new Error(readErrors.join(' | ') || 'No View Bid Results or View RA Results control was available.');
+          const combined = combineRankingAndEvaluation(ranking, bidEvaluation, task.technical_status);
+          await check(run);
+          await update(run, 'saving', `Saving ${task.bid_no} awarded ranking (${combined.companyStatus})...`);
           const response = await fetch(`${base.href.replace(/\/$/, '')}/gem/financial-rankings/`, {
             method: 'POST', signal: AbortSignal.timeout(20000),
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${saved.token}` },
-            body: JSON.stringify({ bid_no: task.bid_no, ra_no: task.ra_no || '', technical_status: 'qualified', sellers: result.sellers, item_name: result.sellers[0]?.offeredItem || '' }),
+            body: JSON.stringify({ bid_no: task.bid_no, ra_no: task.ra_no || '', source_type: 'bid_ra_awarded', technical_status: combined.companyStatus, start_date: task.start_date, end_date: task.end_date, sellers: combined.sellers, item_name: combined.sellers[0]?.offeredItem || '' }),
           });
           const payload = await response.json().catch(() => ({}));
           if (!response.ok) throw new Error(payload.error || `Save failed (HTTP ${response.status}).`);
-          savedCount += 1;
+          if (payload.saved !== 1 || payload.frontend_visible !== true) {
+            throw new Error('API did not confirm that this result is available in the frontend.');
+          }
+          savedCount += payload.saved;
+          createdCount += payload.created || 0;
+          updatedCount += payload.updated || 0;
+          companyStatusCounts[combined.companyStatus] += 1;
           run.saved = savedCount;
         } catch (error) {
-          check(run);
+          await check(run);
           lastFailure = `${task.bid_no}: ${error.message}`;
           failures.push(lastFailure);
           await update(run, 'running', `${lastFailure} Continuing page ${run.page}...`);
@@ -437,6 +570,7 @@
           run.tabId = null;
         }
       }
+        if (Number(run.page) >= run.lastPage) { stoppedAtPageLimit = true; break; }
         if (pageState.next === 'end') break;
         if (pageState.next !== 'available') {
           await update(run, 'running', `Page ${run.page}: Next control is temporarily missing. Starting verified page ${run.page + 1} recovery...`);
@@ -444,13 +578,15 @@
         await update(run, 'running', `Page ${run.page} processed. Loading the next page (${savedCount} saved, ${failures.length} failed).${lastFailure ? ` Last failure: ${lastFailure}` : ''}`);
         pageState = await moveList(run, 'next', sourceState.filters, pageState);
       }
-      await update(run, failures.length ? 'failed' : 'complete', `All ${pageCount} pages read: ${checkedCount} bids checked; Laps N Tabs qualified in ${companyQualifiedCount}; ${savedCount} financial rankings saved. ${failures.join(' | ') || 'Refresh the analyser report.'}`);
+      await update(run, failures.length ? 'failed' : 'complete', `${stoppedAtPageLimit ? `Page limit ${run.lastPage} reached` : 'Last available awarded page reached'}: ${pageCount} pages and ${checkedCount} cards checked; ${savedCount} frontend-valid rankings (${createdCount} new, ${updatedCount} refreshed) for Start Date ${run.startDateFrom} onward; ${skippedBeforeDate} older and ${skippedMissingDate} missing-date cards skipped (Qualified ${companyStatusCounts.qualified}, Not Evaluated ${companyStatusCounts.not_evaluated}, Non-Qualified ${companyStatusCounts.non_qualified}, Disqualified ${companyStatusCounts.disqualified}, Unknown ${companyStatusCounts.unknown}). ${failures.join(' | ') || 'The analyser report updates automatically.'}`);
     } catch (error) {
       await update(run, run.cancelled ? 'stopped' : 'failed', `${error.message} (${savedCount} saved, ${failures.length} bid failures).${lastFailure ? ` Last bid failure: ${lastFailure}` : ''}`);
     } finally {
       chrome.tabs.onCreated.removeListener(childCreated);
+      chrome.windows.onFocusChanged.removeListener(workerFocused);
       for (const id of owned) await chrome.tabs.remove(id).catch(() => {});
-      if (run.listTabId) await chrome.tabs.remove(run.listTabId).catch(() => {});
+      if (run.listTabId && !run.usesSourceListTab) await chrome.tabs.remove(run.listTabId).catch(() => {});
+      await restoreListTabAndCloseWorker(run);
       active = null;
     }
   }
@@ -460,22 +596,35 @@
     const sender = port.sender;
     const respond = (response) => { try { port.postMessage(response); } catch { /* Popup closed. */ } };
     port.onMessage.addListener((message) => {
-    if (!['FINANCIAL_START', 'FINANCIAL_STOP', 'FINANCIAL_STATE'].includes(message.type)) return;
+    if (!['FINANCIAL_START', 'FINANCIAL_PAUSE', 'FINANCIAL_RESUME', 'FINANCIAL_STATE'].includes(message.type)) return;
     if (sender.id !== chrome.runtime.id || sender.tab) { respond({ ok: false, error: 'Use the extension popup for financial scans.' }); return; }
     (async () => {
       if (message.type === 'FINANCIAL_START') {
-        if (active) throw new Error('A financial scan is already running.');
-        active = { status: 'starting', message: 'Starting financial scan...' };
+        if (active) throw new Error('An awarded Bid/RA scan is already running.');
+        const startDateFrom = message.startDateFrom || '2026-01-01';
+        const lastPage = Number(message.lastPage || 65);
+        if (!validIsoDate(startDateFrom)) throw new Error('Choose a valid Start Date From.');
+        if (!Number.isInteger(lastPage) || lastPage < 1 || lastPage > 5000) throw new Error('Last Page must be between 1 and 5000.');
+        active = { status: 'starting', message: `Starting awarded Bid/RA scan from ${startDateFrom} through page ${lastPage}...`, startDateFrom, lastPage };
         void scan(active);
         return active;
       }
-      if (message.type === 'FINANCIAL_STOP' && active) {
+      if (message.type === 'FINANCIAL_PAUSE' && active) {
         if (active.status === 'saving') throw new Error('Save is already in progress. Wait for its result.');
-        active.cancelled = true;
-        return { status: 'stopping', message: 'Stopping financial scan...' };
+        if (active.status === 'paused') return active;
+        active.paused = true;
+        return { status: 'pausing', message: 'Pausing awarded Bid/RA scan...' };
+      }
+      if (message.type === 'FINANCIAL_RESUME' && active) {
+        if (!active.paused) return active;
+        active.paused = false;
+        const waiters = active.resumeWaiters || [];
+        active.resumeWaiters = [];
+        waiters.forEach((resolve) => resolve());
+        return { status: 'running', message: 'Resuming awarded Bid/RA scan...' };
       }
       const stored = (await chrome.storage.local.get(KEY))[KEY];
-      if (!active && ['starting', 'running', 'saving', 'stopping'].includes(stored?.status)) {
+      if (!active && ['starting', 'running', 'saving', 'paused'].includes(stored?.status)) {
         const state = { ...stored, status: 'failed', message: 'Financial scan was interrupted. Check the report before retrying; any leftover scan tab may be closed manually.' };
         await chrome.storage.local.set({ [KEY]: state });
         return state;

@@ -4,8 +4,17 @@
   const clean = (value) => String(value ?? "").replace(/\s+/g, " ").trim();
   const header = (value) => clean(value).toLowerCase().replace(/[:*]/g, '').trim();
   const sellerKey = (value) => clean(value)
-    .replace(/\s*\((?:MSE|MII)(?:\s*,\s*(?:MSE|MII))*\)\s*$/i, "")
+    .replace(/(?:\s*\([^)]*\))+\s*(?:under\s+pma)?\s*$/i, "")
+    .replace(/\s+under\s+pma\s*$/i, "")
     .trim().toUpperCase();
+  function bidderStatus(value) {
+    const normalized = clean(value).toLowerCase().replace(/[-_]+/g, ' ');
+    if (/\bdisqualified\b/.test(normalized)) return 'disqualified';
+    if (/\b(?:not|non)\s+qualified\b/.test(normalized)) return 'non_qualified';
+    if (/\bnot\s+evaluated\b/.test(normalized)) return 'not_evaluated';
+    if (/\bqualified\b/.test(normalized)) return 'qualified';
+    return 'unknown';
+  }
 
   function price(value) {
     // GeM renders its rupee glyph through a custom icon font; the cell's
@@ -20,18 +29,30 @@
     const columns = headers.map(header);
     const required = [/^seller\s+name\b/, /^offered\s+item\b/, /^total\s+price\b/, /^(?:rank|awarded)\b/];
     const indices = required.map((pattern) => columns.findIndex((name) => pattern.test(name)));
+    const statusIndex = columns.findIndex((name) => /^status\b/.test(name));
     if (indices.some((index) => index < 0)) {
       return { status: "unreadable", reason: "Financial table headers missing", sellers: [] };
     }
     if (!rows.length) return { status: "unreadable", reason: "No seller rows", sellers: [] };
     const sellers = [];
+    const evaluations = [];
     let rejectedSellerRows = 0;
     const rejectedSamples = [];
     for (const row of rows) {
       const values = row.map(clean);
+      if (statusIndex >= 0) {
+        const statusEntries = values.map((value, index) => ({ index, status: bidderStatus(value) }))
+          .filter((entry) => entry.index >= indices[3] && entry.status !== 'unknown');
+        if (statusEntries.length === 1) {
+          const entry = statusEntries[0];
+          const shiftedSeller = values[indices[0] + entry.index - statusIndex] || '';
+          if (shiftedSeller && !/^\d+$/.test(shiftedSeller)) evaluations.push({ sellerName: shiftedSeller, status: entry.status });
+        }
+      }
       let [seller, item, amount, rankText] = indices.map((index) => values[index] || '');
       let rank = rankText.match(/^L([1-9]\d*)$/i);
       let totalPrice = price(amount);
+      let resolvedRankIndex = indices[3];
       // GeM's responsive DataTable sometimes inserts an unlabelled control
       // cell into body rows only. Recover the stable financial fields from
       // their row order: Seller, Offered Item, Total Price, Rank.
@@ -51,6 +72,7 @@
               amount = amountEntry.value;
               rankText = rankEntry.value;
               rank = rankEntry.match;
+              resolvedRankIndex = rankEntry.index;
               totalPrice = amountEntry.parsed;
             }
           }
@@ -65,7 +87,10 @@
         }
         continue;
       }
-      sellers.push({ sellerName: seller, offeredItem: item, totalPrice, currency: "INR", rank: Number(rank[1]) });
+      const detectedStatuses = statusIndex < 0 ? [] : values.slice(resolvedRankIndex + 1).map(bidderStatus).filter((value) => value !== 'unknown');
+      const sellerStatus = statusIndex < 0 ? 'qualified'
+        : detectedStatuses.length === 1 ? detectedStatuses[0] : bidderStatus(values[statusIndex]);
+      sellers.push({ sellerName: seller, offeredItem: item, totalPrice, currency: "INR", rank: Number(rank[1]), status: sellerStatus });
     }
     if (!sellers.length) return { status: "unreadable", reason: `No complete financial seller rows (${rejectedSellerRows} unsupported rows; row tails ${JSON.stringify(rejectedSamples)})`, sellers: [] };
     const aliases = new Set(companyNames.map(sellerKey).filter(Boolean));
@@ -73,6 +98,7 @@
     return {
       status: "read",
       sellers,
+      evaluations,
       // Keep every published tie. Prices and row order never determine rank.
       leaders: Object.fromEntries([1, 2, 3].map((rank) => [`L${rank}`, sellers.filter((seller) => seller.rank === rank)])),
       companyMatch: !aliases.size ? "unconfigured" : matches.length === 1 ? "matched" : matches.length ? "ambiguous" : "not_found",
@@ -98,10 +124,10 @@
       ));
     }
     if (candidates.length !== 1) {
-      return { status: "unreadable", reason: candidates.length ? "Multiple financial tables require lot selection" : "Financial table not found", sellers: [] };
+      return { status: "unreadable", reason: candidates.length ? "Multiple ranking tables require lot selection" : "Seller ranking table not found", sellers: [] };
     }
     return candidates[0];
   }
 
-  globalThis.AcxxelFinancialRanking = Object.freeze({ parseTable, readDocument });
+  globalThis.AcxxelFinancialRanking = Object.freeze({ parseTable, readDocument, sellerKey, bidderStatus });
 })();

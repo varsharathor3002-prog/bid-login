@@ -1,6 +1,12 @@
 const DEFAULT_API = "http://127.0.0.1:8000/api";
 const GEM_BID_LIST_URL = "https://bidplus.gem.gov.in/seller-bids";
 const AUTO_SYNC_ALARM = "acxxel-gem-bid-sync";
+const ACXXEL_APP_URLS = [
+  "http://localhost:5173/*",
+  "http://127.0.0.1:5173/*",
+  "https://acxxelbidding.com/*",
+  "https://www.acxxelbidding.com/*",
+];
 const backgroundStarts = new Set();
 const userInitiatedSyncTabs = new Set();
 
@@ -127,6 +133,15 @@ chrome.runtime.onInstalled.addListener(() => {
       updatedAt: Date.now(),
       extensionVersion: version,
     },
+    gemOpportunitySync: {
+      status: "idle",
+      message: "Ready to scan Bid To Be Participated.",
+      page: 0,
+      checked: 0,
+      saved: 0,
+      updatedAt: Date.now(),
+      extensionVersion: version,
+    },
   });
 });
 
@@ -186,6 +201,36 @@ async function settings() {
   return chrome.storage.local.get(["token", "apiBase"]);
 }
 
+async function recoverAcxxelSession() {
+  const saved = await settings();
+  if (saved.token) return true;
+  const appTabs = await chrome.tabs.query({ url: ACXXEL_APP_URLS });
+  for (const tab of appTabs) {
+    if (!tab.id) continue;
+    try {
+      const injection = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        world: "MAIN",
+        func: () => ({
+          token: sessionStorage.getItem("token") || localStorage.getItem("token") || "",
+        }),
+      });
+      const token = String(injection?.[0]?.result?.token || "").trim();
+      if (!token) continue;
+      const origin = new URL(tab.url || "").origin;
+      const localApp = /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::|$)/i.test(origin);
+      await chrome.storage.local.set({
+        token,
+        apiBase: localApp ? DEFAULT_API : `${origin}/api`,
+      });
+      return true;
+    } catch {
+      // Another Acxxel tab may still contain the active session.
+    }
+  }
+  return false;
+}
+
 async function clearActiveJobEverywhere() {
   await chrome.storage.local.remove("activeJobId");
   const gemTabs = await chrome.tabs.query({ url: "https://*.gem.gov.in/*" });
@@ -222,8 +267,7 @@ async function api(path, options = {}) {
     response.status === 403
     && /not authorized for this action/i.test(String(data.error || ""))
   ) {
-    await chrome.storage.local.remove(["token", "activeJobId"]);
-    throw new Error("Log in to Acxxel as Bid Analyser, then start GeM Upload again.");
+    throw new Error("This Acxxel action is not available. Refresh the logged-in Acxxel page and try again.");
   }
   if (!response.ok) throw new Error(data.error || `Acxxel API error ${response.status}`);
   return data;
@@ -268,22 +312,33 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         token: message.token,
         apiBase: message.apiBase || DEFAULT_API,
       });
-      try {
-        await api("/gem/extension/jobs/");
-      } catch (error) {
-        await chrome.storage.local.remove(["token", "activeJobId"]);
-        throw error;
+      const sync = await chrome.storage.local.get("gemOpportunitySync");
+      if (!sync.gemOpportunitySync || ["failed", "authentication_required", "stopped"].includes(sync.gemOpportunitySync.status)) {
+        await chrome.storage.local.set({
+          gemOpportunitySync: {
+            status: "idle",
+            message: "Acxxel reconnected. Ready to scan Bid To Be Participated.",
+            page: 0,
+            checked: 0,
+            saved: 0,
+            updatedAt: Date.now(),
+            extensionVersion: chrome.runtime.getManifest().version,
+          },
+        });
       }
       return { ok: true };
     }
     if (message.type === "GET_STATE") {
+      await recoverAcxxelSession();
       const saved = await settings();
       const sync = await chrome.storage.local.get(["gemBidSync", "gemOpportunitySync"]);
       return { ok: true, connected: Boolean(saved.token), gemBidSync: sync.gemBidSync || null, gemOpportunitySync: sync.gemOpportunitySync || null };
     }
     if (message.type === "GET_GEM_BID_SYNC_STATE") {
+      await recoverAcxxelSession();
+      const saved = await settings();
       const sync = await chrome.storage.local.get(["gemBidSync", "gemOpportunitySync"]);
-      return { ok: true, gemBidSync: sync.gemBidSync || null, gemOpportunitySync: sync.gemOpportunitySync || null };
+      return { ok: true, connected: Boolean(saved.token), gemBidSync: sync.gemBidSync || null, gemOpportunitySync: sync.gemOpportunitySync || null };
     }
     if (message.type === "GET_ACTIVE_JOB") {
       const saved = await chrome.storage.local.get("activeJobId");
@@ -346,6 +401,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (["START_GEM_BID_SYNC", "START_GEM_OPPORTUNITY_SYNC"].includes(message.type)) {
       const opportunityScan = message.type === "START_GEM_OPPORTUNITY_SYNC";
       const stateKey = opportunityScan ? "gemOpportunitySync" : "gemBidSync";
+      await recoverAcxxelSession();
       const saved = await settings();
       if (!saved.token) throw new Error("Open Acxxel and log in before syncing GeM bids.");
       const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -417,26 +473,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       });
       return { ok: true, started: true };
     }
-    if (["STOP_GEM_BID_SYNC", "STOP_GEM_OPPORTUNITY_SYNC"].includes(message.type)) {
-      const opportunityScan = message.type === "STOP_GEM_OPPORTUNITY_SYNC";
-      const stateKey = opportunityScan ? "gemOpportunitySync" : "gemBidSync";
-      const contentMessage = opportunityScan ? "STOP_GEM_OPPORTUNITY_SYNC" : "STOP_GEM_BID_SYNC";
-      const tabs = await chrome.tabs.query({ url: "https://bidplus.gem.gov.in/seller-bids*" });
-      await Promise.all(tabs.map((tab) => (
-        chrome.tabs.sendMessage(tab.id, { type: contentMessage }).catch(() => null)
-      )));
-      await chrome.storage.local.set({
-        [stateKey]: {
-          status: "stopped",
-          message: opportunityScan ? "Bid To Be Participated scan stopped by user." : "Disqualified bid sync stopped by user.",
-          page: 0,
-          saved: 0,
-          updatedAt: Date.now(),
-          extensionVersion: chrome.runtime.getManifest().version,
-        },
-      });
-      return { ok: true, stopped: true };
-    }
     if (["PAUSE_GEM_BID_SYNC", "PAUSE_GEM_OPPORTUNITY_SYNC"].includes(message.type)) {
       const opportunityScan = message.type === "PAUSE_GEM_OPPORTUNITY_SYNC";
       const stateKey = opportunityScan ? "gemOpportunitySync" : "gemBidSync";
@@ -485,14 +521,30 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         method: "POST",
         body: JSON.stringify({ results: message.results || [] }),
       });
-      return { ok: true, saved: result.saved || 0 };
+      return {
+        ok: true,
+        saved: result.saved || 0,
+        created: result.created || 0,
+        updated: result.updated || 0,
+        rejected: result.rejected || 0,
+        frontendVisible: result.frontend_visible === true,
+        rejections: result.rejections || [],
+      };
     }
     if (message.type === "SAVE_GEM_BID_OPPORTUNITIES") {
       const result = await api("/gem/bid-opportunities/", {
         method: "POST",
         body: JSON.stringify({ results: message.results || [] }),
       });
-      return { ok: true, saved: result.saved || 0 };
+      return {
+        ok: true,
+        saved: result.saved || 0,
+        created: result.created || 0,
+        updated: result.updated || 0,
+        rejected: result.rejected || 0,
+        frontendVisible: result.frontend_visible === true,
+        rejections: result.rejections || [],
+      };
     }
     if (message.type === "READ_GEM_BID_DETAIL") {
       const detailUrl = String(message.url || "");
@@ -532,6 +584,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         message: message.message || "",
         page: message.page || 0,
         saved: message.saved || 0,
+        rejected: message.rejected || 0,
         checked: message.checked || 0,
         updatedAt: Date.now(),
         extensionVersion: chrome.runtime.getManifest().version,

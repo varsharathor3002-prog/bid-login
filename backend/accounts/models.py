@@ -4,9 +4,29 @@ from django.db import models
 class GemFinancialRanking(models.Model):
     bid_no = models.CharField(max_length=100)
     ra_no = models.CharField(max_length=100, blank=True, default="")
-    technical_status = models.CharField(max_length=20, default="unknown", choices=[("unknown", "Unknown"), ("qualified", "Qualified"), ("disqualified", "Disqualified")])
+    source_type = models.CharField(
+        max_length=32,
+        default="financial_evaluated",
+        choices=[
+            ("financial_evaluated", "Financial Evaluated"),
+            ("bid_ra_awarded", "Bid/RA Awarded"),
+        ],
+    )
+    technical_status = models.CharField(
+        max_length=20,
+        default="unknown",
+        choices=[
+            ("unknown", "Unknown"),
+            ("qualified", "Qualified"),
+            ("not_evaluated", "Not Evaluated"),
+            ("non_qualified", "Non-Qualified"),
+            ("disqualified", "Disqualified"),
+        ],
+    )
     lot_key = models.CharField(max_length=100, blank=True, default="")
     item_name = models.CharField(max_length=500, blank=True)
+    start_date = models.DateField(blank=True, null=True)
+    end_date = models.DateField(blank=True, null=True)
     sellers = models.JSONField(default=list)
     last_synced_at = models.DateTimeField(auto_now=True)
 
@@ -22,6 +42,7 @@ class User(models.Model):
         ('admin', 'Admin'),
         ('analyser', 'Analyzer'),
         ('user', 'User'),
+        ('management', 'Management'),
     ]
 
     username = models.CharField(max_length=100)
@@ -377,6 +398,7 @@ class GemBidAssignment(models.Model):
     hidden_for_user = models.BooleanField(default=False)
     hidden_for_analyser = models.BooleanField(default=False)
     hidden_for_admin = models.BooleanField(default=False)
+    hidden_for_management = models.BooleanField(default=False)
 
     class Meta:
         db_table = "gem_bid_user_assignments"

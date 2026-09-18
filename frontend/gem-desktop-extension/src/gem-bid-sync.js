@@ -160,6 +160,56 @@
     return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString();
   }
 
+  function disqualifiedRetentionCutoff(reference = new Date()) {
+    const cutoff = new Date(reference);
+    const targetDay = cutoff.getDate();
+    cutoff.setHours(0, 0, 0, 0);
+    cutoff.setDate(1);
+    cutoff.setMonth(cutoff.getMonth() - 1);
+    const lastDayOfMonth = new Date(
+      cutoff.getFullYear(), cutoff.getMonth() + 1, 0,
+    ).getDate();
+    cutoff.setDate(Math.min(targetDay, lastDayOfMonth));
+    return cutoff;
+  }
+
+  function isRecentDisqualification(value, reference = new Date()) {
+    if (!value) return false;
+    const parsed = new Date(value);
+    return !Number.isNaN(parsed.getTime())
+      && parsed >= disqualifiedRetentionCutoff(reference)
+      && parsed <= reference;
+  }
+
+  function disqualifiedSaveSummary(saved, created, updated, rejected) {
+    return `${saved} valid in dashboard (${created} new, ${updated} refreshed); ${rejected} invalid/old not saved`;
+  }
+
+  function opportunitySaveSummary(saved, created, updated, apiRejected) {
+    return `${saved} frontend-valid (${created} new, ${updated} refreshed); ${apiRejected} rejected by API`;
+  }
+
+  function opportunityStartCutoff(reference = new Date()) {
+    const cutoff = new Date(reference);
+    cutoff.setHours(0, 0, 0, 0);
+    cutoff.setDate(cutoff.getDate() - 3);
+    return cutoff;
+  }
+
+  function isOpportunityBeforeStartCutoff(value, reference = new Date()) {
+    if (!value) return false;
+    const parsed = new Date(value);
+    return !Number.isNaN(parsed.getTime()) && parsed < opportunityStartCutoff(reference);
+  }
+
+  function opportunityCardStartDate(card) {
+    const raw = text(card);
+    const value = raw.match(
+      /\b(?:Bid(?:\s*\/\s*RA)?\s+)?Start\s+Date(?:\/Time)?\s*:?\s*(\d{2,4}[-/]\d{2}[-/]\d{2,4}(?:\s+\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?)?)/i
+    )?.[1];
+    return dateFrom(value || "");
+  }
+
   function productType(raw, itemName) {
     const value = `${itemName || ""} ${raw || ""}`.toLowerCase();
     if (/multifunction|printer|printing|laserjet|inkjet|mfp\b/.test(value)) return "printer";
@@ -720,19 +770,22 @@
     pauseRequested = false;
     let page = 1;
     let saved = 0;
+    let created = 0;
+    let updated = 0;
+    let rejected = 0;
     let checked = 0;
     let totalPages = 0;
     const visited = new Set();
     try {
-      await progress("running", "Preparing the complete GeM bid list...", { page, saved });
+      await progress("running", "Preparing the complete GeM bid list...", { page, saved, rejected });
       // Always start from the complete evaluated-bid listing and page 1. Leaving
       // this to the user's current UI state silently syncs only a filtered subset.
       await applyCompleteBidListFilter();
       await sleep(1500);
       while (true) {
         stopIfRequested();
-        await waitWhilePaused({ page, saved });
-        await progress("running", `Waiting for bid cards from the complete GeM list... Checked ${checked}; saved ${saved} disqualified bids from 2026.`, { page, saved, checked });
+        await waitWhilePaused({ page, saved, rejected, checked });
+        await progress("running", `Waiting for bid cards from the complete GeM list... ${disqualifiedSaveSummary(saved, created, updated, rejected)}.`, { page, saved, rejected, checked });
         const cards = await waitForBidCards(180000, async (seconds) => {
           await progress(
             "running",
@@ -753,48 +806,56 @@
         visited.add(signature);
         await extractPage(async (result, recordNumber, totalRecords) => {
           stopIfRequested();
-          await waitWhilePaused({ page, saved });
+          await waitWhilePaused({ page, saved, rejected, checked });
           checked += 1;
-          // This screen is specifically the 2026 disqualification register.
-          // Use the evaluation-history timestamp, never the bid number/year.
-          const disqualifiedYear = result.disqualified_at
-            ? new Date(result.disqualified_at).getFullYear()
-            : 0;
-          // Do not silently drop a visibly disqualified bid when GeM's history
-          // popup fails to expose a parseable timestamp. The API will use the
-          // sync time as a fallback; a visible card date is preferred above.
-          const wanted = result.is_disqualified
-            && (!result.disqualified_at || disqualifiedYear === 2026);
-          if (!wanted) {
+          if (!result.is_disqualified) {
             await progress(
               "running",
               `Checked ${result.bid_no} (${recordNumber}/${totalRecords} on page ${page}).`,
-              { page, saved, checked },
+              { page, saved, rejected, checked },
+            );
+            return;
+          }
+          // The dashboard retains one calendar month of confirmed results.
+          // Apply that eligibility rule before calling the API so an old or
+          // undated bid is neither written nor reported as saved.
+          if (!isRecentDisqualification(result.disqualified_at)) {
+            rejected += 1;
+            await progress(
+              "running",
+              `Not saving ${result.bid_no}: disqualification date is missing, future, or outside the dashboard's one-month window.`,
+              { page, saved, rejected, checked },
             );
             return;
           }
           await progress(
             "running",
             `Saving disqualified bid ${result.bid_no}.`,
-            { page, saved, checked },
+            { page, saved, rejected, checked },
           );
           const response = await runtimeMessage({
             type: "SAVE_GEM_BID_RESULTS",
             results: [result],
           });
+          if (response.saved > 0 && !response.frontendVisible) {
+            throw new Error(`${result.bid_no} was saved but the API did not confirm frontend visibility.`);
+          }
           saved += response.saved || 0;
+          created += response.created || 0;
+          updated += response.updated || 0;
+          rejected += response.rejected || 0;
           await progress(
             "running",
             `Completed ${result.bid_no} (${recordNumber}/${totalRecords} on page ${page}).`,
-            { page, saved, checked },
+            { page, saved, rejected, checked },
           );
         });
-        await progress("running", `Synced page ${page}. Checked ${checked}; saved ${saved} disqualified bids from 2026.`, { page, saved, checked });
+        await progress("running", `Synced page ${page}. Checked ${checked}; ${disqualifiedSaveSummary(saved, created, updated, rejected)}.`, { page, saved, rejected, checked });
         const advance = await advancePageWithRecovery(signature, page, async (attempt, reason) => {
           await progress(
             "running",
             `GeM pagination is temporarily unavailable after page ${page} (${reason}). Recovering automatically, attempt ${attempt}...`,
-            { page, saved, checked },
+            { page, saved, rejected, checked },
           );
         });
         if (!advance.advanced) {
@@ -804,15 +865,15 @@
       }
       await progress(
         "complete",
-        `Full GeM scan complete. Checked ${checked} bids; saved ${saved} disqualified bids from 2026.`,
-        { page, saved, checked },
+        `Full GeM scan complete. Checked ${checked} bids; ${disqualifiedSaveSummary(saved, created, updated, rejected)}.`,
+        { page, saved, rejected, checked },
       );
     } catch (error) {
       if (error.code === "GEM_SYNC_STOPPED") {
-        await progress("stopped", "GeM bid sync stopped by user.", { page, saved });
+        await progress("stopped", `GeM bid sync stopped by user. ${disqualifiedSaveSummary(saved, created, updated, rejected)}.`, { page, saved, rejected, checked });
         return;
       }
-      await progress("failed", error.message || "GeM bid sync failed.", { page, saved, checked });
+      await progress("failed", error.message || "GeM bid sync failed.", { page, saved, rejected, checked });
       error.syncProgressReported = true;
       throw error;
     } finally {
@@ -822,24 +883,23 @@
   }
 
   const OPPORTUNITY_PRODUCTS = [
-    ["desktop", /\b(?:entry|mid(?:dle)?|high)[ -]*(?:level)?[ -]*desktop|desktop computer/i],
-    ["workstation", /\bworkstation\b/i],
-    ["toner", /\btoner(?: cartridge)?\b/i],
-    ["printer", /\b(?:multi\s*function\s*)?printer\b/i],
-    ["aio", /\b(?:all[ -]*in[ -]*one|aio)\b/i],
-    ["bunch_bid", /\bb(?:ou)?nch\s*bid\b/i],
+    ["desktop", /^entry\s+and\s+mid\s+level\s+deskto(?:p(?:\s+com(?:p(?:uter)?)?)?)?$/i],
+    ["desktop", /^high\s+end\s+deskto(?:p(?:\s+com(?:p(?:uter)?)?)?)?$/i],
+    ["aio", /^all\s+in\s+one\s+pc(?:\s*\(v2\))?$/i],
+    ["workstation", /^fixed\s+computer\s+workstation(?:\s*\(v\d+\))?$/i],
+    ["toner", /^toner\s+cartridges?\s*(?:\/|and)\s*ink\s+cartridges?$/i],
+    ["printer", /^a4\b(?=[\s\S]*(?:multifunction|\bmfp\b))(?=[\s\S]*(?:printer|\bp\b))[\s\S]*$/i],
   ];
   const OPPORTUNITY_CATEGORIES = [
     ["Entry/Mid Desktop", "Entry and Mid Level Desktop", /entry\s+and\s+mid.*desktop/i],
     ["High-End Desktop", "High End Desktop", /high\s+end.*desktop/i],
-    ["Workstation", "Workstation", /workstation/i],
-    ["Printer", "Printer", /\bprinter\b/i],
-    ["Toner", "Toner Cartridge", /toner/i],
-    ["AIO", "All in One", /all\s+in\s+one|\baio\b/i],
-    ["Bunch Bid", "Bunch Bid", /bunch\s+bid/i],
+    ["Workstation", "Fixed Computer Workstation", /fixed\s+computer\s+workstation/i],
+    ["Printer", "A4 and Legal Size Multifunction Printer", /a4\s+and\s+legal\s+size\s+multifunction\s+printer/i],
+    ["Toner", "Toner Cartridges / Ink Cartridges", /toner\s+cartridges?\s*(?:\/|and)\s*ink\s+cartridges?/i],
+    ["AIO", "All in One PC", /all\s+in\s+one\s+pc/i],
   ];
 
-  function opportunityFromText(bidNo, raw) {
+  function opportunityFromText(bidNo, raw, cardStartDate = "") {
     const flat = String(raw || "").replace(/[\u0000-\u001f]+/g, " ").replace(/\s+/g, " ").trim();
     const bounded = (start, end) => flat.match(new RegExp(`${start}\\s*:?\\s*(.+?)(?=${end})`, "i"))?.[1]?.trim() || "";
     const itemName = bounded(
@@ -847,26 +907,24 @@
       "(?:Minimum\\s+Average|Years?\\s+of\\s+Past|MSE\\s+Relaxation|Startup\\s+Relaxation|Bidder\\s+Turnover|$)"
     ) || bounded("Items?", "(?:Quantity|Department|Start\\s+Date|End\\s+Date|$)");
     const englishItemName = itemName.split(/[\u0900-\u097f]/, 1)[0];
+    if (
+      /(?:\(\s*PAC\s*Only\s*\)|\bPAC\s*Only\b)/i.test(englishItemName)
+      || /\bIs\s+PAC\s*:?\s*(?:Yes|True)\b/i.test(flat)
+    ) return { reject: "pac" };
     const qMarkers = [...englishItemName.matchAll(/\(Q\d+\)/gi)];
     const cleanItemName = (qMarkers.length ? englishItemName.slice(0, qMarkers.at(-1).index + qMarkers.at(-1)[0].length) : englishItemName)
       .replace(/\s*\(Q\d+\)\s*/gi, "")
       .replace(/\s*,\s*/g, ", ")
-      .trim();
-    const productText = `${cleanItemName} ${raw}`;
-    const matchedProducts = OPPORTUNITY_PRODUCTS
-      .filter(([type, pattern]) => type !== "bunch_bid" && pattern.test(productText));
-    const looksLikeBunch = /\b(?:bunch|boq)\s*(?:bid)?\b/i.test(productText)
-      || matchedProducts.length > 1
-      || (itemName.match(/\(Q\d+\)/gi) || []).length > 1
-      || /\s,\s/.test(itemName);
-    const product = looksLikeBunch && matchedProducts.length
-      ? ["bunch_bid", /./]
-      : matchedProducts[0] || OPPORTUNITY_PRODUCTS.find(([type, pattern]) => (
-        type === "bunch_bid" && pattern.test(productText)
-      ));
-    if (!product) return { reject: "product" };
-    const pacField = bounded("(?:Is\\s+PAC|PAC\\s+Only|PAC\\s+Bid)", "(?:Bid|Ministry|Department|Item|$)");
-    if (/\bPAC\b/i.test(cleanItemName) || /^(?:yes|true)\b/i.test(pacField)) return { reject: "pac" };
+      .trim().replace(/^,|,$/g, "").trim();
+    const categories = cleanItemName.split(/\s*,\s*/).map((value) => value.trim()).filter(Boolean);
+    const matchedProducts = categories.map((category) => (
+      OPPORTUNITY_PRODUCTS.find(([, pattern]) => pattern.test(category)) || null
+    ));
+    // A bunch bid is eligible only when every category belongs to the exact
+    // allowlist. One A3 printer, UPS, scanner, laptop, projector, etc. rejects
+    // the complete bid even when another category is supported.
+    if (!categories.length || matchedProducts.some((product) => !product)) return { reject: "product" };
+    const product = categories.length > 1 ? ["bunch_bid", /./] : matchedProducts[0];
     const deliveryText = bounded(
       "Consignees?/Reporting\\s+Officer\\s+and\\s+Quantity",
       "(?:Special\\s+terms|Buyer\\s+Added|Technical\\s+Specifications|$)"
@@ -896,7 +954,12 @@
     if (endTime && endTime <= Date.now()) return { reject: "expired" };
     if (!endTime && !validityDays) return { reject: "date" };
     if (validityDays > 120 || (endTime && endTime - Date.now() > 120 * 86400000)) return { reject: "over120" };
-    const bidDate = dateFrom(flat.match(new RegExp(`(?:Dated|Bid\\s+Start\\s+Date(?:/Time)?)\\s*:?\\s*${indianDateTime}`, "i"))?.[1]);
+    // The seller-list card is the authoritative current Start Date, including
+    // corrigendum changes. Several valid GeM PDFs render their Dated value as
+    // glyphs that PyMuPDF cannot extract, so use the PDF value only as a
+    // fallback when the card itself did not expose a date.
+    const bidDate = cardStartDate
+      || dateFrom(flat.match(new RegExp(`(?:Dated|Bid\\s+Start\\s+Date(?:/Time)?)\\s*:?\\s*${indianDateTime}`, "i"))?.[1]);
     if (!bidDate) return { reject: "date" };
     const now = new Date();
     const firstAllowedDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 3);
@@ -912,6 +975,7 @@
       end_date: endDate,
       product_name: cleanItemName.slice(0, 500),
       product_type: product[0],
+      offer_validity_days: validityDays || null,
       department: bounded("Department\\s+Name", "(?:Organisation|Office|Contact|Buyer|Item\\s+Category|$)"),
       delivery_pincode: pins[0] || "",
     };
@@ -928,6 +992,7 @@
   async function opportunityFromBidDetail(bidNo, card) {
     const url = bidDetailUrl(bidNo, card);
     if (!url || !/^https:\/\/[^/]*gem\.gov\.in\//i.test(url)) return { reject: "detail" };
+    const cardStartDate = opportunityCardStartDate(card);
     let response;
     try {
       response = await runtimeMessage({ type: "READ_GEM_BID_DETAIL", url, bidNo });
@@ -942,7 +1007,7 @@
       throw error;
     }
     if (!response.detailText) return { reject: "detail" };
-    const opportunity = opportunityFromText(bidNo, response.detailText);
+    const opportunity = opportunityFromText(bidNo, response.detailText, cardStartDate);
     if (opportunity?.eligible) opportunity.pdf_url = url;
     return opportunity;
   }
@@ -1018,6 +1083,7 @@
     }
     location.hash = "page-1";
     await sleep(2500);
+    return sortedAutomatically;
   }
 
   function categorySelectContainer() {
@@ -1110,18 +1176,22 @@
     syncing = true;
     activeScanType = "opportunity";
     stopRequested = false;
+    pauseRequested = false;
     let page = Number(resume?.page || 1);
     let saved = Number(resume?.saved || 0);
+    let created = Number(resume?.created || 0);
+    let updated = Number(resume?.updated || 0);
     let checked = Number(resume?.checked || 0);
+    let stoppedAtStartCutoff = false;
     const rejected = {
-      product: 0, pac: 0, location: 0, date: 0, expired: 0, over120: 0, detail: 0,
+      product: 0, pac: 0, location: 0, date: 0, expired: 0, over120: 0, detail: 0, api: 0,
       ...(resume?.rejected || {}),
     };
     try {
       await progress("running", resume
         ? `Restoring the selected category scan at page ${page} after GeM stopped loading...`
         : "Preparing the manually selected GeM category...", { page, saved, checked });
-      await applyOpportunityFilters();
+      const latestFirst = await applyOpportunityFilters();
       if (resume?.categoryQuery) {
         const category = OPPORTUNITY_CATEGORIES.find((entry) => entry[1] === resume.categoryQuery);
         if (!category) throw new Error("Saved GeM category could not be restored.");
@@ -1137,21 +1207,39 @@
         const signature = cards.map((item) => item.bidNo).join("|");
         if (!signature || visited.has(signature)) throw new Error(`Selected category scan repeated/stalled at page ${page}.`);
         visited.add(signature);
-        const eligible = [];
         for (const { bidNo, card } of cards) {
           stopIfRequested();
-          await waitWhilePaused({ page, saved });
+          await waitWhilePaused({ page, saved, checked });
           checked += 1;
-          await progress("running", `Opening ${bidNo} to verify full bid details...`, { page, saved });
+          const cardStartDate = opportunityCardStartDate(card);
+          if (latestFirst && isOpportunityBeforeStartCutoff(cardStartDate)) {
+            rejected.date += 1;
+            stoppedAtStartCutoff = true;
+            const cutoffDate = opportunityStartCutoff();
+            await progress(
+              "running",
+              `Start Date cutoff reached at ${bidNo} on page ${page} (card Start Date ${cardStartDate || "unparsed"}, cutoff ${cutoffDate.toISOString()}). Remaining older cards and pages will not be read. If this bid should still be within the three-day window, check the GeM Sort by control and card Start Date label.`,
+              { page, saved, checked },
+            );
+            break;
+          }
+          await progress("running", `Opening ${bidNo} to verify full bid details...`, { page, saved, checked });
           const row = await opportunityFromBidDetail(bidNo, card);
-          if (row?.eligible) eligible.push(row);
-          else if (row?.reject) rejected[row.reject] += 1;
+          if (row?.eligible) {
+            // Save immediately instead of holding a whole page in memory. A
+            // Pause/Stop after this point cannot discard already-read bids.
+            const response = await runtimeMessage({ type: "SAVE_GEM_BID_OPPORTUNITIES", results: [row] });
+            if (response.saved > 0 && !response.frontendVisible) {
+              throw new Error(`${bidNo} was saved but the API did not confirm frontend visibility.`);
+            }
+            saved += response.saved || 0;
+            created += response.created || 0;
+            updated += response.updated || 0;
+            rejected.api += response.rejected || 0;
+          } else if (row?.reject) rejected[row.reject] += 1;
         }
-        if (eligible.length) {
-          const response = await runtimeMessage({ type: "SAVE_GEM_BID_OPPORTUNITIES", results: eligible });
-          saved += response.saved || 0;
-        }
-        await progress("running", `Selected category page ${page}: checked ${checked}, saved ${saved}; rejected detail ${rejected.detail}, product ${rejected.product}, PAC ${rejected.pac}, location ${rejected.location}, date ${rejected.date}, expired ${rejected.expired}, >120d ${rejected.over120}.`, { page, saved });
+        await progress("running", `Selected category page ${page}: checked ${checked}; ${opportunitySaveSummary(saved, created, updated, rejected.api)}. Rejected before API: detail ${rejected.detail}, product ${rejected.product}, PAC ${rejected.pac}, location ${rejected.location}, date ${rejected.date}, expired ${rejected.expired}, >120d ${rejected.over120}.`, { page, saved, checked });
+        if (stoppedAtStartCutoff) break;
         const advance = await advancePageWithRecovery(signature, page, async (attempt, reason) => {
           await progress(
             "running",
@@ -1163,6 +1251,8 @@
           sessionStorage.setItem("acxxelOpportunityResume", JSON.stringify({
             page: page + 1,
             saved,
+            created,
+            updated,
             checked,
             rejected,
             categoryQuery: category?.[1] || "",
@@ -1177,14 +1267,18 @@
         }
         page += 1;
       }
-      await progress("complete", `Selected category scan complete. Checked ${checked} bids; saved ${saved} eligible bids. Select the next category manually and scan again.`, { page, saved });
+      await progress(
+        "complete",
+        `${stoppedAtStartCutoff ? `Three-day Start Date cutoff reached on page ${page}; older pages were skipped` : "Selected category scan complete"}. Checked ${checked} bids; ${opportunitySaveSummary(saved, created, updated, rejected.api)}. Select the next category manually and scan again.`,
+        { page, saved, checked },
+      );
       sessionStorage.removeItem("acxxelOpportunityResume");
     } catch (error) {
       if (error.code === "GEM_SYNC_STOPPED") {
         await progress(
           "stopped",
-          `Opportunity scan stopped after ${checked} bids; saved ${saved}. Rejected: detail ${rejected.detail}, product ${rejected.product}, PAC ${rejected.pac}, location ${rejected.location}, date ${rejected.date}, expired ${rejected.expired}, >120d ${rejected.over120}.`,
-          { page, saved },
+          `Opportunity scan stopped after ${checked} bids; ${opportunitySaveSummary(saved, created, updated, rejected.api)}. Rejected before API: detail ${rejected.detail}, product ${rejected.product}, PAC ${rejected.pac}, location ${rejected.location}, date ${rejected.date}, expired ${rejected.expired}, >120d ${rejected.over120}.`,
+          { page, saved, checked },
         );
         return;
       }

@@ -79,6 +79,29 @@ test('accepts Awarded as the GeM rank header and ignores responsive footer rows'
   assert.equal(result.sellers.length, 1);
   assert.equal(result.sellers[0].rank, 1);
 });
+test('reads every GeM seller qualification status from an awarded Bid Result', () => {
+  const awardedHeaders = ['S.No.', 'Seller Name', 'Offered Item', 'Total Price', 'Rank', 'Status', 'View Document'];
+  const result = parseTable(awardedHeaders, [
+    ['1', 'LANDMARK INFONET PRIVATE LIMITED', 'A4 MFP', '₹ 93500.00', 'L1', 'Qualified 🏆', 'View'],
+    ['2', 'LAPS N TABS TECHNOLOGY PRIVATE LIMITED', 'A4 MFP', '₹ 140000.00', 'L5', 'Not Evaluated', 'View'],
+    ['3', 'EXAMPLE NON QUALIFIED', 'A4 MFP', '₹ 145000.00', 'L6', 'Non-Qualified', 'View'],
+    ['4', 'EXAMPLE DISQUALIFIED', 'A4 MFP', '₹ 150000.00', 'L7', 'Disqualified', 'View'],
+  ]);
+  assert.equal(result.status, 'read');
+  assert.deepEqual(result.sellers.map((seller) => seller.status), ['qualified', 'not_evaluated', 'non_qualified', 'disqualified']);
+  assert.equal(result.companyRank, 5);
+});
+test('retains company disqualification even when its price and rank are blank', () => {
+  const awardedHeaders = ['S.No.', 'Seller Name', 'Offered Item', 'Total Price', 'Rank', 'Status'];
+  const result = parseTable(awardedHeaders, [
+    ['1', 'LANDMARK INFONET PRIVATE LIMITED', 'A4 MFP', '₹ 93500.00', 'L1', 'Qualified'],
+    ['2', 'LAPS N TABS TECHNOLOGY PRIVATE LIMITED', 'A4 MFP', '-', '-', 'Disqualified'],
+  ]);
+  assert.equal(result.status, 'read');
+  assert.deepEqual(result.evaluations.find((seller) => /LAPS N TABS/.test(seller.sellerName)), {
+    sellerName: 'LAPS N TABS TECHNOLOGY PRIVATE LIMITED', status: 'disqualified',
+  });
+});
 test('DOM adapter reads a table and rejects multiple table ambiguity', () => {
   const table = { rows: [headers, ...rows].map((row) => ({ cells: row.map((textContent) => ({ textContent })) })) };
   assert.equal(readDocument({ querySelectorAll: () => [table] }).sellers.length, 4);

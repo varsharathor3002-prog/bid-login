@@ -1,8 +1,18 @@
 (() => {
   const expanded = globalThis.AcxxelFinancialExpanded || new WeakSet();
   globalThis.AcxxelFinancialExpanded = expanded;
+  const filterDependencyRefresh = globalThis.AcxxelFinancialFilterDependencyRefresh || new WeakSet();
+  globalThis.AcxxelFinancialFilterDependencyRefresh = filterDependencyRefresh;
   const text = (node) => String(node?.innerText || node?.textContent || '').replace(/\s+/g, ' ').trim();
   const ids = (value, kind) => [...new Set((value.match(new RegExp(`GEM\\s*/\\s*\\d{4}\\s*/\\s*${kind}\\s*/\\s*\\d+`, 'gi')) || []).map((id) => id.replace(/\s+/g, '').toUpperCase()))];
+  function cardDate(value, kind) {
+    const match = value.match(new RegExp(`\\b${kind}\\s+date\\s*:\\s*(\\d{1,2})[-/](\\d{1,2})[-/](\\d{4})\\b`, 'i'));
+    if (!match) return null;
+    const [, day, month, year] = match;
+    const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+    if (date.getUTCFullYear() !== Number(year) || date.getUTCMonth() !== Number(month) - 1 || date.getUTCDate() !== Number(day)) return null;
+    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+  }
   // Same MAIN-world Angular/jQuery click bridge used by gem-bid-sync.js.
   function activate(control) {
     const doc = control.ownerDocument;
@@ -66,10 +76,17 @@
         const value = text(card);
         const bids = ids(value, 'B');
         if (bids.length > 1) break;
-        const status = value.match(/technical\s+status\s*:\s*(disqualified|qualified)\b/i);
-        if (bids.length === 1 && status) {
+        const status = value.match(/technical\s+status\s*:\s*(disqualified|(?:not|non)[\s-]*qualified|not\s+evaluated|qualified)\b/i);
+        const awarded = /status\s*:\s*bid\s*\/\s*ra\s+award(?:ed)?\b/i.test(value);
+        if (bids.length === 1 && (status || awarded)) {
           const ras = ids(value, 'R');
-          const existing = found.get(bids[0]) || { card, bid_no: bids[0], ra_no: ras.length === 1 ? ras[0] : null, technical_status: status[1].toLowerCase() };
+          const normalizedStatus = !status ? 'unknown' : /disqualified/i.test(status[1]) ? 'disqualified'
+            : /(?:not|non)[\s-]*qualified/i.test(status[1]) ? 'non_qualified'
+            : /not\s+evaluated/i.test(status[1]) ? 'not_evaluated' : 'qualified';
+          const existing = found.get(bids[0]) || {
+            card, bid_no: bids[0], ra_no: ras.length === 1 ? ras[0] : null, technical_status: normalizedStatus,
+            start_date: cardDate(value, 'start'), end_date: cardDate(value, 'end'),
+          };
           existing[`${kind}_control`] = control;
           existing[`${kind}_result_url`] = safeResultUrl(control, doc);
           found.set(bids[0], existing);
@@ -81,7 +98,7 @@
     return [...found.values()];
   }
   function collect(doc) {
-    return cards(doc).map(({ bid_no, ra_no, technical_status, bid_control, ra_control, bid_result_url, ra_result_url }) => {
+    return cards(doc).map(({ bid_no, ra_no, technical_status, start_date, end_date, bid_control, ra_control, bid_result_url, ra_result_url }) => {
       const token = (kind, control) => {
         if (!control) return null;
         const value = `acxxel-${kind}-${bid_no.replace(/[^a-z0-9]/gi, '-')}`;
@@ -89,7 +106,7 @@
         return value;
       };
       return {
-        bid_no, ra_no, technical_status,
+        bid_no, ra_no, technical_status, start_date, end_date,
         has_bid_result: Boolean(bid_control), has_ra_result: Boolean(ra_control),
         bid_result_token: token('bid', bid_control), ra_result_token: token('ra', ra_control),
         bid_result_url, ra_result_url,
@@ -127,7 +144,7 @@
   }
   function expand(doc) {
     for (const control of doc.querySelectorAll('a, button, [role=button], [data-toggle=collapse], [data-bs-toggle=collapse], .panel-heading, .accordion-header')) {
-      if (/^(?:\d+\.\s*)?financial\s+evaluation$/i.test(text(control)) && control.getAttribute('aria-expanded') !== 'true' && !expanded.has(control)) {
+      if (/^(?:\d+\.\s*)?(?:financial\s+)?evaluation$/i.test(text(control)) && control.getAttribute('aria-expanded') !== 'true' && !expanded.has(control)) {
         expanded.add(control);
         control.click();
       }
@@ -141,10 +158,10 @@
   }
   function filterControls(doc) {
     const inputs = [...doc.querySelectorAll('input[type=checkbox], input[type=radio]')];
-    const anchor = inputs.find((node) => /^financial\s+evaluated$/i.test(filterLabel(node)));
+    const anchor = inputs.find((node) => /^bid\s*\/\s*ra\s+awarded$/i.test(filterLabel(node)));
     let root = anchor?.parentElement;
     while (root && root !== doc.body) {
-      if (/financial\s+evaluated/i.test(text(root)) && /bids?\s*\/\s*ras?\s+already|by\s+bid\s*type/i.test(text(root))) break;
+      if (/bid\s*\/\s*ra\s+awarded/i.test(text(root)) && /bids?\s*\/\s*ras?\s+already|by\s+bid\s*type/i.test(text(root))) break;
       root = root.parentElement;
     }
     // Never capture bid-row selection boxes, notification preferences, or modals.
@@ -162,16 +179,29 @@
   }
   function restoreFilters(doc, expected) {
     const controls = filterControls(doc);
-    if (!controls.length) return { ready: false, reason: 'Financial Evaluated filter sidebar is not loaded. Check GeM login in the scan tab.' };
+    if (!controls.length) return { ready: false, reason: 'Bid/RA Awarded filter sidebar is not loaded. Check GeM login in the scan tab.' };
     const selected = new Set(expected.filter((item) => item.checked).map((item) => item.key));
-    // Select the intended radio/checkbox options first. Clicking an unchecked
-    // radio cannot deselect it and previously caused an endless restore loop.
-    for (const key of selected) {
+    // GeM keeps Bid/RA Awarded disabled until the intended Bid Type radio is
+    // selected. Restore every selected radio before any selected checkbox,
+    // regardless of the alphabetic order used in the saved filter snapshot.
+    const selectedInDependencyOrder = [...selected].sort((left, right) => Number(right.startsWith('radio:')) - Number(left.startsWith('radio:')));
+    for (const key of selectedInDependencyOrder) {
       const matches = controls.filter((control) => control.key === key);
       if (!matches.length) return { ready: false, reason: `Selected filter not found: ${key}` };
       if (!matches.some((control) => control.checked)) {
         const control = matches.find((item) => !item.node.disabled);
-        if (!control) return { ready: false, reason: `Selected filter is disabled: ${key}` };
+        if (!control) {
+          // A freshly copied GeM tab can show the intended Bid Type radio as
+          // already checked without running the Angular change handler that
+          // enables Bid/RA Awarded. Re-trigger that checked radio once.
+          const dependency = controls.find((item) => item.node.type === 'radio' && item.checked && selected.has(item.key) && !item.node.disabled);
+          if (dependency && !filterDependencyRefresh.has(dependency.node)) {
+            filterDependencyRefresh.add(dependency.node);
+            dependency.node.click();
+            return { ready: false, reason: `Refreshing ${dependency.label} before enabling the awarded filter` };
+          }
+          return { ready: false, reason: `Waiting for GeM to enable selected filter: ${key}` };
+        }
         control.node.click();
         return { ready: false, reason: `Selecting ${control.label}` };
       }

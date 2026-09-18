@@ -1,4 +1,5 @@
 import json
+from datetime import date
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -12,12 +13,17 @@ class FinancialRankingTests(SimpleTestCase):
     def setUp(self):
         self.factory = RequestFactory()
         self.sellers = [
-            {"sellerName": "SAMA SMART SOLUTIONS(MII)", "offeredItem": "Desktop", "totalPrice": "847203.00", "rank": 1},
-            {"sellerName": "LAPS N TABS TECHNOLOGY PRIVATE LIMITED (MSE)", "offeredItem": "Desktop", "totalPrice": "847203.00", "rank": 2},
+            {"sellerName": "SAMA SMART SOLUTIONS(MII)", "offeredItem": "Desktop", "totalPrice": "847203.00", "rank": 1, "status": "qualified"},
+            {"sellerName": "LAPS N TABS TECHNOLOGY PRIVATE LIMITED (MSE)", "offeredItem": "Desktop", "totalPrice": "847203.00", "rank": 2, "status": "not_evaluated"},
         ]
 
     def row(self):
-        return SimpleNamespace(id=1, ra_no="GEM/2026/R/123", technical_status="qualified", bid_no="GEM/2026/B/123", lot_key="", item_name="Desktop", sellers=self.sellers, last_synced_at=timezone.now())
+        return SimpleNamespace(
+            id=1, ra_no="GEM/2026/R/123", source_type="bid_ra_awarded",
+            technical_status="qualified", bid_no="GEM/2026/B/123", lot_key="",
+            item_name="Desktop", start_date=date(2026, 9, 14), end_date=date(2026, 9, 24),
+            sellers=self.sellers, last_synced_at=timezone.now(),
+        )
 
     def test_published_rank_and_unknown_company(self):
         row = self.row()
@@ -58,7 +64,7 @@ class FinancialRankingTests(SimpleTestCase):
     def test_technically_qualified_without_company_price_remains_in_report(self, _role):
         row = self.row()
         row.sellers = self.sellers[:1]
-        with patch("accounts.views.GemFinancialRanking.GemFinancialRanking.objects.all", return_value=[row]):
+        with patch("accounts.views.GemFinancialRanking.GemFinancialRanking.objects.order_by", return_value=[row]):
             response = financial_rankings(self.factory.get("/", {"qualified_only": "1"}))
             results = json.loads(response.content)["results"]
             self.assertEqual(len(results), 1)
@@ -71,7 +77,7 @@ class FinancialRankingTests(SimpleTestCase):
         missing.technical_status = "unknown"
         ambiguous = self.row()
         ambiguous.technical_status = "disqualified"
-        with patch("accounts.views.GemFinancialRanking.GemFinancialRanking.objects.all", return_value=[qualified, missing, ambiguous]):
+        with patch("accounts.views.GemFinancialRanking.GemFinancialRanking.objects.order_by", return_value=[qualified, missing, ambiguous]):
             response = financial_rankings(self.factory.get("/", {"qualified_only": "1"}))
             results = json.loads(response.content)["results"]
             self.assertEqual(len(results), 1)
@@ -94,6 +100,27 @@ class FinancialRankingTests(SimpleTestCase):
             self.assertEqual(response.status_code, 201)
             self.assertEqual(json.loads(response.content)["company_rank"], 2)
             self.assertEqual(save.call_args.kwargs["lot_key"], "lot-2")
+
+    @patch("accounts.views.GemFinancialRanking._require_role", return_value=(None, None))
+    def test_awarded_save_requires_dates_and_preserves_statuses(self, _role):
+        body = {
+            "bid_no": "GEM/2026/B/123", "source_type": "bid_ra_awarded",
+            "technical_status": "not_evaluated", "sellers": self.sellers,
+        }
+        with patch("accounts.views.GemFinancialRanking.GemFinancialRanking.objects.update_or_create") as save:
+            response = financial_rankings(self.factory.post("/", data=json.dumps(body), content_type="application/json"))
+            self.assertEqual(response.status_code, 400)
+            save.assert_not_called()
+
+        body.update({"start_date": "2026-09-14", "end_date": "2026-09-24"})
+        with patch("accounts.views.GemFinancialRanking.GemFinancialRanking.objects.update_or_create", return_value=(self.row(), True)) as save:
+            response = financial_rankings(self.factory.post("/", data=json.dumps(body), content_type="application/json"))
+            self.assertEqual(response.status_code, 201)
+            defaults = save.call_args.kwargs["defaults"]
+            self.assertEqual(defaults["source_type"], "bid_ra_awarded")
+            self.assertEqual(defaults["technical_status"], "not_evaluated")
+            self.assertEqual(defaults["start_date"], date(2026, 9, 14))
+            self.assertEqual(defaults["sellers"][1]["status"], "not_evaluated")
 
     def test_delete_requires_authentication(self):
         self.assertEqual(delete_financial_ranking(self.factory.delete("/"), result_id=1).status_code, 401)

@@ -1,32 +1,13 @@
 import { useEffect, useState } from "react";
 import { FaTrash } from "react-icons/fa";
+import { isSupportedOpportunity, itemCategory } from "./bidOpportunityCategory";
 
 const API_BASE = import.meta.env.VITE_API_URL;
 const formatDateTime = (value) => value ? new Intl.DateTimeFormat("en-IN", {
   day: "2-digit", month: "long", year: "numeric",
   hour: "2-digit", minute: "2-digit", hour12: true,
 }).format(new Date(value)) : "-";
-const itemCategory = (row) => {
-  const item = String(row.product_name || "").toLowerCase();
-  const matches = {
-    printer: /printer|multifunction|\bmfp\b/.test(item),
-    aio: /all[ -]*in[ -]*one|\baio\b/.test(item),
-    workstation: /workstation/.test(item),
-    high_end_desktop: /high[ -]*(?:end|level)[^,;]*desktop/.test(item),
-    entry_mid_desktop: /(?:entry|mid(?:dle)?)[^,;]*desktop/.test(item),
-    toner: /toner|cartridge/.test(item),
-  };
-  const matchedTypes = Object.entries(matches).filter(([, matched]) => matched).map(([type]) => type);
-  // Bunch Bid means the clean Item field itself contains multiple distinct
-  // product categories. Do not trust the older stored product_type flag: it
-  // was derived from the whole PDF and incorrectly marked single items.
-  if (/bunch|\bboq\b/.test(item) || matchedTypes.length > 1) return "bunch_bid";
-  if (matchedTypes.length === 1) return matchedTypes[0];
-  if (/desktop computer/.test(item)) return "entry_mid_desktop";
-  return "other";
-};
-
-export default function BidNotParticipated() {
+export default function AdminBidToBeParticipated() {
   const [rows, setRows] = useState([]);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -43,10 +24,10 @@ export default function BidNotParticipated() {
   const itemLabels = {
     high_end_desktop: "High End Desktop Computer",
     entry_mid_desktop: "Entry and Mid Level Desktop Computer",
-    printer: "Printer", aio: "AIO", workstation: "Workstation",
-    toner: "Toner", bunch_bid: "Bunch Bid", other: "Other",
+    printer: "A4 and Legal Size MFP", aio: "All in One PC (V2)", workstation: "Fixed Computer Workstation",
+    toner: "Toner / Ink Cartridges", bunch_bid: "Bunch Bid",
   };
-  const itemOrder = ["high_end_desktop", "entry_mid_desktop", "printer", "aio", "workstation", "toner", "bunch_bid", "other"];
+  const itemOrder = ["high_end_desktop", "entry_mid_desktop", "printer", "aio", "workstation", "toner", "bunch_bid"];
   const itemTypes = itemOrder;
   const filteredRows = itemFilter === "all"
     ? rows
@@ -126,8 +107,8 @@ export default function BidNotParticipated() {
   }, [assignedTo]);
   const hideAssignedBid = async (row) => {
     const warning = row.status === "participated"
-      ? `Remove participated bid ${row.bid_no} from only analyser dashboard?`
-      : `This bid is not participated yet. Remove ${row.bid_no} from only analyser dashboard?`;
+      ? `Remove participated bid ${row.bid_no} from only admin dashboard?`
+      : `This bid is not participated yet. Remove ${row.bid_no} from only admin dashboard?`;
     if (!window.confirm(warning)) return;
     try {
       const response = await fetch(`${API_BASE}/gem/bid-assignments/`, {
@@ -143,7 +124,7 @@ export default function BidNotParticipated() {
   const hideSelectedAssignedBids = async () => {
     const selected = employeeBids.filter((row) => selectedEmployeeBidIds.includes(row.id));
     const pending = selected.filter((row) => row.status !== "participated").length;
-    if (!window.confirm(`${selected.length} bids remove from only analyser dashboard?${pending ? ` ${pending} bids are not participated yet.` : ""}`)) return;
+    if (!window.confirm(`${selected.length} bids remove from only admin dashboard?${pending ? ` ${pending} bids are not participated yet.` : ""}`)) return;
     try {
       const response = await fetch(`${API_BASE}/gem/bid-assignments/`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionStorage.getItem("token") || localStorage.getItem("token") || ""}` }, body: JSON.stringify({ action: "bulk_hide", assignment_ids: selectedEmployeeBidIds }) });
       const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error || "Bids could not be removed.");
@@ -210,7 +191,7 @@ export default function BidNotParticipated() {
         });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.error || "Eligible bids could not be loaded.");
-        if (active) { setRows(data.results || []); setError(""); }
+        if (active) { setRows((data.results || []).filter(isSupportedOpportunity)); setError(""); }
         const assignmentResponse = await fetch(`${API_BASE}/gem/bid-assignments/`, {
           headers: { Authorization: `Bearer ${sessionStorage.getItem("token") || localStorage.getItem("token") || ""}` },
         });
@@ -252,7 +233,7 @@ export default function BidNotParticipated() {
               <td className="px-3 py-3">{formatDateTime(row.bid_date)}</td><td className="px-3 py-3">{formatDateTime(row.end_date)}</td>
               <td className="max-w-md px-3 py-3">{row.item}</td><td className="px-3 py-3 font-semibold capitalize">{row.status.replace("_", " ")}</td>
               <td className="px-3 py-3 text-center"><div className="inline-flex items-center gap-2"><input type="checkbox" checked={selectedEmployeeBidIds.includes(row.id)} onChange={() => setSelectedEmployeeBidIds((current) => current.includes(row.id) ? current.filter((id) => id !== row.id) : [...current, row.id])} className="h-4 w-4 accent-red-600" aria-label={`Select ${row.bid_no}`} /><button type="button" onClick={() => hideAssignedBid(row)}
-                className="rounded p-2 text-red-600 hover:bg-red-50 hover:text-red-700" title="Remove from analyser dashboard" aria-label={`Remove ${row.bid_no}`}><FaTrash aria-hidden="true" /></button></div></td>
+                className="rounded p-2 text-red-600 hover:bg-red-50 hover:text-red-700" title="Remove from admin dashboard" aria-label={`Remove ${row.bid_no}`}><FaTrash aria-hidden="true" /></button></div></td>
             </tr>)}</tbody>
           </table>
           {!employeeBids.length && <div className="py-8 text-center text-sm text-gray-500">No active bids are assigned to this user.</div>}
@@ -290,3 +271,4 @@ export default function BidNotParticipated() {
     </div>
   );
 }
+

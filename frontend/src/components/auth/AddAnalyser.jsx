@@ -9,12 +9,16 @@ import {
 
 const API_BASE = import.meta.env.VITE_API_URL;
 
+const ACCOUNT_TYPE_LABELS = {
+  admin: { singular: "Admin", plural: "Admins", endpoint: "admin" },
+  analyser: { singular: "Analyser", plural: "Analysers", endpoint: "analyser" },
+  management: { singular: "Management", plural: "Management", endpoint: "management" },
+};
+
 export default function AddAnalyser({ accountType = "analyser" }) {
 
-  const isAdmin = accountType === "admin";
-  const singularLabel = isAdmin ? "Admin" : "Analyser";
-  const pluralLabel = isAdmin ? "Admins" : "Analysers";
-  const endpointName = isAdmin ? "admin" : "analyser";
+  const { singular: singularLabel, plural: pluralLabel, endpoint: endpointName } =
+    ACCOUNT_TYPE_LABELS[accountType] || ACCOUNT_TYPE_LABELS.analyser;
 
   const [analysers, setAnalysers] = useState([]);
 

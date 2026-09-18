@@ -1,5 +1,7 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import Login from "./components/auth/Login";
+import BidTypeSelect from "./components/auth/BidTypeSelect";
+import ManagementNavbar from "./components/Management/ManagementNavbar";
 import Registration from "./Registration";
 import ForgotPassword from "./components/auth/ForgotPassword";
 import AddAnalyser from "./components/auth/AddAnalyser";
@@ -49,10 +51,9 @@ import TonerBidApproval from "./pages/Toner/Admin/TonerBidApproval";
 import DocumentPrintView from "./pages/Documents/DocumentPrintView";
 import DisqualifiedBidsPanel from "./pages/Desktop/Analyser/DisqualifiedBidsPanel";
 import FinancialRankingPanel from "./pages/Desktop/Analyser/FinancialRankingPanel";
-import BidNotParticipated from "./pages/Desktop/Analyser/BidNotParticipated";
+import AdminBidToBeParticipated from "./pages/Admin/AdminBidToBeParticipated";
 import ComponentRates from "./pages/Admin/ComponentRates.jsx";
 import UserAssignedBids from "./pages/User/UserAssignedBids.jsx";
-import AdminBidAssignments from "./pages/Admin/AdminBidAssignments.jsx";
 
 const ComingSoon = ({ product }) => (
   <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
@@ -74,7 +75,15 @@ function App() {
   return (
     <div className="app-content">
       <Routes>
-        <Route path="/" element={<Login />} />
+        <Route path="/" element={<BidTypeSelect />} />
+        <Route path="/login/pre-bid" element={<Login />} />
+        <Route path="/login/post-bid" element={<Login showRoleSelector={false} fixedRole="management" />} />
+        <Route path="/management-dashboard" element={<ManagementNavbar />}>
+          <Route index element={null} />
+          <Route path="disqualified-bids" element={<DisqualifiedBidsPanel showProductFilter />} />
+          <Route path="bid-to-be-participated" element={<AdminBidToBeParticipated />} />
+          <Route path="financial-rankings" element={<FinancialRankingPanel />} />
+        </Route>
         <Route path="/register" element={<Registration />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
 
@@ -93,7 +102,6 @@ function App() {
         <Route path="/user/multifunction-printer" element={<CreatePrinterBid productMode="multifunction" />} />
 
         <Route path="/analyser-dashboard" element={<AnalyserNavbar />}>
-          <Route path="financial-rankings" element={<FinancialRankingPanel />} />
           <Route index element={null} />
           <Route path="desktop" element={<AnalyserDashboard product="desktop" />} />
           <Route path="desktop/bid/:id/downloads" element={<ApprovedBidDownloads />} />
@@ -110,8 +118,6 @@ function App() {
           <Route path="printer" element={<AnalyserPrinterDashboard />} />
           <Route path="printer/bid/:id/downloads" element={<PrinterApprovedBidDownloads />} />
           <Route path="printer/bid/:id/approved-details" element={<ApprovedBiddingDetails />} />
-          <Route path="disqualified-bids" element={<DisqualifiedBidsPanel showProductFilter />} />
-          <Route path="bid-not-participated" element={<BidNotParticipated />} />
         </Route>
 
         <Route path="/analyser-dashboard/product" element={<AnalyserProductsPage />} />
@@ -133,8 +139,7 @@ function App() {
           <Route path="add-user" element={<Registration />} />
           <Route path="add-analyser" element={<AddAnalyser />} />
           <Route path="add-admin" element={<AddAnalyser accountType="admin" />} />
-          <Route path="disqualified-bids" element={<DisqualifiedBidsPanel showProductFilter />} />
-          <Route path="bid-assignments" element={<AdminBidAssignments />} />
+          <Route path="add-management" element={<AddAnalyser accountType="management" />} />
           <Route path="component-rates/:product" element={<ComponentRates />} />
           <Route
             path="add-product"

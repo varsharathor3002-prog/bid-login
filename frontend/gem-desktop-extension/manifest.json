@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Acxxel GeM Desktop Workflow",
-  "version": "3.60.2",
-  "description": "Fills approved Desktop jobs and reads technical evaluation results in an authenticated GeM tab.",
+  "version": "3.64.5",
+  "description": "Fills approved Desktop jobs and reads awarded Bid/RA rankings and seller statuses in an authenticated GeM tab.",
   "permissions": ["storage", "tabs", "alarms", "scripting"],
   "host_permissions": [
     "http://127.0.0.1:8000/*",

@@ -8,7 +8,6 @@
     <div class="button-row">
       <button id="sync-bids" type="button">Scan Disqualified Bid</button>
       <button id="pause-sync" type="button" class="secondary" disabled>Pause Sync</button>
-      <button id="stop-sync" type="button" class="danger" disabled>Stop Sync</button>
       <button id="copy-sync-status" type="button" class="secondary">Copy status</button>
       <button id="retry-sync" type="button" class="secondary" hidden>Retry Sync</button>
     </div>
@@ -16,11 +15,10 @@
   </section>
   <section class="sync-section">
     <strong>Bid To Be Participated</strong>
-    <p class="hint">First select one GeM category and Bid Start Date: Latest First manually. Then scan all pages for that category. Repeat for each category.</p>
+    <p class="hint">Select one approved GeM category. The scan uses Bid Start Date: Latest First and stops automatically at the first bid older than the current three-day window. Repeat for each category.</p>
     <div class="button-row">
       <button id="sync-opportunities" type="button">Scan Bid To Be Participated</button>
       <button id="pause-opportunities" type="button" class="secondary" disabled>Pause Scan</button>
-      <button id="stop-opportunities" type="button" class="danger" disabled>Stop Scan</button>
       <button id="copy-opportunity-status" type="button" class="secondary">Copy status</button>
     </div>
     <p id="opportunity-state" class="sync-state"></p>

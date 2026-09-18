@@ -2,8 +2,8 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 require('./financial-ranking-list.js');
 
-function fixture(status, bid, ra) {
-  const card = { innerText: `Bid No: ${bid} RA NO: ${ra} Technical Status: ${status} View Bid Results View RA Results`, parentElement: null };
+function fixture(status, bid, ra, start = '20-07-2026', end = '21-09-2026') {
+  const card = { innerText: `Bid No: ${bid} RA NO: ${ra} Start Date: ${start} 8:00 PM End Date: ${end} 8:00 PM Technical Status: ${status} View Bid Results View RA Results`, parentElement: null };
   const makeControl = (label, href) => {
     const attributes = {};
     return { innerText: label, parentElement: card,
@@ -24,6 +24,8 @@ test('collects original bid, RA and exact technical status independently', () =>
   assert.equal(rows[0].technical_status, 'disqualified');
   assert.equal(rows[1].bid_no, 'GEM/2026/B/7333927');
   assert.equal(rows[1].ra_no, 'GEM/2026/R/717123');
+  assert.equal(rows[1].start_date, '2026-07-20');
+  assert.equal(rows[1].end_date, '2026-09-21');
   assert.equal(rows[1].ra_result_url, 'https://bidplus.gem.gov.in/ra/result');
   assert.equal(rows[1].bid_result_url, 'https://bidplus.gem.gov.in/bid/result');
   assert.equal(rows[1].has_ra_result, true);
@@ -32,6 +34,26 @@ test('collects original bid, RA and exact technical status independently', () =>
   assert.equal(globalThis.AcxxelFinancialList.open(doc, rows[1].bid_no), true);
   assert.equal(disqualified.bidControl.clicked, true);
   assert.equal(qualified.control.clicked, true);
+});
+
+test('normalizes slash/dash start dates and rejects impossible dates', () => {
+  const slash = fixture('Qualified', 'GEM/2026/B/1', 'GEM/2026/R/1', '01/01/2026');
+  const invalid = fixture('Qualified', 'GEM/2026/B/2', 'GEM/2026/R/2', '31-02-2026');
+  const doc = { location: { href: 'https://bidplus.gem.gov.in/seller-bids' }, querySelectorAll: () => [slash.control, invalid.control] };
+  const rows = globalThis.AcxxelFinancialList.collect(doc);
+  assert.equal(rows[0].start_date, '2026-01-01');
+  assert.equal(rows[1].start_date, null);
+});
+
+test('collects a Bid/RA Awarded card even when Technical Status is absent', () => {
+  const { card, bidControl } = fixture('Qualified', 'GEM/2026/B/7827937', 'GEM/2026/R/720513');
+  card.innerText = 'BID NO: GEM/2026/B/7827937 Status: Bid / RA Award Bid/RA Status: Active View BID Results';
+  const doc = { location: { href: 'https://bidplus.gem.gov.in/seller-bids' }, querySelectorAll: () => [bidControl] };
+  const [row] = globalThis.AcxxelFinancialList.collect(doc);
+  assert.equal(row.bid_no, 'GEM/2026/B/7827937');
+  assert.equal(row.ra_no, null);
+  assert.equal(row.technical_status, 'unknown');
+  assert.equal(row.has_bid_result, true);
 });
 
 test('does not attach a result button to a container containing multiple bids', () => {
@@ -95,7 +117,7 @@ test('pagination clicks first and next, and respects a disabled last-page contro
 
 function filterFixture(prefix, selected = true) {
   const controls = [];
-  const sidebar = { innerText: 'By Bid Type: Financial Evaluated', contains: (node) => controls.includes(node) };
+  const sidebar = { innerText: 'By Bid/RA Status: Bid/RA Awarded By Bid Type', contains: (node) => controls.includes(node) };
   function add(label, type, checked) {
     const node = { id: `${prefix}-${controls.length}`, type, checked, disabled: false, parentElement: sidebar,
       labels: [{ innerText: label }], getAttribute: () => null,
@@ -108,13 +130,51 @@ function filterFixture(prefix, selected = true) {
     controls.push(node);
     return node;
   }
-  add('Financial Evaluated', 'checkbox', selected);
+  add('Bid/RA Awarded', 'checkbox', selected);
   add('All Bid/RAs', 'radio', selected);
   add('Product Bid/RAs', 'radio', !selected);
   const outside = { labels: [{ innerText: 'Select bid row' }], type: 'checkbox', checked: true };
   const doc = { body: {}, querySelectorAll: () => [...controls, outside] };
   return { doc, controls };
 }
+
+test('restores Bid Type radio before GeM-disabled Bid/RA Awarded checkbox', () => {
+  const source = filterFixture('source');
+  const target = filterFixture('target', false);
+  const awarded = target.controls[0];
+  const allBidRas = target.controls[1];
+  awarded.disabled = true;
+  const clickRadio = allBidRas.click.bind(allBidRas);
+  allBidRas.click = () => { clickRadio(); awarded.disabled = false; };
+  const expected = globalThis.AcxxelFinancialList.filters(source.doc);
+
+  assert.equal(globalThis.AcxxelFinancialList.restoreFilters(target.doc, expected).ready, false);
+  assert.equal(allBidRas.checked, true);
+  assert.equal(awarded.checked, false);
+  assert.equal(globalThis.AcxxelFinancialList.restoreFilters(target.doc, expected).ready, false);
+  assert.equal(awarded.checked, true);
+  assert.equal(globalThis.AcxxelFinancialList.restoreFilters(target.doc, expected).ready, true);
+});
+
+test('re-triggers an already checked Bid Type radio to enable Awarded in a copied tab', () => {
+  const source = filterFixture('source');
+  const target = filterFixture('target');
+  const awarded = target.controls[0];
+  const checkedBidType = target.controls[1];
+  awarded.checked = false;
+  awarded.disabled = true;
+  const clickRadio = checkedBidType.click.bind(checkedBidType);
+  checkedBidType.click = () => { clickRadio(); awarded.disabled = false; };
+  const expected = globalThis.AcxxelFinancialList.filters(source.doc);
+
+  const refreshing = globalThis.AcxxelFinancialList.restoreFilters(target.doc, expected);
+  assert.equal(refreshing.ready, false);
+  assert.match(refreshing.reason, /Refreshing All Bid\/RAs/);
+  assert.equal(awarded.disabled, false);
+  assert.equal(globalThis.AcxxelFinancialList.restoreFilters(target.doc, expected).ready, false);
+  assert.equal(awarded.checked, true);
+  assert.equal(globalThis.AcxxelFinancialList.restoreFilters(target.doc, expected).ready, true);
+});
 
 test('missing first-page button uses the GeM hash route without altering query filters', () => {
   const doc = { location: { pathname: '/seller-bids', hash: '#page-12', search: '?status=financial' }, querySelector: () => null, querySelectorAll: () => [] };

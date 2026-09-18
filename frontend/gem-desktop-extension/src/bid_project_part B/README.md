@@ -1,4 +1,96 @@
-# Current pagination alignment (3.50.9)
+# Current GeM scans (3.63.9)
+
+The valid-save contract now applies to all three scan types. Bid To Be
+Participated validates the Indian calendar-day window, active End Date,
+120-day limit, supported product type, and payload fields in the API before
+writing; its progress separates new, refreshed, and API-rejected records.
+Awarded Bid/RA accepts only complete awarded rows with Start/End Dates in the
+visible 2026 report range and likewise reports new versus refreshed records.
+The awarded dashboard refreshes every ten seconds while visible. Legacy rows
+which cannot appear in their corresponding frontend report are removed.
+
+# Three-day opportunity page cutoff (3.64.1)
+
+Bid To Be Participated enforces Bid Start Date: Latest First. Once the scan
+reaches the first card older than the inclusive current-day-minus-three-days
+window, it stops immediately and does not open that bid or any later page.
+Cards with no visible Start Date are still opened for PDF fallback validation.
+
+# Opportunity category allowlist (3.64.0)
+
+Bid To Be Participated now accepts only Entry/Mid Desktop, High End Desktop,
+All in One PC (V2), Fixed Computer Workstation, Toner/Ink Cartridges, and A4
+and Legal Size MFP. PAC Only is rejected. For a bunch bid, every category must
+be on this allowlist; A3 printers, UPS, scanners, laptops, projectors, and all
+other mixed categories reject the complete bid.
+
+# Previous disqualified alignment (3.63.8)
+
+Disqualified Bid Tracking now uses the same one-calendar-month retention rule
+in the extension, API, database, and dashboard. Old, future, or undated
+disqualification records are rejected before a database write and are no longer
+included in the extension's saved count. Progress separately reports new,
+refreshed, and not-saved rows, so its valid count matches what the dashboard can
+display.
+
+# Previous opportunity scan (3.63.7)
+
+Bid To Be Participated now reads the current Start Date from each GeM seller-list
+card and uses the PDF Dated value only as a fallback. This covers valid PDFs whose
+Dated line is not extractable and also preserves corrigendum-updated start dates.
+Eligible opportunities are saved immediately after each bid is read, so pausing or
+stopping in the middle of a page does not discard that page's completed work. The
+popup's checked count is now preserved while a bid is opened and when the scan is
+paused, stopped, or completed. Bid Offer Validity above 120 days remains rejected.
+
+# Previous awarded Bid/RA scan (3.63.6)
+
+The selected, already-filtered GeM seller-list tab itself is now moved into the
+minimized worker window before any result control is clicked. This prevents a
+GeM `window.open` child from ever being created in the user's working Chrome
+window. The list tab is moved back to its original window and position without
+activation when the scan ends.
+
+Awarded result documents are now isolated in one unfocused, minimized worker
+window. Direct result URLs are created there, and delayed GeM `window.open`
+children are immediately adopted and moved there even when their opener is the
+user-selected seller-list tab. The user's main Chrome window and Acxxel tab stay
+in the foreground while worker tabs are read and closed.
+
+Failed, stopped, and authentication-required popup messages now expire after
+15 seconds. Their stored state is cleared and the relevant section returns to a
+clean ready-to-scan message, while running and successful scan status remains
+available normally.
+
+Scripted GeM result buttons can create an active child tab even when the scan is
+running from a background seller-list tab. The scanner now remembers the user's
+current foreground tab immediately before each result click and restores that
+tab (and its window) as soon as GeM creates the child. Result tabs continue to
+be read and closed in the background.
+
+The extension popup no longer exposes Start Date or Last Page filter controls.
+Awarded scans keep the required fixed bounds internally: Start Date 01/01/2026
+or later, through page 65. Date filtering for saved results belongs to the
+dashboard report.
+
+Part B now starts from the `Bid/RA Awarded` seller-list filter and queues every
+awarded card, including bids where LAPS N TABS is Qualified, Not Evaluated,
+Non-Qualified, Disqualified, or not listed. It no longer requires a card-level
+`Technical Status: Qualified` label.
+
+Because GeM does not serialize the Awarded selection into copied-tab URLs and
+keeps the checkbox disabled there, the scan paginates the user's already-filtered
+seller-list tab directly. Result pages still open in tracked background tabs; the
+selected seller-list tab is never closed by the scanner.
+
+When available, `View Bid Results` supplies each seller's evaluation status and
+`View RA Results` supplies final prices and published L1/L2/L3 ranks. The two
+results are merged by normalized seller name. The API stores seller statuses and
+the dashboard displays all awarded records plus the LAPS N TABS status. Migration
+0058 expands the saved status values. Run it before using this build.
+
+---
+# Historical pagination alignment (3.50.9)
 
 Part B now uses the existing acxxel-gem-click-control MAIN-world bridge from
 Part A for Next and RA-result controls, including its Angular/jQuery handling and
@@ -87,16 +179,18 @@ The manifest now uses its popup and background bootstrap. The bootstrap imports
 Part A's unchanged background worker and the isolated Part B controller. The new
 popup retains Part A controls and loads Part A's unchanged popup.js.
 
-Financial Ranking has Scan Current Financial Result, Stop Scan, and Copy status.
+Financial Ranking has Scan Current Financial Result, Pause Scan, and Copy status.
 It opens a new inactive tab, reads one standard financial-result table, requires
 one unambiguous bid number and an exact company match, and posts the result to the
 existing financial-rankings API. It does not crawl the technical bid list or verify
 technical status separately. Tabs needing POST navigation, frames, or modal-only
 state may not reopen by URL; these need captured page fixtures before support.
 
-Part B uses a dedicated runtime port and financialEvalSyncState. Stop is available
-before saving; once submission starts, wait for the server response. Worker restart
-is reported as interrupted; leftover tabs are not reused or closed automatically.
+Part B uses a dedicated runtime port and financialEvalSyncState. Pause/Resume is
+available before saving; once submission starts, wait for the server response.
+Pausing suspends the scan in place and Resume continues from the same page/task
+instead of restarting. Worker restart is reported as interrupted; leftover tabs
+are not reused or closed automatically.
 
 Reload the unpacked extension from the original extension root, connect Acxxel,
 open a financial-result page, and scan. Refresh the analyser report afterward.

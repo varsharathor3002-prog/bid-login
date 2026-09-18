@@ -21,9 +21,7 @@ import {
   FaPrint,
   FaBox,
   FaShieldAlt,
-  FaBan,
   FaTags,
-  FaClipboardList,
 } from "react-icons/fa";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -44,9 +42,10 @@ const bidItems = [
 
 
 const adminItems = [
-  { name: "Add User",     path: "/admin-dashboard/add-user",     icon: <FaUserPlus /> },
-  { name: "Add Analyser", path: "/admin-dashboard/add-analyser", icon: <FaUserCircle /> },
-  { name: "Add Admin",    path: "/admin-dashboard/add-admin",    icon: <FaShieldAlt /> },
+  { name: "Add User",       path: "/admin-dashboard/add-user",       icon: <FaUserPlus /> },
+  { name: "Add Analyser",   path: "/admin-dashboard/add-analyser",   icon: <FaUserCircle /> },
+  { name: "Add Admin",      path: "/admin-dashboard/add-admin",      icon: <FaShieldAlt /> },
+  { name: "Add Management", path: "/admin-dashboard/add-management", icon: <FaUserTie /> },
 ];
 
 const BID_PRODUCTS = [
@@ -510,24 +509,6 @@ const AdminNavbar = () => {
 
         {}
         <div className="flex-1 p-3 overflow-y-auto hide-scrollbar">
-
-          <div
-            onClick={() => navigate("/admin-dashboard/disqualified-bids")}
-            className={`flex items-center gap-3 px-4 py-3 mb-3 rounded-xl cursor-pointer transition-all duration-200 focus:outline-none focus:ring-0 no-highlight select-none ${
-              isActive("/admin-dashboard/disqualified-bids")
-                ? "bg-gray-700/50 text-white"
-                : "hover:bg-gray-700/50 text-gray-200"
-            }`}
-          >
-            <span className="text-lg text-red-400"><FaBan /></span>
-            <span className="text-sm font-medium">Disqualified Bid</span>
-          </div>
-
-          <div onClick={() => navigate("/admin-dashboard/bid-assignments")}
-            className={`flex items-center gap-3 px-4 py-3 mb-3 rounded-xl cursor-pointer transition-all duration-200 ${isActive("/admin-dashboard/bid-assignments") ? "bg-gray-700/50 text-white" : "hover:bg-gray-700/50 text-gray-200"}`}>
-            <span className="text-lg text-cyan-400"><FaClipboardList /></span>
-            <span className="text-sm font-medium">Bid Assignment Tracking</span>
-          </div>
 
           {}
           <button

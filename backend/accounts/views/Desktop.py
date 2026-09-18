@@ -175,6 +175,51 @@ def delete_admin(request, id):
         return JsonResponse({"message": "Admin deleted successfully."})
     return JsonResponse({"error": "Use DELETE method"}, status=405)
 
+
+@csrf_exempt
+def management_list(request):
+    if request.method == "GET":
+        managers = User.objects.filter(role="management")
+        data = [{"id": m.id, "username": m.username, "email": m.email} for m in managers]
+        return JsonResponse(data, safe=False)
+    return JsonResponse({"error": "Use GET method"}, status=405)
+
+
+@csrf_exempt
+def register_management(request):
+    if request.method == "POST":
+        try:
+            data = json.loads(request.body)
+            username = (data.get("username") or "").strip()
+            email = (data.get("email") or "").strip().lower()
+            password = data.get("password")
+            if not username or not email or not password:
+                return JsonResponse({"error": "All fields are required."}, status=400)
+            if User.objects.filter(email__iexact=email).exists():
+                return JsonResponse({"error": "Email already exists."}, status=400)
+            User.objects.create(
+                username=username,
+                email=email,
+                password=make_password(password),
+                role="management",
+            )
+            return JsonResponse({"message": "Management account registered successfully."})
+        except (json.JSONDecodeError, TypeError):
+            return JsonResponse({"error": "Invalid request data."}, status=400)
+    return JsonResponse({"error": "Use POST method"}, status=405)
+
+
+@csrf_exempt
+def delete_management(request, id):
+    if request.method == "DELETE":
+        manager = User.objects.filter(id=id, role="management").first()
+        if not manager:
+            return JsonResponse({"error": "Management account not found."}, status=404)
+        manager.delete()
+        return JsonResponse({"message": "Management account deleted successfully."})
+    return JsonResponse({"error": "Use DELETE method"}, status=405)
+
+
 @csrf_exempt
 def login(request):
     if request.method == "POST":

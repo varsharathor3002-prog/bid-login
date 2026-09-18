@@ -4,11 +4,10 @@
 <main>
   <section class="sync-section">
     <strong>Disqualified Bid Tracking</strong>
-    <p class="hint">Keep the filtered Technical Evaluated Bid List visible, then start sync for this active tab.</p>
+    <p class="hint">Keep the filtered Technical Evaluated Bid List visible. Valid disqualified results from the latest one calendar month are saved and shown on the dashboard.</p>
     <div class="button-row">
       <button id="sync-bids" type="button">Scan Disqualified Bid</button>
       <button id="pause-sync" type="button" class="secondary" disabled>Pause Sync</button>
-      <button id="stop-sync" type="button" class="danger" disabled>Stop Sync</button>
       <button id="copy-sync-status" type="button" class="secondary">Copy status</button>
       <button id="retry-sync" type="button" class="secondary" hidden>Retry Sync</button>
     </div>
@@ -16,21 +15,20 @@
   </section>
   <section class="sync-section">
     <strong>Bid To Be Participated</strong>
-    <p class="hint">First select one GeM category and Bid Start Date: Latest First manually. Then scan all pages for that category. Repeat for each category.</p>
+    <p class="hint">Select one approved GeM category. The scan uses Bid Start Date: Latest First and stops automatically at the first bid older than the current three-day window. Repeat for each category.</p>
     <div class="button-row">
       <button id="sync-opportunities" type="button">Scan Bid To Be Participated</button>
       <button id="pause-opportunities" type="button" class="secondary" disabled>Pause Scan</button>
-      <button id="stop-opportunities" type="button" class="danger" disabled>Stop Scan</button>
       <button id="copy-opportunity-status" type="button" class="secondary">Copy status</button>
     </div>
     <p id="opportunity-state" class="sync-state"></p>
   </section>
   <section class="sync-section">
-    <strong>Financial Ranking</strong>
-    <p class="hint">Manually select Bids/RAs Already Submitted/Participated and Financial Evaluated. Qualified is read from Technical Status; L1/L2/L3 comes from View RA Results, or View Bid Results when that bid has no RA.</p>
+    <strong>Awarded Bid/RA Ranking</strong>
+    <p class="hint">Select Bids/RAs Already Submitted/Participated and Bid/RA Awarded. The scan automatically checks pages 1-65 and saves bids with Start Date 01/01/2026 or later.</p>
     <div class="button-row">
-      <button id="financial-start" type="button">Scan All Qualified RA Results</button>
-      <button id="financial-stop" type="button" class="danger" disabled>Stop Scan</button>
+      <button id="financial-start" type="button">Scan All Awarded Bid/RA Results</button>
+      <button id="financial-pause" type="button" class="secondary" disabled>Pause Scan</button>
       <button id="financial-copy" type="button" class="secondary">Copy status</button>
     </div>
     <p id="financial-state" class="sync-state" role="status"></p>

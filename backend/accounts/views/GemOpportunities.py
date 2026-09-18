@@ -2,7 +2,6 @@ import json
 import base64
 import fitz
 import re
-from datetime import timedelta
 from django.http import JsonResponse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -10,7 +9,24 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 from ..models import GemBidOpportunity
-from .Gem import _require_role
+from .Gem import _request_user
+from .GemOpportunityCleanup import (
+    delete_expired_bid_opportunities,
+    delete_invalid_unassigned_opportunities,
+    valid_opportunity_dates,
+)
+from .GemOpportunityRules import classify_opportunity_item, clean_opportunity_item
+
+
+SUPPORTED_PRODUCT_TYPES = {"desktop", "workstation", "toner", "printer", "aio", "bunch_bid"}
+OPPORTUNITY_MANAGEMENT_ROLES = {"admin", "management"}
+
+
+def _require_login(request):
+    user = _request_user(request)
+    if not user:
+        return None, JsonResponse({"error": "Authentication required."}, status=401)
+    return user, None
 
 
 def _date(value):
@@ -21,16 +37,7 @@ def _date(value):
 
 
 def _clean_item(value):
-    value = " ".join(str(value or "").split())
-    # GeM's bilingual PDF sometimes appends the Hindi tender text to the
-    # English category on the same extracted line.  The UI needs categories,
-    # not that following clause text.
-    value = re.split(r"[\u0900-\u097f]", value, maxsplit=1)[0]
-    q_markers = list(re.finditer(r"\(Q\d+\)", value, re.I))
-    if q_markers:
-        value = value[:q_markers[-1].end()]
-    value = re.sub(r"\s*\(Q\d+\)\s*", "", value, flags=re.I)
-    return re.sub(r"\s*,\s*", ", ", value).strip(" ,")[:500]
+    return clean_opportunity_item(value)
 
 
 def _data(row):
@@ -48,31 +55,37 @@ def _data(row):
 @csrf_exempt
 @require_http_methods(["GET", "POST"])
 def gem_bid_opportunities(request):
-    user, error = _require_role(request, {"admin", "analyser"})
+    user, error = _require_login(request)
     if error:
         return error
     if request.method == "GET":
-        now = timezone.localtime()
-        first_date = now.date() - timedelta(days=3)
+        if user.role not in OPPORTUNITY_MANAGEMENT_ROLES:
+            return JsonResponse({"error": "You are not authorized for this action."}, status=403)
+        delete_expired_bid_opportunities()
+        delete_invalid_unassigned_opportunities()
+        now = timezone.now()
         rows = GemBidOpportunity.objects.filter(
             is_deleted=False,
             assignment__isnull=True,
             end_date__gt=now,
-            bid_date__date__gte=first_date,
-            bid_date__date__lte=now.date(),
         )
-        return JsonResponse({"results": [_data(row) for row in rows[:5000]]})
+        visible = [row for row in rows[:5000] if valid_opportunity_dates(row.bid_date, row.end_date, now)]
+        return JsonResponse({"results": [_data(row) for row in visible]})
     try:
         body = json.loads(request.body or "{}")
     except (TypeError, ValueError):
         return JsonResponse({"error": "Invalid JSON payload."}, status=400)
     if body.get("action") == "delete":
+        if user.role not in OPPORTUNITY_MANAGEMENT_ROLES:
+            return JsonResponse({"error": "You are not authorized for this action."}, status=403)
         row_id = body.get("id")
         updated = GemBidOpportunity.objects.filter(id=row_id).update(is_deleted=True)
         if not updated:
             return JsonResponse({"error": "Bid record not found."}, status=404)
         return JsonResponse({"deleted": True})
     if body.get("action") == "bulk_delete":
+        if user.role not in OPPORTUNITY_MANAGEMENT_ROLES:
+            return JsonResponse({"error": "You are not authorized for this action."}, status=403)
         row_ids = list(dict.fromkeys(body.get("ids") or []))
         if not row_ids:
             return JsonResponse({"error": "Select at least one bid."}, status=400)
@@ -80,45 +93,80 @@ def gem_bid_opportunities(request):
         return JsonResponse({"deleted": updated})
     rows = body.get("results", [])
     saved = 0
-    now = timezone.localtime()
-    first_date = now.date() - timedelta(days=3)
+    created = 0
+    updated = 0
+    rejections = []
+    visible_ids = []
+    now = timezone.now()
     for item in rows if isinstance(rows, list) else []:
         bid_no = str(item.get("bid_no") or "").strip()
         product_name = str(item.get("product_name") or "").strip()
-        if not bid_no or not product_name:
+        if not re.fullmatch(r"GEM/\d{4}/B/\d+", bid_no):
+            rejections.append({"bid_no": bid_no, "reason": "invalid_bid_no"})
+            continue
+        classification = classify_opportunity_item(product_name)
+        provided_product_type = str(item.get("product_type") or "").strip()
+        if (
+            not classification
+            or provided_product_type not in SUPPORTED_PRODUCT_TYPES
+            or provided_product_type != classification["product_type"]
+        ):
+            rejections.append({"bid_no": bid_no, "reason": "unsupported_product"})
             continue
         bid_date = _date(item.get("bid_date"))
         end_date = _date(item.get("end_date"))
-        if not bid_date or not end_date:
+        if not valid_opportunity_dates(bid_date, end_date, now):
+            rejections.append({"bid_no": bid_no, "reason": "invalid_date"})
             continue
-        local_bid_date = timezone.localtime(bid_date).date()
-        if not first_date <= local_bid_date <= now.date() or end_date <= now:
+        validity = item.get("offer_validity_days")
+        if validity is not None and (type(validity) is not int or not 1 <= validity <= 120):
+            rejections.append({"bid_no": bid_no, "reason": "invalid_offer_validity"})
             continue
         existing = GemBidOpportunity.objects.filter(bid_no=bid_no).first()
         if existing and existing.is_deleted:
             # A user-deleted opportunity is a permanent ignore/tombstone. A
             # later GeM scan must not make it visible again.
+            rejections.append({"bid_no": bid_no, "reason": "deleted_by_user"})
             continue
-        GemBidOpportunity.objects.update_or_create(
+        if existing and GemBidOpportunity.objects.filter(id=existing.id, assignment__isnull=False).exists():
+            rejections.append({"bid_no": bid_no, "reason": "already_assigned"})
+            continue
+        row, was_created = GemBidOpportunity.objects.update_or_create(
             bid_no=bid_no,
             defaults={
                 "bid_date": bid_date,
                 "end_date": end_date,
-                "product_name": _clean_item(product_name),
+                "product_name": classification["clean_name"],
                 "department": str(item.get("department") or ""),
                 "delivery_pincode": str(item.get("delivery_pincode") or "")[:6],
-                "product_type": str(item.get("product_type") or "")[:40],
+                "product_type": classification["product_type"],
                 "pdf_url": str(item.get("pdf_url") or "")[:1000],
             },
         )
         saved += 1
-    return JsonResponse({"saved": saved})
+        created += int(was_created)
+        updated += int(not was_created)
+        visible_ids.append(row.id)
+    frontend_visible = bool(saved) and GemBidOpportunity.objects.filter(
+        id__in=visible_ids,
+        is_deleted=False,
+        assignment__isnull=True,
+        end_date__gt=now,
+    ).count() == saved
+    return JsonResponse({
+        "saved": saved,
+        "created": created,
+        "updated": updated,
+        "rejected": len(rejections),
+        "rejections": rejections,
+        "frontend_visible": frontend_visible,
+    })
 
 
 @csrf_exempt
 @require_http_methods(["POST"])
 def parse_gem_bid_pdf(request):
-    user, error = _require_role(request, {"admin", "analyser"})
+    user, error = _require_login(request)
     if error:
         return error
     try:

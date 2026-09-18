@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
+import { connectGemExtension } from "../../utils/connectGemExtension";
 import {
   FaBox,
   FaDesktop,
@@ -31,6 +32,8 @@ const UserNavbar = () => {
       navigate("/");
     }
   }, [navigate]);
+
+  useEffect(() => connectGemExtension(), []);
 
   const handleLogout = () => {
     sessionStorage.clear();
