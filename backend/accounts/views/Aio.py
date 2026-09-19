@@ -1740,6 +1740,37 @@ def _tc_graphics_type(value):
     if re.search(r'integrated|uhd|vega',text,re.IGNORECASE):return "Integrated"
     return text
 
+def _restore_certificate_signatory(page,fitz,signature_image):
+    """Rebuild shifted letter signatures from the untouched template stamp."""
+    if not signature_image:return
+    lines=[]
+    for block in page.get_text("dict").get("blocks",[]):
+        for line in block.get("lines",[]):
+            text=" ".join(span.get("text","") for span in line.get("spans",[])).strip()
+            if text:lines.append((fitz.Rect(line["bbox"]),text))
+    auth=next((rect for rect,text in lines if re.match(r"auth\.?\s*signatory",text,re.I)),None)
+    contact=next((rect for rect,text in lines if re.match(r"contact\s*no",text,re.I)),None)
+    if auth is None or contact is None:return
+    x=auth.x0
+    bottom=contact.y1
+    for image in page.get_image_info():
+        rect=fitz.Rect(image["bbox"])
+        if rect.width<250 and auth.y0<=rect.y0<=contact.y1+80:
+            bottom=max(bottom,rect.y1)
+    page.add_redact_annot(fitz.Rect(x-3,auth.y0-2,page.rect.width-32,bottom+3),fill=(1,1,1))
+    page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_REMOVE,graphics=0)
+    y=auth.y0+11
+    for text in ("Auth. Signatory","For Laps N Tabs Technology Pvt. Ltd."):
+        page.insert_text((x,y),text,fontsize=11,fontname="hebo")
+        y+=14
+    stamp_top=y+2
+    page.insert_image(fitz.Rect(x,stamp_top,x+145,stamp_top+44),stream=signature_image,keep_proportion=True)
+    y=stamp_top+58
+    for text in ("Name:- Devank Rastogi","Designation:- Director","Email:- lapsntabs123@gmail.com","Contact No.:- 9918200166"):
+        page.insert_text((x,y),text,fontsize=11,fontname="hebo")
+        y+=14
+
+
 def _add_authorized_signatory(page,fitz,signature_image,y=685,compact=False):
     x=58;header_height=20 if compact else 24;signature_top=19 if compact else 23;signature_bottom=50 if compact else 62
     signature_width=132 if compact else 145;details_top=51 if compact else 63;details_bottom=91 if compact else 112

@@ -4023,6 +4023,10 @@ def generate_certificates(request, bid_id):
         output_path = os.path.join(output_dir, output_filename)
         _number_pages_from_one(new_doc)
         _dedupe_stacked_signature_images(new_doc)
+        if doc_type in {"manufacturer_auth", "bidder_financial"}:
+            from .Aio import _restore_certificate_signatory
+            for page in new_doc:
+                _restore_certificate_signatory(page, fitz, signature_image)
         if doc_type == "non_return_hdd":
             from .Aio import _add_signature_gap
             for page in new_doc:

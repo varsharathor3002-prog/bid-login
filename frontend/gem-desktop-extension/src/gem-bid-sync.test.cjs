@@ -198,3 +198,16 @@ test("disqualified scan reports only dashboard-valid API saves", () => {
   assert.match(scan, /rejected \+= response\.rejected/);
   assert.doesNotMatch(scan, /saved.*disqualified bids from 2026/);
 });
+
+test("pagination uses the page route when Next is temporarily missing and recovery is bounded", () => {
+  const start = source.indexOf("async function advancePage(signature, page)");
+  const end = source.indexOf("async function scanAllPages", start);
+  const pagination = source.slice(start, end);
+  assert.ok(start >= 0 && end > start, "pagination helpers must remain discoverable");
+  assert.doesNotMatch(pagination, /if \(!state\.found\) return/);
+  assert.match(pagination, /if \(!state\.found\) \{[\s\S]*lastReason = "missing";[\s\S]*continue;/);
+  assert.match(pagination, /const targetHash = `#page-\$\{page \+ 1\}`;[\s\S]*location\.hash = targetHash/);
+  assert.match(pagination, /const MAX_PAGINATION_RECOVERY_ATTEMPTS = 4;/);
+  assert.match(pagination, /while \(recoveryAttempt < MAX_PAGINATION_RECOVERY_ATTEMPTS\)/);
+  assert.match(pagination, /scan is incomplete; already saved bids are retained/);
+});

@@ -108,10 +108,12 @@ test('uses the selected filtered tab and saves every awarded status without clos
   assert.ok(resultTabs.every((options) => options.active === false));
   assert.ok(resultTabs.every((options) => options.windowId === 50));
   assert.equal(h.windowsCreated.length, 1);
-  assert.equal(h.windowsCreated[0].tabId, 10);
+  assert.equal(h.windowsCreated[0].tabId, undefined);
+  assert.equal(h.windowsCreated[0].url, 'about:blank');
   assert.equal(h.windowsCreated[0].type, 'popup');
   assert.equal(h.windowsCreated[0].state, 'minimized');
   assert.equal(h.windowsCreated[0].focused, false);
+  assert.ok(!h.moved.some((entry) => entry.id === 10), 'the selected GeM list must remain in its original window');
   assert.deepEqual(h.windowsRemoved, [50]);
   assert.ok(h.writes.every((entry) => Object.keys(entry).join() === 'financialEvalSyncState'));
   assert.equal(h.writes.at(-1).financialEvalSyncState.status, 'complete');

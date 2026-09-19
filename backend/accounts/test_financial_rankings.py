@@ -98,8 +98,25 @@ class FinancialRankingTests(SimpleTestCase):
             body = {"bid_no": "GEM/2026/B/123", "lot_key": "lot-2", "sellers": self.sellers, "company_rank": 1}
             response = financial_rankings(self.factory.post("/", data=json.dumps(body), content_type="application/json"))
             self.assertEqual(response.status_code, 201)
-            self.assertEqual(json.loads(response.content)["company_rank"], 2)
+            payload = json.loads(response.content)
+            self.assertEqual(payload["company_rank"], 2)
+            self.assertEqual(payload["saved"], 1)
+            self.assertEqual(payload["created"], 1)
+            self.assertEqual(payload["updated"], 0)
+            self.assertTrue(payload["frontend_visible"])
             self.assertEqual(save.call_args.kwargs["lot_key"], "lot-2")
+
+    @patch("accounts.views.GemFinancialRanking._require_role", return_value=(None, None))
+    def test_refresh_confirms_frontend_visible_update(self, _role):
+        with patch("accounts.views.GemFinancialRanking.GemFinancialRanking.objects.update_or_create", return_value=(self.row(), False)):
+            body = {"bid_no": "GEM/2026/B/123", "lot_key": "", "sellers": self.sellers}
+            response = financial_rankings(self.factory.post("/", data=json.dumps(body), content_type="application/json"))
+            payload = json.loads(response.content)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(payload["saved"], 1)
+            self.assertEqual(payload["created"], 0)
+            self.assertEqual(payload["updated"], 1)
+            self.assertTrue(payload["frontend_visible"])
 
     @patch("accounts.views.GemFinancialRanking._require_role", return_value=(None, None))
     def test_awarded_save_requires_dates_and_preserves_statuses(self, _role):

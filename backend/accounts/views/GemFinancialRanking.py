@@ -125,7 +125,17 @@ def financial_rankings(request):
             "end_date": end_date,
         },
     )
-    return JsonResponse(result_data(row), status=201 if created else 200)
+    # The extension treats a write as successful only when the API explicitly
+    # confirms both persistence and frontend visibility. Financial rankings
+    # have no hidden/deleted state, so a row returned by update_or_create is
+    # immediately part of the GET report.
+    payload = result_data(row) | {
+        "saved": 1,
+        "created": int(created),
+        "updated": int(not created),
+        "frontend_visible": True,
+    }
+    return JsonResponse(payload, status=201 if created else 200)
 
 
 @csrf_exempt
