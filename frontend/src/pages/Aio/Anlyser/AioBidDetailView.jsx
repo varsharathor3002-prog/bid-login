@@ -442,10 +442,26 @@ export default function AioBidDetailView() {
     }
     setModelSaving(true);
     try {
+      // Send the current on-screen spec fields along with the model number,
+      // not just the number by itself. The backend auto-creates a catalogue
+      // entry for a brand-new model tagged with these specs (see Aio.py's
+      // save_aio_model_number) — without them it fell back to the bid's
+      // saved DB row, which still held whatever processor/RAM the bid was
+      // submitted with, not any edits the analyser just made on this screen.
+      // That stale-tagged entry then kept resurfacing on the next Find Model
+      // search regardless of what the analyser actually picked.
       const res = await fetch(`${API_BASE}/aio-bids/${id}/save-model-number/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model_number: trimmedModelNo }),
+        body: JSON.stringify({
+          model_number: trimmedModelNo,
+          processor: form?.processor || "", ram: form?.ram || "",
+          ssd: form?.ssd || "", hdd: form?.hdd || "", os: form?.os || "",
+          screen_size: form?.screen_size || "", wifi: form?.wifi || "",
+          keyboard: form?.keyboard || "", motherboard: form?.motherboard || "",
+          dvd: form?.dvd || "", warranty: form?.warranty || "",
+          pro_descp: form?.pro_descp || "",
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {

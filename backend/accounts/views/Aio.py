@@ -273,6 +273,100 @@ def _aio_ssd_match(bid_value,product,catalogue_keys):
         if score>best_score:best_score,best_key,best_value=score,key_label,value
     return best_score>=100,best_key,best_value,best_score
 
+# Desktop's shared _values_overlap_score gives points for ANY shared digit or
+# word anywhere in the text — fine for Desktop, where a "perfect" match needs
+# 8 of up to 12 fields to independently agree (see MIN_STRONG_MATCH_FIELDS in
+# Desktop.py), so a cheap coincidence like this almost never lines up on all
+# of them. AIO only ever checks 7 fields from a handful of option values each
+# (see AIO_CATALOGUE_FIELD_MAP), so the same coincidence was enough on its
+# own to fake a "perfect" match: "AMD Ryzen 5 5600G" vs "Intel Core i5 12400"
+# scored 100 (both just contain a bare digit "5" — Ryzen tier vs i5 — nothing
+# to do with either chip actually being the same), "16GB DDR4 3200" vs "8GB
+# DDR4 3200" scored 250 (the shared "DDR4"/"3200" swamped the one number that
+# actually differs), and "Windows 11 Home" vs "Windows 11 Professional"
+# scored 150 (shared "windows"/"11"). Result: changing processor/RAM/OS in
+# the Analyser's bid form kept "Find Model" resolving to the same catalogue
+# entry regardless. These three fields get dedicated, precise comparisons
+# instead of the generic scorer.
+def _aio_ram_capacity_gb(value):
+    text=_match_clean(value)
+    if not text:return None
+    m=re.search(r"(\d+)\s*gb",text)
+    return int(m.group(1)) if m else None
+
+def _aio_ram_generation(value):
+    text=_match_clean(value)
+    m=re.search(r"\bddr\s*([345])\b",text)
+    return m.group(1) if m else None
+
+def _aio_ram_values_match(bid_value,catalogue_value):
+    b_gb,b_gen=_aio_ram_capacity_gb(bid_value),_aio_ram_generation(bid_value)
+    c_gb,c_gen=_aio_ram_capacity_gb(catalogue_value),_aio_ram_generation(catalogue_value)
+    if b_gb is not None and c_gb is not None and b_gen and c_gen:
+        return 2500 if (b_gb==c_gb and b_gen==c_gen) else 0
+    return _values_overlap_score(bid_value,catalogue_value)
+
+def _aio_ram_match(bid_value,product,catalogue_keys):
+    if _match_is_blank(bid_value):return None
+    candidates=[]
+    if product.ram:candidates.append(("ram (catalogue summary)",str(product.ram)))
+    candidates.extend(_catalogue_values_for_keys(product,catalogue_keys))
+    if not candidates:return False,"","",-1
+    best_key=best_value="";best_score=-1
+    for key_label,value in candidates:
+        score=_aio_ram_values_match(bid_value,value)
+        if score>best_score:best_score,best_key,best_value=score,key_label,value
+    return best_score>=100,best_key,best_value,best_score
+
+def _aio_processor_identity(value):
+    # The specific SKU (the last token — "12400", "5600g", "265k"...) is what
+    # actually identifies a chip. A bare tier digit ("i5"/"5"/"7" with fewer
+    # than 3 digits of its own, e.g. the 4 "Embedded i5/i7" options) isn't
+    # specific enough on its own, so those fall back to full-string identity.
+    text=_match_clean(value)
+    if not text:return ""
+    last=text.split()[-1]
+    digits=re.sub(r"\D","",last)
+    return text if len(digits)<3 else last
+
+def _aio_processor_values_match(bid_value,catalogue_value):
+    b_id,c_id=_aio_processor_identity(bid_value),_aio_processor_identity(catalogue_value)
+    if b_id and c_id:
+        return 2500 if b_id==c_id else 0
+    return _values_overlap_score(bid_value,catalogue_value)
+
+def _aio_processor_match(bid_value,product,catalogue_keys):
+    if _match_is_blank(bid_value):return None
+    candidates=[]
+    if product.processor:candidates.append(("processor (catalogue summary)",str(product.processor)))
+    candidates.extend(_catalogue_values_for_keys(product,catalogue_keys))
+    if not candidates:return False,"","",-1
+    best_key=best_value="";best_score=-1
+    for key_label,value in candidates:
+        score=_aio_processor_values_match(bid_value,value)
+        if score>best_score:best_score,best_key,best_value=score,key_label,value
+    return best_score>=100,best_key,best_value,best_score
+
+def _aio_os_values_match(bid_value,catalogue_value):
+    # OS is a short, closed vocabulary (Windows 11 Home/Professional, DOS,
+    # Linux) — exact match after cleaning, nothing fuzzy needed, so "Home"
+    # can never satisfy "Professional" just because both say "Windows 11".
+    b,c=_match_clean(bid_value),_match_clean(catalogue_value)
+    if not b or not c:return -1
+    return 2500 if b==c else 0
+
+def _aio_os_match(bid_value,product,catalogue_keys):
+    if _match_is_blank(bid_value):return None
+    candidates=[]
+    if product.os:candidates.append(("os (catalogue summary)",str(product.os)))
+    candidates.extend(_catalogue_values_for_keys(product,catalogue_keys))
+    if not candidates:return False,"","",-1
+    best_key=best_value="";best_score=-1
+    for key_label,value in candidates:
+        score=_aio_os_values_match(bid_value,value)
+        if score>best_score:best_score,best_key,best_value=score,key_label,value
+    return best_score>=100,best_key,best_value,best_score
+
 def _best_catalogue_match_aio(bid_key,bid_value,product,catalogue_keys):
     if _match_is_blank(bid_value):return None,"","",-1
     if bid_key=="screen_size":
@@ -281,6 +375,15 @@ def _best_catalogue_match_aio(bid_key,bid_value,product,catalogue_keys):
     if bid_key=="keyboard":return _keyboard_match(bid_value,product,catalogue_keys)
     if bid_key=="ssd":
         m=_aio_ssd_match(bid_value,product,catalogue_keys)
+        if m is not None:return m
+    if bid_key=="ram":
+        m=_aio_ram_match(bid_value,product,catalogue_keys)
+        if m is not None:return m
+    if bid_key=="processor":
+        m=_aio_processor_match(bid_value,product,catalogue_keys)
+        if m is not None:return m
+    if bid_key=="os":
+        m=_aio_os_match(bid_value,product,catalogue_keys)
         if m is not None:return m
     direct_map={"processor":product.processor or "","ram":product.ram or "","ssd":product.storage or "","os":product.os or ""}
     candidates=[]
@@ -312,9 +415,18 @@ def match_aio_catalogue_models(r,bid_id):
     if not b:return JsonResponse({"error":"AIO bid not found"},status=404)
     body=_data(r)
     bid_specs={k:str((body.get(k) if body.get(k) not in (None,"") else getattr(b,k,"")) or "").strip() for k in AIO_CATALOGUE_FIELD_MAP}
+    # The model already assigned to THIS bid (e.g. one just manually created
+    # via Save Model) is excluded from its own re-search — re-clicking Find
+    # Model with the same unchanged specs would otherwise just rediscover
+    # itself every time, which reads as "the old value keeps coming back"
+    # even though nothing is actually wrong. A different bid built with the
+    # same specs should still find it, so this only excludes it from this
+    # one bid's own results, not from the catalogue generally.
+    own_model_no=f"{b.model_no}{b.model}".strip()
 
     results=[]
     for product in CatalogueProduct.objects.filter(category="aio"):
+        if own_model_no and (product.model_no or "").strip().lower()==own_model_no.lower():continue
         matched_count,checked_count,total_score=_score_fields(
             bid_specs,lambda k,v,p=product:_best_catalogue_match_aio(k,v,p,AIO_CATALOGUE_FIELD_MAP[k])
         )
@@ -322,12 +434,18 @@ def match_aio_catalogue_models(r,bid_id):
         is_perfect=checked_count>=MIN_STRONG_MATCH_FIELDS_AIO and matched_count==checked_count
         results.append({"model_no":product.model_no or "","product_id":product.id,"bid_id":None,"source":"catalogue","match_count":matched_count,"total_checked":checked_count,"total_score":total_score,"is_perfect":is_perfect})
 
+    # Same field-specific scorers as _best_catalogue_match_aio above — without
+    # this, comparing bids against each other hit the exact same false-match
+    # bug (e.g. a totally different RAM size still "matching" on shared
+    # DDR4/3200 text) via the plain _values_overlap_score fallback.
+    _OTHER_BID_SCORERS={"ram":_aio_ram_values_match,"processor":_aio_processor_values_match,"os":_aio_os_values_match}
     other_bids=AioBid.objects.exclude(id=b.id).exclude(model="").exclude(model__isnull=True)
     for other in other_bids:
         def _other_scorer(k,v,o=other):
             ov=str(getattr(o,k,"") or "")
             if _match_is_blank(ov):return False,"","",-1
-            score=_values_overlap_score(v,ov)
+            scorer=_OTHER_BID_SCORERS.get(k,_values_overlap_score)
+            score=scorer(v,ov)
             return score>=100,k,ov,score
         matched_count,checked_count,total_score=_score_fields(bid_specs,_other_scorer)
         if checked_count==0:continue
@@ -355,19 +473,36 @@ def save_aio_model_number(r,bid_id):
     # shows up under the Analyser's "Transfer Catalogue to GeM" tab once the
     # bid is approved — that's the signal a product still needs manual GeM
     # catalogue creation, same as Desktop's is_new_product flag.
-    storage=" + ".join(v for v in [b.ssd,b.hdd] if str(v or "").strip())
+    # Specs come from the request body first (the Analyser's live, possibly
+    # just-edited form) and only fall back to the bid's saved DB row when the
+    # body doesn't carry a field — same body-first pattern already used by
+    # match_aio_catalogue_models above. Without this, editing processor/RAM
+    # on this screen and then saving a brand-new model number here still
+    # tagged the new catalogue entry with the bid's OLD pre-edit specs (the
+    # edits only reach the DB later, via the /review/ submit), so the next
+    # Find Model search kept resurfacing that stale-tagged entry instead of
+    # ever reflecting the specs the analyser had actually just chosen.
+    def _spec(key):
+        val=d.get(key)
+        if val not in (None,""):return str(val).strip()
+        return str(getattr(b,key,"") or "").strip()
+    processor,ram,os_value=_spec("processor"),_spec("ram"),_spec("os")
+    screen_size,wifi,keyboard=_spec("screen_size"),_spec("wifi"),_spec("keyboard")
+    motherboard,dvd,warranty=_spec("motherboard"),_spec("dvd"),_spec("warranty")
+    storage=" + ".join(v for v in [_spec("ssd"),_spec("hdd")] if v)
+    pro_descp=_spec("pro_descp")
     extra_specs={
         "_source":"aio_bid","Computer Type":"All in One PC",
-        "Processor Number":b.processor or "","RAM":b.ram or "","Storage":storage,
-        "Operating System":b.os or "","Screen Size":b.screen_size or "",
-        "WiFi Bluetooth":b.wifi or "","Keyboard Mouse":b.keyboard or "",
+        "Processor Number":processor,"RAM":ram,"Storage":storage,
+        "Operating System":os_value,"Screen Size":screen_size,
+        "WiFi Bluetooth":wifi,"Keyboard Mouse":keyboard,
         # Key must be "Motherboard Ports", not "Ports" — the Analyser's
         # catalogue product detail view (AnalyserProductsPage.jsx) reads
         # raw["Motherboard Ports"] for the CONNECTIVITY & PORTS section;
         # the mismatched key was silently showing "NA" for every bid-derived
         # (non aio_specs.xlsx) catalogue entry.
-        "Motherboard Ports":b.motherboard or "","Optical Drive":b.dvd or "",
-        "On Site OEM Warranty (in Year)":b.warranty or "",
+        "Motherboard Ports":motherboard,"Optical Drive":dvd,
+        "On Site OEM Warranty (in Year)":warranty,
     }
     try:
         with transaction.atomic():
@@ -375,14 +510,14 @@ def save_aio_model_number(r,bid_id):
             if cp is None:
                 try:
                     with transaction.atomic():
-                        CatalogueProduct.objects.create(model_no=model_number,processor=b.processor or "",ram=b.ram or "",storage=storage,os=b.os or "",category="aio",description=b.pro_descp or "All in One PC",extra_specs=extra_specs)
+                        CatalogueProduct.objects.create(model_no=model_number,processor=processor,ram=ram,storage=storage,os=os_value,category="aio",description=pro_descp or "All in One PC",extra_specs=extra_specs)
                 except IntegrityError:
                     pass
             else:
                 existing=_catalogue_extra_specs(cp)
                 if existing.get("_source")=="aio_bid":
                     existing.update(extra_specs)
-                    cp.processor=b.processor or "";cp.ram=b.ram or "";cp.storage=storage;cp.os=b.os or "";cp.category="aio";cp.extra_specs=existing
+                    cp.processor=processor;cp.ram=ram;cp.storage=storage;cp.os=os_value;cp.category="aio";cp.extra_specs=existing
                     cp.save(update_fields=["processor","ram","storage","os","category","extra_specs","updated_at"])
     except Exception:
         pass
