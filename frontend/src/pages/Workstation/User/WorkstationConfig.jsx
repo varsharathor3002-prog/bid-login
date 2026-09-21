@@ -298,7 +298,7 @@ const INITIAL_FORM = {
   hddreturnable: "Yes",
   hddreturnable_price: "",
   freightInstallation: "Yes",
-  freightInstallation_price: "",
+  freightInstallation_price: "1000",
 };
 
 const getDraftKey = (bidId) => `workstation_config_draft_${bidId || "new"}`;
@@ -313,7 +313,7 @@ const normalizeInitialForm = (source = {}) => {
   merged.hddreturnable = source.hddreturnable || merged.hddreturnable || "Yes";
   merged.freightInstallation = source.freightInstallation || merged.freightInstallation || "Yes";
   merged.freightInstallation_price =
-    source.freightInstallation_price || merged.freightInstallation_price || "";
+    source.freightInstallation_price || merged.freightInstallation_price || "1000";
   return merged;
 };
 
@@ -327,11 +327,22 @@ export default function WorkstationConfig({ bidData, onNext }) {
   }, []);
   const draftKey = useMemo(() => getDraftKey(bid_id), [bid_id]);
 
+  // A saved config draft still carries the Step 1 values from when it was
+  // first written (bid no, address...). If the user went Back and edited them,
+  // the draft must not put the old ones back over the fresh Step 1 values.
+  const withFreshBasics = (draftForm) => {
+    const merged = { ...draftForm };
+    ["bid_no", "dept_name", "organization", "qty", "pincode", "address", "atc"].forEach((key) => {
+      if (bidData && bidData[key] !== undefined) merged[key] = bidData[key];
+    });
+    return merged;
+  };
+
   const [form, setForm] = useState(() => {
     try {
       const savedDraft = localStorage.getItem(getDraftKey(bid_id));
       if (savedDraft) {
-        return normalizeInitialForm(JSON.parse(savedDraft));
+        return normalizeInitialForm(withFreshBasics(JSON.parse(savedDraft)));
       }
     } catch (error) {
       console.warn("Unable to restore workstation configuration draft", error);
@@ -348,7 +359,7 @@ export default function WorkstationConfig({ bidData, onNext }) {
     setForm((prev) => {
       try {
         const savedDraft = localStorage.getItem(draftKey);
-        if (savedDraft) return normalizeInitialForm(JSON.parse(savedDraft));
+        if (savedDraft) return normalizeInitialForm(withFreshBasics(JSON.parse(savedDraft)));
       } catch (error) {
         console.warn("Unable to restore workstation configuration draft", error);
       }
@@ -678,32 +689,9 @@ export default function WorkstationConfig({ bidData, onNext }) {
           <SelectField label="Cabinet" name="cabinet" options={CABINETS} required />
           <SelectField label="Keyboard & Mouse" name="keyboard" options={KEYBOARDS} required />
           <SelectField label="Power Supply (SMPS)" name="power_supply" options={POWER_SUPPLIES} required />
+          <div className="col-span-1 grid grid-cols-1 gap-x-6 gap-y-4 md:col-span-2 md:grid-cols-2 lg:col-span-3 lg:grid-cols-4">
           <SelectField label="Warranty" name="warranty" options={WARRANTIES} required />
 
-          <div className="col-span-1">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Freight Installation</label>
-            <div className="flex gap-2">
-              <select
-                name="freightInstallation"
-                value={form.freightInstallation}
-                onChange={handleChange}
-                className="flex-1 min-w-0 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              >
-                <option value="Yes">Yes</option>
-                <option value="No">No</option>
-              </select>
-              <input
-                type="text"
-                name="freightInstallation_price"
-                value={form.freightInstallation_price}
-                onChange={handleChange}
-                placeholder="Price"
-                className="w-24 shrink-0 border border-gray-300 rounded-md px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-          </div>
-
-        
           <div className="col-span-1">
             <label className="block text-sm font-medium text-gray-700 mb-1">Bid End Date</label>
             <input
@@ -749,6 +737,8 @@ export default function WorkstationConfig({ bidData, onNext }) {
                 className="w-24 shrink-0 border border-gray-300 rounded-md px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
+          </div>
+
           </div>
 
           <div className="col-span-1 md:col-span-2 lg:col-span-3">

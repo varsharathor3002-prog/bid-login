@@ -1675,8 +1675,7 @@ def _fill_warranty_page(page,fitz,bid_no,model_number,warranty_text):
     paragraph=(
         "This is to certify that the acxxel AIO PC offered in the bid carries an on-site "
         f"warranty during the entire standard warranty period, i.e. {normalized_warranty}, "
-        "as per the terms and conditions of the bid document. Escalation matrix for service "
-        "support is as follows"
+        "as per the terms and conditions of the bid document."
     )
     para_rect=fitz.Rect(82,314,page.rect.width-42,374)
     page.add_redact_annot(para_rect,fill=(1,1,1));page.apply_redactions()
@@ -1691,7 +1690,7 @@ def _fill_warranty_page(page,fitz,bid_no,model_number,warranty_text):
     # out to its own misaligned line after "...award to us." with a stray
     # comma. Removed; the f-string above already puts it in the right spot.
 
-def _fill_make_in_india_page(page,fitz,bid_no,model_number,dept_name,organization,full_address,bid_date_formatted,local_content):
+def _fill_make_in_india_page(page,fitz,bid_no,model_number,dept_name,organization,full_address,bid_date_formatted,local_content,product_text="All in One PC",caption_text="ALL IN ONE PC"):
     def _lines():
         out=[]
         for block in page.get_text("dict")["blocks"]:
@@ -1718,7 +1717,7 @@ def _fill_make_in_india_page(page,fitz,bid_no,model_number,dept_name,organizatio
 
         formatted_model=_format_model_number(model_number)
         segments=[
-            ("This is to certify that ",False),("acxxel All in One PC ",True),
+            ("This is to certify that ",False),(f"acxxel {product_text} ",True),
             (formatted_model+" ",True),("Quoted under ",False),("GeM Bid No. – ",True),
             ((bid_no if bid_no else "N/A")+" ",True),
             ("is getting manufactured in India. Local content details are as below:",False),
@@ -1786,9 +1785,16 @@ def _fill_make_in_india_page(page,fitz,bid_no,model_number,dept_name,organizatio
                     page.add_redact_annot(fitz.Rect(bbox[0],bbox[1],page.rect.width-36,bbox[3]),fill=(1,1,1))
                 page.apply_redactions()
                 ax,ay=address_lines[2][0][0],address_lines[2][0][1]
-                page.insert_textbox(fitz.Rect(ax,ay,page.rect.width-36,ay+100),full_address,fontsize=11.5,fontname="hebo",color=(0,0,0),align=0)
+                # Bid No/Dated used to sit at a fixed ay+45 with a single space
+                # between the two — cramped right under a wrapped address and
+                # run together on one line. Same approach as the ATC letter:
+                # wrap the address, then start Bid No/Dated a clear gap below
+                # wherever it actually ended, with wider spacing between them.
+                addr_y=ay+10
+                for ln in _wrap_address_line(full_address,fitz,11.5,page.rect.width-36-ax,fontname="hebo"):
+                    page.insert_text((ax,addr_y),ln,fontsize=11.5,fontname="hebo",color=(0,0,0));addr_y+=14
                 if bid_no or bid_date_formatted:
-                    page.insert_text((ax,ay+45),f"Bid No: {bid_no or ''} Dated: {bid_date_formatted or ''}",fontsize=10,fontname="hebo",color=(0,0,0))
+                    page.insert_text((ax,addr_y-14+30),f"Bid No: {bid_no or ''}            Dated: {bid_date_formatted or ''}",fontsize=10,fontname="hebo",color=(0,0,0))
             if mfg_start is not None:mfg_block_bottom_y=all_lines3[table_start_idx][0][1]
 
     # Position-based table fill: the "Sr.No / Description / Local Content" row
@@ -1830,7 +1836,7 @@ def _fill_make_in_india_page(page,fitz,bid_no,model_number,dept_name,organizatio
                 area=fitz.Rect(bbox)
                 page.add_redact_annot(fitz.Rect(area.x0-1,area.y0-1,page.rect.width-36,area.y1+1),fill=(1,1,1))
                 page.apply_redactions()
-                page.insert_text((area.x0,area.y1-2),f"acxxel ALL IN ONE PC MODEL {formatted_model}",fontsize=10.5,fontname="hebo",color=(0,0,0))
+                page.insert_text((area.x0,area.y1-2),f"acxxel {caption_text} MODEL {formatted_model}",fontsize=10.5,fontname="hebo",color=(0,0,0))
                 break
 # --- Technical Compliance Certificate / Product Data Sheet -----------------
 # Desktop draws these two documents entirely from code onto blank pages (only
@@ -1875,6 +1881,37 @@ def _tc_graphics_type(value):
     if re.search(r'integrated|uhd|vega',text,re.IGNORECASE):return "Integrated"
     return text
 
+def _restore_certificate_signatory(page,fitz,signature_image):
+    """Rebuild shifted letter signatures from the untouched template stamp."""
+    if not signature_image:return
+    lines=[]
+    for block in page.get_text("dict").get("blocks",[]):
+        for line in block.get("lines",[]):
+            text=" ".join(span.get("text","") for span in line.get("spans",[])).strip()
+            if text:lines.append((fitz.Rect(line["bbox"]),text))
+    auth=next((rect for rect,text in lines if re.match(r"auth\.?\s*signatory",text,re.I)),None)
+    contact=next((rect for rect,text in lines if re.match(r"contact\s*no",text,re.I)),None)
+    if auth is None or contact is None:return
+    x=auth.x0
+    bottom=contact.y1
+    for image in page.get_image_info():
+        rect=fitz.Rect(image["bbox"])
+        if rect.width<250 and auth.y0<=rect.y0<=contact.y1+80:
+            bottom=max(bottom,rect.y1)
+    page.add_redact_annot(fitz.Rect(x-3,auth.y0-2,page.rect.width-32,bottom+3),fill=(1,1,1))
+    page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_REMOVE,graphics=0)
+    y=auth.y0+11
+    for text in ("Auth. Signatory","For Laps N Tabs Technology Pvt. Ltd."):
+        page.insert_text((x,y),text,fontsize=11,fontname="hebo")
+        y+=14
+    stamp_top=y+2
+    page.insert_image(fitz.Rect(x,stamp_top,x+145,stamp_top+44),stream=signature_image,keep_proportion=True)
+    y=stamp_top+58
+    for text in ("Name:- Devank Rastogi","Designation:- Director","Email:- lapsntabs123@gmail.com","Contact No.:- 9918200166"):
+        page.insert_text((x,y),text,fontsize=11,fontname="hebo")
+        y+=14
+
+
 def _add_authorized_signatory(page,fitz,signature_image,y=685,compact=False):
     x=58;header_height=20 if compact else 24;signature_top=19 if compact else 23;signature_bottom=50 if compact else 62
     signature_width=132 if compact else 145;details_top=51 if compact else 63;details_bottom=91 if compact else 112
@@ -1887,9 +1924,6 @@ def _add_authorized_signatory(page,fitz,signature_image,y=685,compact=False):
 def _fill_aio_technical_compliance_page1(page,fitz,bid_no,b):
     heading="Technical Compliance Certificate";hw=fitz.get_text_length(heading,fontname="hebo",fontsize=14)
     page.insert_text(((page.rect.width-hw)/2,122),heading,fontsize=14,fontname="hebo",color=(0,0,0))
-    if bid_no:
-        bt=f"Bid No: {bid_no}";bw=fitz.get_text_length(bt,fontname="hebo",fontsize=9)
-        page.insert_text(((page.rect.width-bw)/2,143),bt,fontsize=9,fontname="hebo",color=(0.2,0.2,0.2))
     columns=[52,115,220,395,543];header_top,header_bottom=160,190;headers=["Specification","Title","Allowed Values","Offered"]
     for i,h in enumerate(headers):
         rect=fitz.Rect(columns[i],header_top,columns[i+1],header_bottom)

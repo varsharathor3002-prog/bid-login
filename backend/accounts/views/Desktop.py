@@ -2116,8 +2116,7 @@ def generate_certificates(request, bid_id):
         paragraph = (
             "This is to certify that the acxxel Desktop offered in the bid carries an on-site "
             f"warranty during the entire standard warranty period, i.e. {normalized_warranty}, "
-            "as per the terms and conditions of the bid document. Escalation matrix for service "
-            "support is as follows"
+            "as per the terms and conditions of the bid document."
         )
 
         para_rect = fitz.Rect(82, 314, page.rect.width - 42, 374)
@@ -4023,6 +4022,10 @@ def generate_certificates(request, bid_id):
         output_path = os.path.join(output_dir, output_filename)
         _number_pages_from_one(new_doc)
         _dedupe_stacked_signature_images(new_doc)
+        if doc_type in {"manufacturer_auth", "bidder_financial", "warranty"}:
+            from .Aio import _restore_certificate_signatory
+            for page in new_doc:
+                _restore_certificate_signatory(page, fitz, signature_image)
         if doc_type == "non_return_hdd":
             from .Aio import _add_signature_gap
             for page in new_doc:

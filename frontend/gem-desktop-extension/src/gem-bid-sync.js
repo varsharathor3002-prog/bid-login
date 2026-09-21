@@ -713,10 +713,16 @@
     // available in a background tab, so pagination should remain unobtrusive.
     window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "instant" });
     await sleep(500);
+    let lastReason = "missing";
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       const state = mainPaginationNextState();
-      if (!state.found) return { advanced: false, reason: "missing" };
+      if (!state.found) {
+        lastReason = "missing";
+        await sleep(1500);
+        continue;
+      }
       if (state.disabled) return { advanced: false, reason: "end" };
+      lastReason = "stuck";
       const next = state.node;
       next.scrollIntoView({ block: "center", inline: "center" });
       await sleep(250);
@@ -740,12 +746,14 @@
       location.hash = targetHash;
       if (await waitForPageChange(signature, 20000)) return { advanced: true };
     }
-    return { advanced: false, reason: "stuck" };
+    return { advanced: false, reason: lastReason };
   }
+
+  const MAX_PAGINATION_RECOVERY_ATTEMPTS = 4;
 
   async function advancePageWithRecovery(signature, page, onRetry) {
     let recoveryAttempt = 0;
-    while (true) {
+    while (recoveryAttempt < MAX_PAGINATION_RECOVERY_ATTEMPTS) {
       stopIfRequested();
       const advance = await advancePage(signature, page);
       if (advance.advanced || advance.reason === "end") return advance;
@@ -760,6 +768,10 @@
       }
       await sleep(Math.min(5000 + recoveryAttempt * 2000, 30000));
     }
+    throw new Error(
+      `GeM pagination could not recover after page ${page} after ${MAX_PAGINATION_RECOVERY_ATTEMPTS} attempts. `
+        + "The scan is incomplete; already saved bids are retained. Refresh the GeM Bid List and start the scan again.",
+    );
   }
 
   async function scanAllPages() {

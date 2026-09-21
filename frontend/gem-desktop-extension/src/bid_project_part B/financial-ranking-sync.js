@@ -144,38 +144,32 @@
     }).catch(() => {});
   }
 
-  const acxxelTab = (tab) => {
-    try {
-      const url = new URL(tab?.url || '');
-      return ['localhost:5173', '127.0.0.1:5173', 'acxxelbidding.com', 'www.acxxelbidding.com'].includes(url.host);
-    } catch { return false; }
-  };
-
   async function createWorkerWindow(run, source) {
-    const originalTabs = await chrome.tabs.query({ windowId: source.windowId });
-    const candidates = originalTabs.filter((tab) => tab.id !== source.id);
-    candidates.sort((left, right) => Number(acxxelTab(right)) - Number(acxxelTab(left))
-      || Math.abs((left.index ?? 0) - (source.index ?? 0)) - Math.abs((right.index ?? 0) - (source.index ?? 0)));
-    const foreground = candidates[0];
-    if (!foreground?.id) throw new Error('Keep the Acxxel software tab open beside GeM before starting the background scan.');
-    run.foregroundTabId = foreground.id;
+    // Keep the user's selected, filtered GeM list exactly where it is. Moving
+    // that tab into the minimized worker made the GeM page disappear from the
+    // normal tab strip as soon as the scan started. Only short-lived result
+    // documents belong in the isolated worker window.
+    run.foregroundTabId = source.id;
     run.foregroundWindowId = source.windowId;
     run.originalListWindowId = source.windowId;
     run.originalListIndex = source.index ?? -1;
+    run.listStayedInOriginalWindow = true;
     const worker = await chrome.windows.create({
-      tabId: source.id,
+      url: 'about:blank',
       type: 'popup',
       state: 'minimized',
       focused: false,
     });
     if (!Number.isInteger(worker?.id)) throw new Error('Chrome could not create the background result worker. Scan was not started.');
     run.workerWindowId = worker.id;
-    await chrome.tabs.update(foreground.id, { active: true });
-    await chrome.windows.update(source.windowId, { focused: true });
   }
 
   async function restoreListTabAndCloseWorker(run) {
     if (!run.workerWindowId) return;
+    if (run.listStayedInOriginalWindow) {
+      await chrome.windows.remove(run.workerWindowId).catch(() => {});
+      return;
+    }
     let restored = false;
     if (run.listTabId && Number.isInteger(run.originalListWindowId)) {
       try {

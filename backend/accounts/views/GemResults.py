@@ -30,8 +30,11 @@ def _retention_cutoff():
 
 def _prune_old_disqualified_results():
     cutoff = _retention_cutoff()
-    deleted, _ = GemBidResult.objects.filter(is_disqualified=True).filter(
-        Q(disqualified_at__lt=cutoff) | Q(disqualified_at__isnull=True)
+    deleted, _ = GemBidResult.objects.filter(
+        Q(is_disqualified=False)
+        | Q(disqualified_at__lt=cutoff)
+        | Q(disqualified_at__gt=timezone.now())
+        | Q(disqualified_at__isnull=True)
     ).delete()
     return cutoff, deleted
 
@@ -157,11 +160,21 @@ def gem_bid_results(request):
         return JsonResponse({"error": "results must be a list."}, status=400)
 
     saved = []
+    created = 0
+    updated = 0
+    rejections = []
+    cutoff = _retention_cutoff()
+    now = timezone.now()
+    processed_bid_numbers = set()
     with transaction.atomic():
         for row in rows:
             bid_no = str(row.get("bid_no", "")).strip()
             if not bid_no:
+                rejections.append({"bid_no": "", "reason": "missing_bid_no"})
                 continue
+            if bid_no in processed_bid_numbers:
+                continue
+            processed_bid_numbers.add(bid_no)
             existing = GemBidResult.objects.filter(bid_no=bid_no).first()
             was_pending = bool(existing and not existing.is_final)
             technical_status = str(row.get("technical_status", "")).strip()
@@ -197,6 +210,20 @@ def gem_bid_results(request):
                 disqualified_at = stored_disqualified_event.date_time
             if existing and existing.is_disqualified:
                 technical_status = existing.technical_status or "Disqualified"
+            rejection_reason = ""
+            if not is_disqualified:
+                rejection_reason = "not_disqualified"
+            elif not disqualified_at:
+                rejection_reason = "missing_disqualified_date"
+            elif disqualified_at < cutoff:
+                rejection_reason = "outside_retention_window"
+            elif disqualified_at > now:
+                rejection_reason = "future_disqualified_date"
+            if rejection_reason:
+                if existing:
+                    existing.delete()
+                rejections.append({"bid_no": bid_no, "reason": rejection_reason})
+                continue
             defaults = {
                 "product_type": str(row.get("product_type", "desktop")).lower()
                 if str(row.get("product_type", "desktop")).lower() in dict(GemBidResult.PRODUCT_CHOICES)
@@ -217,7 +244,7 @@ def gem_bid_results(request):
                 "disqualified_at": disqualified_at,
                 "linked_bid": DesktopBid.objects.filter(bid_no=bid_no).first(),
             }
-            result, _ = GemBidResult.objects.update_or_create(bid_no=bid_no, defaults=defaults)
+            result, was_created = GemBidResult.objects.update_or_create(bid_no=bid_no, defaults=defaults)
             for event in history:
                 GemBidEvaluationHistory.objects.get_or_create(
                     bid_result=result,
@@ -227,8 +254,24 @@ def gem_bid_results(request):
                     comment=str(event.get("comment", "")),
                 )
             saved.append(result.bid_no)
+            created += int(was_created)
+            updated += int(not was_created)
         _prune_old_disqualified_results()
-    return JsonResponse({"saved": len(saved), "bid_numbers": saved})
+        visible_count = GemBidResult.objects.filter(
+            bid_no__in=saved,
+            is_disqualified=True,
+            disqualified_at__gte=cutoff,
+            disqualified_at__lte=now,
+        ).count()
+    return JsonResponse({
+        "saved": len(saved),
+        "created": created,
+        "updated": updated,
+        "rejected": len(rejections),
+        "rejections": rejections,
+        "bid_numbers": saved,
+        "frontend_visible": bool(saved) and visible_count == len(saved),
+    })
 
 
 @csrf_exempt
