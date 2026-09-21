@@ -68,6 +68,7 @@ const REQUIRED_FIELDS = [
   "bid_no", "dept_name", "organization", "qty", "pincode", "address", "atc",
   "processor", "ram", "hdd", "ssd1", "ssd2", "graphics", "motherboard", "os",
   "monitor", "cabinet", "keyboard", "power_supply", "warranty", "date", "epbg",
+  "freightInstallation",
 ];
 const CONDITIONAL_FIELDS = ["pro_descp", "motherboard_descp", "gp", "software1", "extra_requirements"];
 
@@ -347,7 +348,17 @@ export default function WorkstationBidDetailView() {
         const res = await fetch(`${API_BASE}/workstation-bids/${id}/`);
         if (res.ok) {
           const data = await res.json();
-          setForm(data);
+          const freight = data.freightInstallation || "Yes";
+          setForm({
+            ...data,
+            freightInstallation: freight,
+            freightInstallation_price:
+              freight === "No"
+                ? "0"
+                : data.freightInstallation_price !== undefined && data.freightInstallation_price !== null && data.freightInstallation_price !== ""
+                  ? String(data.freightInstallation_price)
+                  : "1000",
+          });
           setModelInputValue(data.model_number || data.model || data.model_no || "");
         }
       } catch {
@@ -768,6 +779,42 @@ export default function WorkstationBidDetailView() {
           );
         })}
 
+        <VerifiedField name="freightInstallation" label="Freight & Installation" required verifiedFields={verifiedFields} readOnly={readOnly} onToggle={toggleVerification}>
+          <div className="flex flex-col gap-1.5 w-full">
+            <div className="flex gap-2">
+              <select
+                name="freightInstallation"
+                value={form?.freightInstallation ?? "Yes"}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setForm((prev) => ({
+                    ...prev,
+                    freightInstallation: val,
+                    freightInstallation_price: val === "No" ? 0 : prev.freightInstallation_price,
+                  }));
+                }}
+                disabled={readOnly}
+                className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm disabled:bg-gray-100 focus:outline-none focus:border-blue-500 bg-white"
+              >
+                <option value="Yes">Yes</option>
+                <option value="No">No</option>
+              </select>
+              <input
+                type="number"
+                name="freightInstallation_price"
+                value={form?.freightInstallation_price ?? ""}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setForm((prev) => ({ ...prev, freightInstallation_price: val }));
+                }}
+                disabled={readOnly || (form?.freightInstallation ?? "Yes") === "No"}
+                placeholder="Enter Amount"
+                className="w-32 border border-gray-300 rounded-md px-3 py-2 text-sm disabled:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              />
+            </div>
+          </div>
+        </VerifiedField>
+
         <div className="md:col-span-2 lg:col-span-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {TEXT_FIELDS.filter(([name]) => name !== "address" && name !== "atc").map(([name, label]) => (
             <VerifiedField key={name} name={name} label={label} optional required={conditionalRequired.includes(name)} verifiedFields={verifiedFields} readOnly={readOnly} onToggle={toggleVerification}>
@@ -838,7 +885,7 @@ export default function WorkstationBidDetailView() {
               disabled={modelSearching || modelSaving || showModelResult}
               className={`mt-4 whitespace-nowrap ${noMatchFound ? "bg-blue-600 hover:bg-blue-700" : isReAnalyze && form?.model_number ? "bg-amber-600 hover:bg-amber-700" : "bg-slate-700 hover:bg-slate-800"} disabled:bg-slate-400 text-white px-3 py-1.5 rounded text-xs font-bold transition shadow-sm`}
             >
-              {modelSaving ? "Saving..." : modelSearching ? "Searching..." : noMatchFound ? "Save Model" : form?.model_number ? "Change Model" : "Find Model"}
+              {modelSaving ? "Saving..." : modelSearching ? "Searching..." : noMatchFound ? "Save Model" : (isReAnalyze && form?.model_number) ? "Change Model" : "Find Model"}
             </button>
           )}
 

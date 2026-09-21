@@ -351,7 +351,17 @@ export default function AioBidDetailView() {
         if (!res.ok) throw new Error("Failed to fetch bid");
         data = await res.json();
       }
-      setForm(data);
+      const freight = data.freightInstallation || "Yes";
+      setForm({
+        ...data,
+        freightInstallation: freight,
+        freightInstallation_price:
+          freight === "No"
+            ? "0"
+            : data.freightInstallation_price !== undefined && data.freightInstallation_price !== null && data.freightInstallation_price !== ""
+              ? String(data.freightInstallation_price)
+              : "1000",
+      });
       // Same to same as Desktop's shouldShowSavedModelInput: only pre-fill the
       // Assigned Model box for a bid that already went through Find Model once
       // (viewing read-only, already analyzed/approved, or back for
@@ -442,10 +452,26 @@ export default function AioBidDetailView() {
     }
     setModelSaving(true);
     try {
+      // Send the current on-screen spec fields along with the model number,
+      // not just the number by itself. The backend auto-creates a catalogue
+      // entry for a brand-new model tagged with these specs (see Aio.py's
+      // save_aio_model_number) — without them it fell back to the bid's
+      // saved DB row, which still held whatever processor/RAM the bid was
+      // submitted with, not any edits the analyser just made on this screen.
+      // That stale-tagged entry then kept resurfacing on the next Find Model
+      // search regardless of what the analyser actually picked.
       const res = await fetch(`${API_BASE}/aio-bids/${id}/save-model-number/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model_number: trimmedModelNo }),
+        body: JSON.stringify({
+          model_number: trimmedModelNo,
+          processor: form?.processor || "", ram: form?.ram || "",
+          ssd: form?.ssd || "", hdd: form?.hdd || "", os: form?.os || "",
+          screen_size: form?.screen_size || "", wifi: form?.wifi || "",
+          keyboard: form?.keyboard || "", motherboard: form?.motherboard || "",
+          dvd: form?.dvd || "", warranty: form?.warranty || "",
+          pro_descp: form?.pro_descp || "",
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -782,12 +808,38 @@ export default function AioBidDetailView() {
         </VerifiedInputWrapper>
 
         <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="freightInstallation" label="Freight & Installation">
-          <div className="flex gap-2">
-            <select name="freightInstallation" value={form.freightInstallation || "Yes"} onChange={handleChange} disabled={readOnly} className={inputCls}>
-              <option>Yes</option>
-              <option>No</option>
-            </select>
-            <input type="text" name="freightInstallation_price" value={form.freightInstallation_price ?? ""} onChange={handleChange} disabled={readOnly} placeholder="Price" className="w-24 border border-gray-300 rounded-md px-2 py-2 text-sm disabled:bg-gray-100 focus:outline-none focus:border-blue-500 bg-white" />
+          <div className="flex flex-col gap-1.5 w-full">
+            <div className="flex gap-2">
+              <select
+                name="freightInstallation"
+                value={form?.freightInstallation ?? "Yes"}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setForm((prev) => ({
+                    ...prev,
+                    freightInstallation: val,
+                    freightInstallation_price: val === "No" ? 0 : prev.freightInstallation_price,
+                  }));
+                }}
+                disabled={readOnly}
+                className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm disabled:bg-gray-100 focus:outline-none focus:border-blue-500 bg-white"
+              >
+                <option value="Yes">Yes</option>
+                <option value="No">No</option>
+              </select>
+              <input
+                type="number"
+                name="freightInstallation_price"
+                value={form?.freightInstallation_price ?? ""}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setForm((prev) => ({ ...prev, freightInstallation_price: val }));
+                }}
+                disabled={readOnly || (form?.freightInstallation ?? "Yes") === "No"}
+                placeholder="Enter Amount"
+                className="w-32 border border-gray-300 rounded-md px-3 py-2 text-sm disabled:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              />
+            </div>
           </div>
         </VerifiedInputWrapper>
 

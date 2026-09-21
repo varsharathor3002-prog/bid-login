@@ -239,6 +239,23 @@ def update_workstation_bid(request, bid_id):
 
         data = json.loads(request.body)
 
+        # Bid No / Department / Organization / Qty / Pincode / Address / ATC are
+        # only ever written by create_workstation_bid, so anything the user
+        # changed on Step 1 after going Back never reached the DB — and the
+        # documents are generated from the DB row, so they kept showing the
+        # old values. Only fields actually present in the payload are applied.
+        for field in ("bid_no", "dept_name", "organization", "pincode", "address", "atc"):
+            if data.get(field) is not None:
+                setattr(bid, field, str(data.get(field)))
+        if data.get("qty") not in (None, ""):
+            try:
+                bid.qty = int(data.get("qty") or 0)
+            except (TypeError, ValueError):
+                pass
+        if data.get("basic_only"):
+            bid.save()
+            return JsonResponse({"message": "Bid details updated", "bid_id": bid.id, "status": bid.status}, status=200)
+
         # ── Processor ──────────────────────────────────────────
         bid.processor         = data.get("processor",       bid.processor or "")
         bid.processor_price   = float(data.get("processor_price", 0) or 0)
@@ -1944,26 +1961,6 @@ def generate_workstation_certificates(request, bid_id):
                             page.insert_text((x0, y), ln, fontsize=11.5, fontname="hebo", color=(0, 0, 0))
                             y += 15
 
-        def fix_service_support_page_30(page):
-            values = ["To,", *service_recipient, f"Bid No: {bid_no}" if bid_no else ""]
-            max_width = page.rect.width - 36 - 72
-            wrapped_lines = [ln for value in values if value for ln in _wrap_recipient_line(value, 11.5, max_width)]
-            # 220 (the original fixed bottom) plus a little slack for one
-            # extra wrapped address line — stays clear of the "Service &
-            # Support" heading a bit further down the page.
-            box_bottom = min(228, 150 + max(70, len(wrapped_lines) * 15 + 16))
-            page.add_redact_annot(fitz.Rect(68, 150, page.rect.width - 36, box_bottom), fill=(1, 1, 1))
-            page.apply_redactions(images=0, graphics=0)
-            y = 166
-            for ln in wrapped_lines:
-                page.insert_text((72, y), ln, fontsize=11.5, fontname="hebo", color=(0, 0, 0))
-                y += 15
-            # The "As per the Buyer ATC..." heading, the quoted availability
-            # paragraph, the on-site closing paragraph, and the signature block
-            # below it are all redrawn together by the shared
-            # _fill_service_support_availability helper (see the original_page
-            # == 30 branch below) — mirrors AIO's equivalent page exactly.
-
         def fix_manufacturer_auth_page(page):
             from .Aio import _fill_manufacturer_auth_body
 
@@ -2014,7 +2011,34 @@ def generate_workstation_certificates(request, bid_id):
 
         def fix_preloaded_os_page(page):
             os_text = clean_text(body.get("os") or bid.os or "Windows 11 Professional")
-            page.add_redact_annot(fitz.Rect(68, 336, page.rect.width - 42, 383), fill=(1, 1, 1))
+            # force_customer_block already pushes the whole body down when the
+            # recipient block grows (longer address), so the paragraph and the
+            # footer are located from where they actually sit on this page. The
+            # old fixed 336-383 box erased whichever line had been pushed into
+            # that spot (Subject / "Dear Sir,") and left the paragraph's last
+            # line half-erased.
+            page_lines = []
+            for block in page.get_text("dict").get("blocks", []):
+                if block.get("type") != 0:
+                    continue
+                for line in block.get("lines", []):
+                    line_text = " ".join(span.get("text", "") for span in line.get("spans", [])).strip()
+                    if line_text:
+                        page_lines.append((fitz.Rect(line["bbox"]), line_text))
+            para_start = min(
+                (r for r, t in page_lines if re.match(r"You may kindly", t, re.I)),
+                key=lambda r: r.y0, default=None,
+            )
+            footer_start = min(
+                (r for r, t in page_lines if re.match(r"Please do feel", t, re.I)),
+                key=lambda r: r.y0, default=None,
+            )
+            para_top = para_start.y0 - 0.3 if para_start is not None else 341
+            if para_start is not None and footer_start is not None and footer_start.y0 > para_start.y0:
+                redact_bottom = footer_start.y0 - 2
+            else:
+                redact_bottom = 383
+            page.add_redact_annot(fitz.Rect(68, para_top - 5, page.rect.width - 42, redact_bottom), fill=(1, 1, 1))
             footer_lines = (
                 "Please do feel free to write / call undersign for any clarification.",
                 "Thank you,",
@@ -2036,7 +2060,7 @@ def generate_workstation_certificates(request, bid_id):
                 f"offered with factory preloaded Microsoft {os_text} license."
             )
             page.insert_textbox(
-                fitz.Rect(72, 341, page.rect.width - 52, 414),
+                fitz.Rect(72, para_top, page.rect.width - 52, para_top + 73),
                 paragraph,
                 fontsize=10.8,
                 fontname="helv",
@@ -2126,6 +2150,12 @@ def generate_workstation_certificates(request, bid_id):
                     and pincode
                     and pincode in line_text
                     and to_rect.y0 < bbox.y0 < to_rect.y0 + 120
+                    # The template's own stale "Tender No: GEM/.../B/7567998"
+                    # line is not an address line, but a short pincode like
+                    # "99" appears inside that number, so it was picked as the
+                    # address anchor and the Bid No line got placed against it —
+                    # which later erased the Subject line below.
+                    and not re.search(r"(Tender|Bid)\s*No|GEM/\d{4}/[A-Z]/\d+", line_text, re.IGNORECASE)
                 ):
                     address_rect = bbox
                 if (
@@ -2806,19 +2836,12 @@ def generate_workstation_certificates(request, bid_id):
                                 fitz.Rect(area.x0 + 5, text_top, area.x1 - 4, area.y1 - 4),
                                 "\n".join(wrapped_lines), fontsize=9.2, fontname="hebo", color=(0, 0, 0),
                             )
-            if model_number:
-                # Model number is not printed in the supplied template; add it
-                # unobtrusively below the datasheet heading on its first page.
-                if not technical and page.number == 0:
-                    page.insert_text((304, 92), f"Model: {model_number}", fontsize=8.5, fontname="hebo", color=(0, 0, 0))
-
         def rewrite_warranty(page):
             normalized_warranty = specs['warranty_text'] or 'standard warranty'
             paragraph = (
                 "This is to certify that the acxxel Workstation offered in the bid carries an "
                 f"on-site warranty during the entire standard warranty period, i.e. {normalized_warranty}, "
-                "as per the terms and conditions of the bid document. Escalation matrix for "
-                "service support is as follows"
+                "as per the terms and conditions of the bid document."
             )
             redact_and_write(page, (82, 314, page.rect.width - 42, 374), paragraph, fontsize=10.5)
             page.add_redact_annot(fitz.Rect(58, 392, page.rect.width - 60, 452), fill=(1, 1, 1))
@@ -3004,7 +3027,6 @@ def generate_workstation_certificates(request, bid_id):
                 if original_page == 29:
                     add_service_support_table_note(page)
                 if original_page == 30:
-                    fix_service_support_page_30(page)
                     from .Aio import _fill_service_support_availability
                     _fill_service_support_availability(page, fitz)
                     if service_signature_block and service_signature_rect:
@@ -3030,14 +3052,44 @@ def generate_workstation_certificates(request, bid_id):
                             keep_proportion=False,
                             overlay=True,
                         )
-                    # Note: _add_service_support_last_page_bid_date is deliberately
-                    # NOT called here — fix_service_support_page_30 already draws
-                    # the "To,"/recipient/Bid No block for this page, and that
-                    # function's dept_name-driven branch would treat it as
-                    # adjacent to the "As per the Buyer ATC..." heading below and
-                    # redraw over it, corrupting both.
+                    # Same as Desktop/AIO: the shared helper redraws the whole
+                    # "To, / dept / org / address / Bid No: .. Dated: .." block for
+                    # this last page (wrapping a long address and pushing the
+                    # paragraph below it down). The Workstation-only version that
+                    # used to be drawn here wrote "Bid No" without the date and,
+                    # for a wrapped address, ran it into the heading below.
+                    # The template's own heading here is "TO WHOMSOEVER IT MAY
+                    # CONCERN" (already removed above) with no "To," line, which
+                    # the shared helper anchors the recipient block on — same as
+                    # Desktop, give it that anchor if it isn't on the page yet.
+                    has_to_line = any(
+                        " ".join(span.get("text", "") for span in line.get("spans", [])).strip().rstrip(",").strip().lower() == "to"
+                        for block in page.get_text("dict").get("blocks", []) if block.get("type") == 0
+                        for line in block.get("lines", [])
+                    )
+                    if not has_to_line:
+                        page.insert_text((72, 166), "To,", fontsize=11.5, fontname="hebo", color=(0, 0, 0))
+                    from .Aio import _add_service_support_last_page_bid_date
+                    _add_service_support_last_page_bid_date(
+                        page, fitz, bid_no, bid_date_formatted,
+                        dept_name, organization, full_address,
+                    )
                 remove_urls_and_config_links(page)
                 lowercase_acxxel(page, min_y=230)
+                continue
+
+            if doc_type == "make_in_india":
+                # Same layout as Desktop/AIO's Make in India certificate: AIO's
+                # own filler edits the template page in place (recipient block,
+                # Bid No/Dated, intro paragraph, table, model caption). Running
+                # force_customer_block/force_tender_no_date first, as every other
+                # doc here does, wiped the table borders and heading style.
+                from .Aio import _fill_make_in_india_page
+                _fill_make_in_india_page(
+                    page, fitz, bid_no, model_number, dept_name, organization,
+                    full_address, bid_date_formatted, local_content,
+                    product_text="WORKSTATION", caption_text="WORKSTATION",
+                )
                 continue
 
             if (
@@ -3139,11 +3191,6 @@ def generate_workstation_certificates(request, bid_id):
                     fitz.Rect(34, 103, 578, 130),
                     "Datasheet of the product",
                     fontsize=14, fontname="hebo", color=(0.08, 0.08, 0.08), align=1,
-                )
-                page.insert_textbox(
-                    fitz.Rect(34, 128, 578, 145),
-                    f"Model: {specs['model_number'] or '-'}",
-                    fontsize=8.5, fontname="hebo", color=(0.25, 0.25, 0.25), align=1,
                 )
                 y = 151
                 label_width = 205
@@ -3431,6 +3478,10 @@ def generate_workstation_certificates(request, bid_id):
         number_pages_from_one(doc)
         from .Aio import _dedupe_stacked_signature_images
         _dedupe_stacked_signature_images(doc, fitz)
+        if doc_type in {"bidder_financial", "warranty"}:
+            from .Aio import _restore_certificate_signatory
+            for page in doc:
+                _restore_certificate_signatory(page, fitz, signature_image)
         doc.save(path)
         doc.close()
         return JsonResponse({

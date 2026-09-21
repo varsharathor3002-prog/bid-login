@@ -215,8 +215,19 @@ function Step1Form({ onNext, savedData }) {
     setError("");
 
     try {
-      // Do not call the API again when returning after Step 1 was submitted.
+      // Returning after Step 1 was already submitted: don't create a second
+      // bid, but do save whatever was edited here (bid no, address...) to the
+      // existing one — otherwise the documents kept showing the old values.
       if (savedData?.bid_id) {
+        const updateRes = await fetch(`${API_BASE}/workstation-bids/${savedData.bid_id}/update/`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...form, basic_only: true }),
+        });
+        if (!updateRes.ok) {
+          const updateData = await updateRes.json().catch(() => ({}));
+          throw new Error(updateData.error || "The bid details could not be updated.");
+        }
         onNext({ ...form, bid_id: savedData.bid_id });
         return;
       }

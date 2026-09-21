@@ -455,7 +455,7 @@ export default function AioBidApproval() {
       const normalized = (Array.isArray(data) ? data : data.bids || []).map((bid) => ({
         ...bid,
         freightInstallation: bid.freightInstallation || "Yes",
-        freightInstallation_price: (bid.freightInstallation || "Yes") === "No" ? 0 : bid.freightInstallation_price || 0,
+        freightInstallation_price: (bid.freightInstallation || "Yes") === "No" ? 0 : bid.freightInstallation_price || 1000,
       }));
       setBids(sortBids(normalized));
     } catch (error) {
@@ -555,7 +555,7 @@ export default function AioBidApproval() {
     const formattedBid = {
       ...bid,
       freightInstallation: bid.freightInstallation || "Yes",
-      freightInstallation_price: (bid.freightInstallation || "Yes") === "No" ? 0 : bid.freightInstallation_price || 0,
+      freightInstallation_price: (bid.freightInstallation || "Yes") === "No" ? 0 : bid.freightInstallation_price || 1000,
     };
     formattedBid.component_total_price = calculateTotalPrice(formattedBid);
     formattedBid.total_price = bid.status === "approved" ? bid.total_price : "";
@@ -1015,7 +1015,7 @@ export default function AioBidApproval() {
                           placeholder="Enter approved price"
                           readOnly={selected?.status === "approved"}
                           disabled={selected?.status === "approved"}
-                          className="w-48 rounded-md border border-emerald-300 bg-white px-3 py-2 text-right text-lg font-semibold text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-700" />
+                          className="w-48 rounded-md border border-emerald-300 bg-white px-3 py-2 text-right text-lg font-semibold text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-700 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
                       </div>
                     </div>
                   </div>
