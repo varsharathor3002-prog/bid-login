@@ -1042,7 +1042,7 @@ export default function DesktopBidApproval() {
                       <option value="None">None</option>
                     </select>
                     <input type="number" min="0" step="0.01" required={form?.hddreturnable === "Yes"} name="hddreturnable_price" value={form?.hddreturnable_price || ""} onChange={handleChange}
-                      placeholder="Price" className="w-28 border border-blue-300 rounded-md px-2 py-2 text-sm text-center outline-none focus:ring-2 focus:ring-blue-500" />
+                      placeholder="Price" className="w-28 border border-blue-300 rounded-md px-2 py-2 text-sm text-center outline-none focus:ring-2 focus:ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
                   </div>
                 </div>
 

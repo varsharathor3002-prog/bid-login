@@ -1826,17 +1826,6 @@ def generate_certificates(request, bid_id):
             fontname="hebo",
             color=(0, 0, 0),
         )
-        if bid_no:
-            bid_text = f"Bid No: {bid_no}"
-            bid_width = fitz.get_text_length(bid_text, fontname="hebo", fontsize=9)
-            page.insert_text(
-                ((page.rect.width - bid_width) / 2, 143),
-                bid_text,
-                fontsize=9,
-                fontname="hebo",
-                color=(0.2, 0.2, 0.2),
-            )
-
         columns = [52, 115, 220, 395, 543]
         header_top, header_bottom = 160, 190
         headers = ["Specification", "Title", "Allowed Values", "Offered"]
@@ -2130,6 +2119,56 @@ def generate_certificates(request, bid_id):
             color=(0, 0, 0),
             align=0,
         )
+
+    def _tighten_warranty_signature_gap(page, target_gap=36):
+        # The template's "Auth. Signatory" line sits at its own fixed
+        # position, originally justified by the product-link lines between it
+        # and the paragraph above — those get redacted blank a few lines
+        # below in the "warranty" branch, and the paragraph itself is
+        # shrunk here, so left alone that reads as a huge dead gap. Pull just
+        # the "Auth. Signatory" line up to a normal gap; the later
+        # _restore_certificate_signatory pass rebuilds the rest of the block
+        # (image/Name/Designation/Email/Contact) anchored off wherever that
+        # line now sits, so moving it is enough to bring everything with it.
+        lines = []
+        for block in page.get_text("dict").get("blocks", []):
+            if block.get("type") != 0:
+                continue
+            for line in block.get("lines", []):
+                spans = line.get("spans", [])
+                text = " ".join(s.get("text", "") for s in spans).strip()
+                if text:
+                    lines.append((fitz.Rect(line["bbox"]), text, spans))
+        lines.sort(key=lambda it: it[0].y0)
+        auth_idx = next(
+            (i for i, (bbox, text, spans) in enumerate(lines) if re.match(r"auth\.?\s*signatory", text, re.I)),
+            None,
+        )
+        if auth_idx is None or auth_idx == 0:
+            return
+        prev_bottom = lines[auth_idx - 1][0].y1
+        auth_bbox, _auth_text, auth_spans = lines[auth_idx]
+        delta = (auth_bbox.y0 - prev_bottom) - target_gap
+        if delta <= 0:
+            return
+        page.add_redact_annot(
+            fitz.Rect(auth_bbox.x0 - 3, auth_bbox.y0 - 2, auth_bbox.x1 + 3, auth_bbox.y1 + 2),
+            fill=(1, 1, 1),
+        )
+        page.apply_redactions(images=0, graphics=0)
+        cursor_x = auth_bbox.x0
+        for span in auth_spans:
+            span_text = span.get("text", "")
+            if not span_text:
+                continue
+            bold = bool(span.get("flags", 0) & 16)
+            fontname = "hebo" if bold else "helv"
+            fontsize = span.get("size", 11)
+            page.insert_text(
+                (cursor_x, auth_bbox.y1 - delta), span_text,
+                fontsize=fontsize, fontname=fontname, color=(0, 0, 0),
+            )
+            cursor_x += fitz.get_text_length(span_text, fontname=fontname, fontsize=fontsize)
 
     # Bug fix (recipient-block-to-Bid-No/Dated spacing): _force_customer_to_block
     # records the actual y-position where it finished drawing each page's
@@ -3348,6 +3387,7 @@ def generate_certificates(request, bid_id):
                 page.apply_redactions()
 
                 _rewrite_warranty_paragraph(page)
+                _tighten_warranty_signature_gap(page)
 
                 if model_number:
                     formatted_model = _format_model_number(model_number)
@@ -3611,19 +3651,26 @@ def generate_certificates(request, bid_id):
                             page.apply_redactions()
                             ax, ay = address_lines[2][0][0], address_lines[2][0][1]
 
-                            page.insert_textbox(
-                                fitz.Rect(ax, ay, page.rect.width - 36, ay + 100),
+                            address_rect = fitz.Rect(ax, ay, page.rect.width - 36, ay + 100)
+                            spare = page.insert_textbox(
+                                address_rect,
                                 full_address,
                                 fontsize=11.5, fontname="hebo", color=(0, 0, 0), align=0,
                             )
 
                             if bid_no or bid_date_formatted:
+                                # Anchor off the address block's actual wrapped
+                                # bottom (not a fixed ay+45, which left this
+                                # line almost touching the address whenever it
+                                # wrapped to only 1-2 lines) and match the
+                                # 11pt used everywhere else on this page.
+                                address_bottom = address_rect.y1 - spare
                                 tender_text = f"Bid No: {bid_no if bid_no else ''}            Dated: {bid_date_formatted if bid_date_formatted else ''}"
-                                tender_y = ay + 45
+                                tender_y = address_bottom + 26
                                 page.insert_text(
                                     (ax, tender_y),
                                     tender_text,
-                                    fontsize=10,
+                                    fontsize=11,
                                     fontname="hebo",
                                     color=(0, 0, 0),
                                 )

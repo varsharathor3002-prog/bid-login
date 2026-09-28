@@ -837,7 +837,7 @@ export default function AioBidDetailView() {
                 }}
                 disabled={readOnly || (form?.freightInstallation ?? "Yes") === "No"}
                 placeholder="Enter Amount"
-                className="w-32 border border-gray-300 rounded-md px-3 py-2 text-sm disabled:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                className="w-32 border border-gray-300 rounded-md px-3 py-2 text-sm disabled:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               />
             </div>
           </div>

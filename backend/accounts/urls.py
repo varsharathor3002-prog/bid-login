@@ -71,6 +71,7 @@ from .views.Toner import (
     generate_toner_documents,
     update_toner_docs,
 )
+from .views.toner_catalog import toner_catalog_toners, toner_catalog_printers, toner_catalog_printers_bulk
 from .views.TonerGem import (
     create_toner_gem_upload_job,
     toner_gem_jobs,
@@ -225,6 +226,9 @@ urlpatterns = [
     path("gem/extension/toner-jobs/<int:job_id>/report/", extension_toner_report_job, name="extension_toner_report_job"),
     path("gem/toner-jobs/<int:job_id>/retry/", retry_toner_gem_job, name="retry_toner_gem_job"),
     path("toner-bids/<int:bid_id>/", get_toner_bid, name="get_toner_bid"),
+    path("toner-catalog/toners/", toner_catalog_toners, name="toner_catalog_toners"),
+    path("toner-catalog/printers/", toner_catalog_printers, name="toner_catalog_printers"),
+    path("toner-catalog/printers/bulk/", toner_catalog_printers_bulk, name="toner_catalog_printers_bulk"),
 
 
     path("workstation-bids/create/", create_workstation_bid, name="create_workstation_bid"),

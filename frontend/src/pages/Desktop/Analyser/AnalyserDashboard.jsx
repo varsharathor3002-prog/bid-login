@@ -307,7 +307,7 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                             </th>
 
                             <th className="px-5 py-4 text-[11px] tracking-wider font-bold text-white uppercase border-b border-slate-700 whitespace-nowrap">
-                                Date
+                                End Date
                             </th>
 
                             {!isApprovedView && (

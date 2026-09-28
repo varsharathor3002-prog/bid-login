@@ -318,6 +318,7 @@ function Step1Form({ onNext, savedData }) {
               value={form.qty}
               onChange={(e) => handleChange("qty", e.target.value)}
               required
+              className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
             />
           </div>
 

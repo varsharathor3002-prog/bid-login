@@ -53,6 +53,14 @@ class TonerBid(models.Model):
     oem_equivalent=models.CharField(max_length=10,blank=True,default=""); refillable=models.CharField(max_length=10,blank=True,default="")
     qty_per_pack=models.CharField(max_length=20,blank=True,default=""); hsn_code=models.CharField(max_length=50,blank=True,default="")
     compliance=models.CharField(max_length=100,blank=True,default=""); replacement_policy=models.CharField(max_length=50,blank=True,default="")
+    # Optional catalog-driven selection (toner_catalog.py) — one or more Toner
+    # Models chosen from the compatibility workbook. Compatible printers are
+    # derived from the workbook at read time, not stored here.
+    # toner_model/toner_model_brand are the original single-toner fields, kept
+    # (read-only, no longer in FIELDS) purely so bids saved before the
+    # multi-select change still load — see _json()'s fallback synthesis below.
+    toner_model=models.CharField(max_length=100,blank=True,default=""); toner_model_brand=models.CharField(max_length=100,blank=True,default="")
+    toner_models=models.TextField(blank=True,default="[]")
     # Admin-only field (no Config-step input, same as AIO's local_content) —
     # only editable from TonerBidApproval.jsx, needed for the Make in India cert.
     local_content=models.CharField(max_length=20,blank=True,default="")
@@ -95,7 +103,7 @@ FIELDS=["bid_no","dept_name","organization","model_no","model","qty","date","atc
     "brand","cartridge_type","product_class","colour","compatibility","technology","cartridge_quality","page_yield",
     "yield_standard","toner_capacity","yield_type","drum","chip","print_coverage","packaging","shelf_life",
     "warranty","warranty_type","oem_equivalent","refillable","qty_per_pack","hsn_code","compliance",
-    "replacement_policy","unit_price","total_price","local_content"]
+    "replacement_policy","unit_price","total_price","local_content","toner_models"]
 PRICES={"unit_price","total_price"}
 
 # Same lazy-create-the-table approach as AIO's _ensure_table (Aio.py) — no
@@ -140,6 +148,16 @@ def _json(b,r=None):
         elif hasattr(v,"isoformat"):v=v.isoformat()
         elif v is not None and f.get_internal_type()=="DecimalField":v=float(v)
         out[k]=v
+    # Bids saved before the multi-select change only have the legacy
+    # toner_model/toner_model_brand pair — synthesize a one-item array so the
+    # frontend can treat every bid as a list uniformly.
+    try:
+        toner_models_list=json.loads(b.toner_models or "[]")
+        if not isinstance(toner_models_list,list):toner_models_list=[]
+    except (ValueError,TypeError):toner_models_list=[]
+    if not toner_models_list and (b.toner_model or b.toner_model_brand):
+        toner_models_list=[{"brand":b.toner_model_brand,"tonerModel":b.toner_model}]
+    out["toner_models"]=json.dumps(toner_models_list)
     model_number=f"{b.model_no}{b.model}"
     # Same signal as AIO's is_new_product: a model number auto-created off
     # this bid (via save_toner_model_number, not from an imported catalogue)

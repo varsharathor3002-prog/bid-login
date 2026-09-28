@@ -1472,8 +1472,9 @@ def match_printer_catalogue_models(request, bid_id):
         "bypass_tray_capacity": "bypass_tray_capacity",
         "connectivity": "connectivity",
         "duty_cycle": "duty_cycle",
-        # On-site warranty is informational and must not affect catalogue matching.
-        "extended_warranty": "extended_warranty",
+        # On-site and extended warranty are informational and must not affect
+        # catalogue matching. printer.xlsx has no Extended Warranty column, so
+        # any bid asking for one could never match a model.
     }
 
     results = []

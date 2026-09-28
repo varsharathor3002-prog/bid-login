@@ -637,11 +637,8 @@ def _wrap_address_line(text,fitz,fontsize,max_width,fontname="helv"):
     # Service Support...) — a long address value used to just get handed
     # straight to insert_text/insert_textbox as one line, which either ran
     # off the page's right margin or silently vanished if the box wasn't
-    # tall enough. Wraps at comma boundaries (not raw spaces) so a two-word
-    # place name like "Uttar Pradesh" never splits mid-phrase. The PIN
-    # code/country tail trails onto the city's line whenever there's still
-    # room for it — it only drops to its own line like everything else here
-    # once the line actually runs out of width.
+    # tall enough. Wraps at word boundaries, filling each line as full as
+    # the available width allows, like any normal paragraph reflow.
     # Some synced addresses carry punctuation (a non-breaking hyphen, en/em
     # dash, curly quote, bullet...) that PyMuPDF's base-14 "helv"/"hebo" fonts
     # have no glyph for — MuPDF silently substitutes a "?" *at render time*,
@@ -659,35 +656,26 @@ def _wrap_address_line(text,fitz,fontsize,max_width,fontname="helv"):
     text=re.sub(r"\s+"," ",text).strip()
     def _fits(t):return fitz.get_text_length(t,fontname=fontname,fontsize=fontsize)<=max_width
     def _wrap_chunks(t):
-        chunks=[c.strip() for c in t.split(",") if c.strip()]
-        tokens=[f"{c}," for c in chunks[:-1]]+(chunks[-1:] if chunks else [])
-        out=[];out_tokens=[];cur="";cur_tokens=[]
-        for tok in tokens:
-            trial=f"{cur} {tok}".strip()
-            if _fits(trial):cur=trial;cur_tokens.append(tok);continue
-            if cur:out.append(cur);out_tokens.append(cur_tokens)
-            if _fits(tok):cur=tok;cur_tokens=[tok];continue
-            words=tok.split(" ");cur=""
-            for w in words:
-                trial=f"{cur} {w}".strip()
-                if _fits(trial):cur=trial
-                else:
-                    if cur:out.append(cur);out_tokens.append([cur])
-                    cur=w
-            cur_tokens=[cur] if cur else []
-        if cur:out.append(cur);out_tokens.append(cur_tokens)
-        # A lone short trailing line (typically just the PIN code left by
-        # itself) reads as an uneven/orphaned line against the fuller ones
-        # above it. Pull the previous line's last comma-chunk down onto it —
-        # that chunk already proved it fits on a line by itself, so it's
-        # guaranteed to fit combined with the (short) last line too.
-        if len(out_tokens)>=2 and len(out_tokens[-1])==1 and len(out_tokens[-2])>1:
-            moved=out_tokens[-2][-1]
-            candidate=f"{moved} {out[-1]}".strip()
-            if _fits(candidate):
-                out_tokens[-2]=out_tokens[-2][:-1]
-                out[-2]=" ".join(out_tokens[-2])
-                out[-1]=candidate
+        # Plain greedy word wrap: fills each line as full as width allows
+        # before breaking, same as any normal paragraph reflow. An earlier
+        # version kept each comma-separated segment ("Street, Area, City...")
+        # unsplit unless the whole segment overflowed on its own — for a
+        # short segment that's fine, but one long run-on segment (no commas
+        # inside it) still counted as a single unsplittable unit, so it
+        # either got shoved onto its own near-full-width line while the
+        # lines around it sat mostly empty, or forced an early break before
+        # it — visibly uneven wrapping. Breaking on words like this keeps
+        # every line filled consistently instead.
+        words=[w for w in t.split(" ") if w]
+        out=[];cur=""
+        for w in words:
+            trial=f"{cur} {w}".strip()
+            if _fits(trial):
+                cur=trial
+            else:
+                if cur:out.append(cur)
+                cur=w
+        if cur:out.append(cur)
         return out or [""]
 
     return _wrap_chunks(text)
@@ -818,6 +806,7 @@ def _fill_recipient_block(page,fitz,dept_name,organization,full_address):
     needed_height=len(wrapped_all)*tight_line_height
     available_height=region_y1-region_y0
     region_y1_effective=region_y1
+    moved_sig=None
     if tail_lines and needed_height>available_height:
         delta=(needed_height-available_height)+10
         region_y1_effective=region_y1+delta
@@ -831,12 +820,38 @@ def _fill_recipient_block(page,fitz,dept_name,organization,full_address):
         page.add_redact_annot(fitz.Rect(erase_left,tail_lines[0][0].y0-2,page.rect.width-32,erase_bottom),fill=(1,1,1))
         page.apply_redactions(images=0,graphics=0)
         for rect,text in tail_lines:
-            page.insert_text((rect.x0,rect.y1+delta),text,fontsize=11,fontname="hebo",color=(0,0,0))
+            # Collapse the double spaces this row-merge can introduce at each
+            # span-join point (e.g. a span already ending in " " joined with
+            # another via " ".join adds a second one), then, if the row still
+            # doesn't fit the page width at this fixed 11pt (a longer
+            # sentence that fit fine at its own original, often smaller,
+            # font size can measure wider here), shrink it down to fit.
+            # insert_text has no wrapping and silently drops whatever falls
+            # past the page edge instead of erroring — on a body paragraph
+            # like the IPv6 declaration's, that read as the sentence just
+            # being cut off mid-word.
+            clean_text=re.sub(r"\s+"," ",text).strip()
+            line_fontsize=11
+            available_width=page.rect.width-36-rect.x0
+            text_width=fitz.get_text_length(clean_text,fontname="hebo",fontsize=line_fontsize)
+            if text_width>available_width>0:
+                line_fontsize=max(7,line_fontsize*available_width/text_width)
+            page.insert_text((rect.x0,rect.y1+delta),clean_text,fontsize=line_fontsize,fontname="hebo",color=(0,0,0))
         if sig_bytes and sig_rect is not None:
-            page.insert_image(
-                fitz.Rect(sig_rect.x0,sig_rect.y0+delta,sig_rect.x1,sig_rect.y1+delta),
-                stream=sig_bytes,keep_proportion=False,
-            )
+            moved_rect=fitz.Rect(sig_rect.x0,sig_rect.y0+delta,sig_rect.x1,sig_rect.y1+delta)
+            page.insert_image(moved_rect,stream=sig_bytes,keep_proportion=False)
+            # page.get_images()/get_image_rects() on this same live, unsaved
+            # page won't reflect the insert_image call just above (see
+            # _add_signature_gap's "known_sig" comment) — a caller that later
+            # calls _add_signature_gap on this same page and lets it re-scan
+            # for the signature would find this image's stale pre-shift
+            # position instead (or miss it if the shift moved the "Auth.
+            # Signatory" text far enough that the stale position no longer
+            # reads as "below" it), then redact based on that wrong read,
+            # wiping this just-moved image out with nothing valid redrawn in
+            # its place. Hand the fresh bytes/position back so the caller can
+            # pass it through as known_sig instead.
+            moved_sig=(sig_bytes,moved_rect)
 
     # Some of these templates also print a stale sample GSTIN inside this same
     # block (manufacturer_auth/bidder_financial/warranty) — that belongs to
@@ -856,7 +871,7 @@ def _fill_recipient_block(page,fitz,dept_name,organization,full_address):
     # x-position off wherever the template's stale marker line happened to
     # sit, which rarely lined up with this flush-left address block and made
     # the two look inconsistently indented against each other.
-    return (region_x0,y-tight_line_height)
+    return (region_x0,y-tight_line_height,moved_sig)
 
 def _erase_tender(page,fitz):
     for block in page.get_text("dict").get("blocks",[]):
@@ -980,6 +995,61 @@ def _replace_bidder_financial_heading(page,fitz):
     for rect in replacements:
         page.insert_text((rect.x0,rect.y1-2),"BIDDER FINANCIAL STANDING",fontsize=11,fontname="hebo",color=(0,0,0))
 
+def _tighten_bidder_financial_subject_gap(page,fitz,target_gap=34):
+    # The "Subject-Bidder Financial Standing" heading (and the paragraph/
+    # signature block below it) sits at the template's own fixed position,
+    # sized for the original 6-line "Indian Railways/GSTIN/Address"
+    # recipient block. _force_tender_no_date already anchors the Bid No/
+    # Dated line to the actual (often much shorter) recipient block instead
+    # — once it does, that fixed heading position reads as a large dead gap
+    # below it. Shift the heading and everything below it up to close that
+    # back to a normal-looking gap.
+    lines=[]
+    for block in page.get_text("dict").get("blocks",[]):
+        if block.get("type")!=0:continue
+        for line in block.get("lines",[]):
+            spans=line.get("spans",[])
+            text=" ".join(s.get("text","") for s in spans).strip()
+            if text:lines.append((fitz.Rect(line["bbox"]),text,spans))
+    lines.sort(key=lambda it:it[0].y0)
+    tender_idx=next((i for i,(bbox,text,spans) in enumerate(lines) if re.search(r"(tender|bid)\s*no\s*[:\-]",text,re.I)),None)
+    subject_idx=next((i for i,(bbox,text,spans) in enumerate(lines) if re.search(r"^subject",text,re.I)),None)
+    if tender_idx is None or subject_idx is None or subject_idx<=tender_idx:return
+    prev_bottom=lines[tender_idx][0].y1
+    subject_top=lines[subject_idx][0].y0
+    delta=(subject_top-prev_bottom)-target_gap
+    if delta<=0:return
+
+    tail_lines=lines[subject_idx:]
+    top_bound=min(bbox.y0 for bbox,_,_ in tail_lines)-4
+    images=[]
+    for img in page.get_images(full=True):
+        for r in page.get_image_rects(img[0]):
+            r=fitz.Rect(r)
+            if r.y0>=top_bound:
+                images.append((r,page.parent.extract_image(img[0]).get("image")))
+    bottom_bound=max(max(bbox.y1 for bbox,_,_ in tail_lines),max((r.y1 for r,_ in images),default=0))+4
+
+    page.add_redact_annot(fitz.Rect(0,top_bound,page.rect.width,bottom_bound),fill=(1,1,1))
+    page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_REMOVE,graphics=0)
+
+    for bbox,text,spans in tail_lines:
+        cursor_x=bbox.x0
+        for span in spans:
+            span_text=span.get("text","")
+            if not span_text:continue
+            bold=bool(span.get("flags",0)&16)
+            fontname="hebo" if bold else "helv"
+            fontsize=span.get("size",11)
+            c=span.get("color",0)
+            rgb=(((c>>16)&255)/255.0,((c>>8)&255)/255.0,(c&255)/255.0) if c else (0,0,0)
+            page.insert_text((cursor_x,bbox.y1-delta),span_text,fontsize=fontsize,fontname=fontname,color=rgb)
+            cursor_x+=fitz.get_text_length(span_text,fontname=fontname,fontsize=fontsize)
+
+    for rect,img_bytes in images:
+        if img_bytes:
+            page.insert_image(fitz.Rect(rect.x0,rect.y0-delta,rect.x1,rect.y1-delta),stream=img_bytes,keep_proportion=False)
+
 def _add_aio_page_numbers(path,fitz):
     doc=fitz.open(path)
     try:
@@ -1009,7 +1079,7 @@ def _force_tender_no_date(page,fitz,bid_no,date,recipient_bottom=None):
     recipient_x0=None
     if recipient_bottom is not None and isinstance(recipient_bottom,tuple):
         recipient_x0,recipient_bottom=recipient_bottom
-    tender_text=f"Bid No: {bid_no or ''} Dated: {date or ''}"
+    tender_text=f"Bid No: {bid_no or ''}    Dated: {date or ''}"
     scan_lines=[]
     for block in page.get_text("dict").get("blocks",[]):
         for line in block.get("lines",[]):
@@ -1073,6 +1143,56 @@ def _replace_manufacturer_auth_heading(page,fitz):
     underline_y=rect.y1-1.5
     page.draw_line((x0-2,underline_y),(x0+text_width+2,underline_y),color=(0,0,0),width=1)
 
+def _tighten_manufacturer_auth_subject_gap(page,fitz,target_gap=14):
+    # Same fixed-position-heading issue as Bidder Financial Standing's own
+    # "Subject-..." line (see _tighten_bidder_financial_subject_gap): the
+    # "Subject: Authorization letter..." line sits at the template's own
+    # fixed position, sized for the original 6-line "Indian Railways/GSTIN/
+    # Address" recipient block, so a shorter actual recipient block (via
+    # _force_tender_no_date, called right before this) leaves a large dead
+    # gap above it. Unlike that one, only "Subject:" and "Dear Sir/Madam,"
+    # need moving here — _fill_manufacturer_auth_body (called right after
+    # this) redacts and completely redraws everything from "Dear Sir/
+    # Madam," down (its own fixed wording, its own signature image handling)
+    # regardless of where this leaves it, so shifting that paragraph/
+    # signature content here too would just be wasted work re-detecting an
+    # image that was only just moved — the exact live-page staleness issue
+    # already worked around elsewhere in this file.
+    lines=[]
+    for block in page.get_text("dict").get("blocks",[]):
+        if block.get("type")!=0:continue
+        for line in block.get("lines",[]):
+            spans=line.get("spans",[])
+            text=" ".join(s.get("text","") for s in spans).strip()
+            if text:lines.append((fitz.Rect(line["bbox"]),text,spans))
+    lines.sort(key=lambda it:it[0].y0)
+    tender_idx=next((i for i,(bbox,text,spans) in enumerate(lines) if re.search(r"(tender|bid)\s*no\s*[:\-]",text,re.I)),None)
+    subject_idx=next((i for i,(bbox,text,spans) in enumerate(lines) if re.search(r"^subject",text,re.I)),None)
+    dear_idx=next((i for i,(bbox,text,spans) in enumerate(lines) if text.rstrip(",").strip().lower()=="dear sir/madam"),None)
+    if tender_idx is None or subject_idx is None or dear_idx is None or not (tender_idx<subject_idx<=dear_idx):return
+    prev_bottom=lines[tender_idx][0].y1
+    subject_top=lines[subject_idx][0].y0
+    delta=(subject_top-prev_bottom)-target_gap
+    if delta<=0:return
+
+    head_lines=lines[subject_idx:dear_idx+1]
+    top_bound=min(bbox.y0 for bbox,_,_ in head_lines)-4
+    bottom_bound=max(bbox.y1 for bbox,_,_ in head_lines)+4
+    page.add_redact_annot(fitz.Rect(0,top_bound,page.rect.width,bottom_bound),fill=(1,1,1))
+    page.apply_redactions(images=0,graphics=0)
+    for bbox,text,spans in head_lines:
+        cursor_x=bbox.x0
+        for span in spans:
+            span_text=span.get("text","")
+            if not span_text:continue
+            bold=bool(span.get("flags",0)&16)
+            fontname="hebo" if bold else "helv"
+            fontsize=span.get("size",11)
+            c=span.get("color",0)
+            rgb=(((c>>16)&255)/255.0,((c>>8)&255)/255.0,(c&255)/255.0) if c else (0,0,0)
+            page.insert_text((cursor_x,bbox.y1-delta),span_text,fontsize=fontsize,fontname=fontname,color=rgb)
+            cursor_x+=fitz.get_text_length(span_text,fontname=fontname,fontsize=fontsize)
+
 # The MAF/AUTHORIZATIONLETTER page's body paragraph (between "Dear Sir/Madam,"
 # and the "Auth. Signatory" signature block) is replaced wholesale with the
 # fixed MAF wording below — same approach as the Warranty/Make in India
@@ -1099,7 +1219,14 @@ def _fill_manufacturer_auth_body(page,fitz):
     if contact_idx is None:return
 
     region_x0=min(b[0] for b,t in lines[body_start:contact_idx+1] if t)
-    region_y0=lines[body_start][0][1]
+    # Anchored off "Dear Sir/Madam,"'s own current bottom (plus a small fixed
+    # gap) rather than wherever the template's own next line happens to sit —
+    # _tighten_manufacturer_auth_subject_gap (called right before this) can
+    # move "Dear Sir/Madam," up without touching the untouched template
+    # paragraph below it (this function replaces that paragraph wholesale
+    # anyway), which used to leave a gap here that grew by however much that
+    # shift moved "Dear Sir/Madam," up by.
+    region_y0=min(lines[body_start][0][1],lines[dear_idx][0][3]+12)
     region_x1=page.rect.width-42
     region_y1=lines[contact_idx][0][3]+4
 
@@ -1137,7 +1264,7 @@ def _fill_manufacturer_auth_body(page,fitz):
         ("Being OEM of the above products, we are directly participating. OEM are not required to "
          "furnish any authorization. The copy of the Brand Registration Certificate is attached.",False),
     ],fitz,fontsize=fontsize)
-    y+=line_height*4
+    y+=line_height*2.5
 
     page.insert_text((x,y),"Auth. Signatory",fontsize=10.5,fontname="hebo",color=(0,0,0));y+=line_height
     page.insert_text((x,y),"For Laps N Tabs Technology Pvt. Ltd.",fontsize=10.5,fontname="hebo",color=(0,0,0))
@@ -1321,6 +1448,16 @@ def _add_service_support_bid_date(page,fitz,bid_no,date):
         fill=(1,1,1),
     )
     page.apply_redactions()
+    # The template's old "Escalation matrix..." heading is erased HERE, before the
+    # new recipient block / Bid No line are drawn — not after. With a long
+    # address the Bid No line lands as low as that old heading (~y=248), and
+    # erasing it afterwards wiped the freshly drawn Bid No/Dated line too.
+    if escalation_rect is not None:
+        page.add_redact_annot(
+            fitz.Rect(escalation_rect.x0-2,escalation_rect.y0-2,page.rect.width-32,escalation_rect.y1+2),
+            fill=(1,1,1),
+        )
+        page.apply_redactions(images=0,graphics=0)
 
     x=to_rect.x0
     y=to_rect.y1-2
@@ -1354,12 +1491,6 @@ def _add_service_support_bid_date(page,fitz,bid_no,date):
     certify_top=y-2
     certify_bottom=certify_top+len(wrapped)*line_h
 
-    if escalation_rect is not None:
-        page.add_redact_annot(
-            fitz.Rect(escalation_rect.x0-2,escalation_rect.y0-2,page.rect.width-32,escalation_rect.y1+2),
-            fill=(1,1,1),
-        )
-        page.apply_redactions(images=0,graphics=0)
     # One blank line after the warranty paragraph, including when the
     # template's heading was absent or removed by an earlier layout pass.
     heading_y=certify_top+(len(wrapped)-1)*line_h+2*line_h
@@ -1430,6 +1561,7 @@ def _add_service_support_last_page_bid_date(page,fitz,bid_no,date,dept_name="",o
         # FIRST — before drawing the heading text into the space it just
         # vacated, so the heading's own redraw isn't the thing that then
         # gets clipped by the tail's redaction.
+        moved_sig=None
         if tail_top is not None and heading_box_bottom+8>tail_top:
             delta=(heading_box_bottom+8)-tail_top
             tail_bottom=max(rect.y1 for rect,_ in tail_lines)
@@ -1442,16 +1574,25 @@ def _add_service_support_last_page_bid_date(page,fitz,bid_no,date,dept_name="",o
             for rect,text in tail_lines:
                 page.insert_text((rect.x0,rect.y1+delta),text,fontsize=11,fontname="hebo",color=(0,0,0))
             if sig_bytes and sig_rect:
-                page.insert_image(
-                    fitz.Rect(sig_rect.x0,sig_rect.y0+delta,sig_rect.x1,sig_rect.y1+delta),
-                    stream=sig_bytes,keep_proportion=False,
-                )
+                moved_rect=fitz.Rect(sig_rect.x0,sig_rect.y0+delta,sig_rect.x1,sig_rect.y1+delta)
+                page.insert_image(moved_rect,stream=sig_bytes,keep_proportion=False)
+                # page.get_images()/get_image_rects() on this same live,
+                # unsaved page won't reflect the insert_image call just above
+                # (see _fill_service_support_escalation's identical note) —
+                # the caller's follow-up _add_signature_gap call would
+                # otherwise re-scan and find this image's stale pre-shift
+                # position instead, then redact a region based on that wrong
+                # position, wiping the real (just-moved) image out from under
+                # it without anything valid to redraw in its place. Hand the
+                # fresh bytes/position back so the caller can pass it through
+                # as known_sig instead of re-detecting it.
+                moved_sig=(sig_bytes,moved_rect)
 
         page.insert_textbox(
             fitz.Rect(x,y-12,page.rect.width-45,heading_box_bottom),heading_text,
             fontsize=11,fontname="hebo",color=(0,0,0),lineheight=1.1,
         )
-        return
+        return moved_sig
     existing=[(rect,text) for rect,text in lines[to_index+1:content_index] if re.search(r"(?:Tender|Bid)\s*No|Dated\s*:",text,re.I)]
     for rect,_ in existing:
         page.add_redact_annot(fitz.Rect(rect.x0-3,rect.y0-2,page.rect.width-36,rect.y1+3),fill=(1,1,1))
@@ -2077,8 +2218,8 @@ def generate_aio_documents(r,bid_id):
             src=os.path.join(settings.MEDIA_ROOT,"templates","documents.pdf");m=fitz.open(src);d=fitz.open();start,end=ranges[typ];d.insert_pdf(m,from_page=start-1,to_page=end-1)
             p=d[0]
             if typ=="warranty":
-                recipient_bottom=_fill_recipient_block(p,fitz,b.dept_name,b.organization,addr)
-                _force_tender_no_date(p,fitz,b.bid_no,date,recipient_bottom)
+                recipient_result=_fill_recipient_block(p,fitz,b.dept_name,b.organization,addr)
+                _force_tender_no_date(p,fitz,b.bid_no,date,recipient_result[:2] if recipient_result else None)
                 _fill_warranty_page(p,fitz,b.bid_no,model_number,b.warranty)
             else:
                 _fill_make_in_india_page(p,fitz,b.bid_no,model_number,b.dept_name,b.organization,addr,date,local_content)
@@ -2137,8 +2278,8 @@ def generate_aio_documents(r,bid_id):
                     # lands, not at a position computed before that push happened.
                     _fill_service_support_escalation(p,fitz)
                     if pidx==len(d)-1:
-                        _add_service_support_last_page_bid_date(p,fitz,b.bid_no,date,b.dept_name,b.organization,addr)
-                        _add_signature_gap(p,fitz)
+                        moved_sig=_add_service_support_last_page_bid_date(p,fitz,b.bid_no,date,b.dept_name,b.organization,addr)
+                        _add_signature_gap(p,fitz,known_sig=moved_sig)
                 elif typ=="manufacturer_auth" and pidx==2:
                     # Template page 4 = the official Trade Mark Certificate, a legal
                     # source document — must stay byte-for-byte visually unchanged
@@ -2152,8 +2293,12 @@ def generate_aio_documents(r,bid_id):
                     _erase_tender(p,fitz)
                     _add_signature_gap(p,fitz)
                 else:
-                    recipient_bottom=_fill_recipient_block(p,fitz,b.dept_name,b.organization,addr)
+                    recipient_result=_fill_recipient_block(p,fitz,b.dept_name,b.organization,addr)
+                    recipient_bottom=recipient_result[:2] if recipient_result else None
+                    recipient_moved_sig=recipient_result[2] if recipient_result else None
                     _force_tender_no_date(p,fitz,b.bid_no,date,recipient_bottom)
+                    if typ=="bidder_financial":
+                        _tighten_bidder_financial_subject_gap(p,fitz)
                     if typ=="manufacturer_auth" and pidx==0:
                         # _fill_manufacturer_auth_body already redraws the whole
                         # signature block (with its own spacing and a fresh
@@ -2163,9 +2308,17 @@ def generate_aio_documents(r,bid_id):
                         # page (see _add_signature_gap's "known_sig" comment
                         # below), so it finds nothing, and its redaction then
                         # deletes the stamp without putting it back.
+                        _tighten_manufacturer_auth_subject_gap(p,fitz)
                         _fill_manufacturer_auth_body(p,fitz)
                     if typ in ("non_blacklisting","ipv6"):
-                        _add_signature_gap(p,fitz)
+                        # Same known_sig handoff as above: when
+                        # _fill_recipient_block just moved the signature
+                        # image itself (a long dept/organization/address
+                        # needed more room than the template's original
+                        # block allowed, pushing everything below it down),
+                        # let _add_signature_gap use that fresh position
+                        # instead of re-scanning and finding the stale one.
+                        _add_signature_gap(p,fitz,known_sig=recipient_moved_sig)
                     if typ=="non_return_hdd":
                         _fix_non_return_hdd_page(p,fitz)
             _dedupe_stacked_signature_images(d,fitz)
