@@ -8,7 +8,7 @@ const DATA_KEY = "aio_bid_data";
 const STEP_KEY = "aio_bid_step";
 
 const Label = ({ children }) => <label className="block text-sm font-normal text-gray-800 mb-1">{children}</label>;
-const Input = (props) => <input {...props} className="w-full bg-white border border-gray-400 text-gray-900 rounded px-3 py-[6px] text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />;
+const Input = ({ className = "", ...props }) => <input {...props} className={`w-full bg-white border border-gray-400 text-gray-900 rounded px-3 py-[6px] text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 ${className}`} />;
 
 // Same to same as Desktop's CreateDesktopBid.jsx: clearing storage only at
 // the very end (done()) left a half-filled bid's data sitting in
@@ -66,7 +66,7 @@ function Basic({ saved, onNext }) {
   const [form, setForm] = useState({ bid_no: saved.bid_no || "", dept_name: saved.dept_name || "", organization: saved.organization || "", address: saved.address || "", qty: saved.qty || "", pincode: saved.pincode || "", atc: saved.atc || "" });
   const [loading, setLoading] = useState(false); const [error, setError] = useState("");
   const change = (key, value) => setForm((old) => ({ ...old, [key]: value }));
-  const submit = async (event) => { event.preventDefault(); setLoading(true); setError(""); try { const body = new FormData(); Object.entries(form).forEach(([key, value]) => body.append(key, value)); body.append("user_id", localStorage.getItem("bid_user_id") || localStorage.getItem("user_id") || ""); body.append("username", localStorage.getItem("user_username") || localStorage.getItem("username") || ""); const response = await fetch(`${API_BASE}/aio-bids/create/`, { method: "POST", body }); const result = await response.json(); if (!response.ok) throw new Error(result.error || "Bid create nahi hua"); onNext({ ...form, bid_id: result.bid_id }); } catch (err) { setError(err.message); } finally { setLoading(false); } };
+  const submit = async (event) => { event.preventDefault(); setLoading(true); setError(""); try { const body = new FormData(); Object.entries(form).forEach(([key, value]) => body.append(key, value)); body.append("user_id", localStorage.getItem("bid_user_id") || localStorage.getItem("user_id") || ""); body.append("username", localStorage.getItem("user_username") || ""); const response = await fetch(`${API_BASE}/aio-bids/create/`, { method: "POST", body }); const result = await response.json(); if (!response.ok) throw new Error(result.error || "Bid create nahi hua"); onNext({ ...form, bid_id: result.bid_id }); } catch (err) { setError(err.message); } finally { setLoading(false); } };
   return <div className="w-full max-w-[600px] bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
     <h5 className="text-lg font-semibold text-gray-800 mb-5">Create AIO Bid</h5>
     {error && <div className="mb-3 bg-red-50 border border-red-300 text-red-700 text-sm px-3 py-2 rounded">{error}</div>}
@@ -75,7 +75,7 @@ function Basic({ saved, onNext }) {
       <div><Label>Department Name</Label><Input required placeholder="Enter Department Name" value={form.dept_name} onChange={(e) => change("dept_name", e.target.value)}/></div>
       <div><Label>Organization Name</Label><Input required placeholder="Enter Organization Name" value={form.organization} onChange={(e) => change("organization", e.target.value)}/></div>
       <div><Label>Address</Label><Input required placeholder="Enter Address" value={form.address} onChange={(e) => change("address", e.target.value)}/></div>
-      <div className="grid grid-cols-2 gap-4"><div><Label>Quantity</Label><Input required type="number" placeholder="Enter Quantity" value={form.qty} onChange={(e) => change("qty", e.target.value)}/></div><div><Label>Buyer Pincode</Label><Input required type="text" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} style={{ appearance: "textfield", MozAppearance: "textfield" }} placeholder="Enter PIN Code" value={form.pincode} onChange={(e) => change("pincode", e.target.value.replace(/\D/g, "").slice(0, 6))}/></div></div>
+      <div className="grid grid-cols-2 gap-4"><div><Label>Quantity</Label><Input required type="number" placeholder="Enter Quantity" value={form.qty} onChange={(e) => change("qty", e.target.value)} className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"/></div><div><Label>Buyer Pincode</Label><Input required type="text" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} style={{ appearance: "textfield", MozAppearance: "textfield" }} placeholder="Enter PIN Code" value={form.pincode} onChange={(e) => change("pincode", e.target.value.replace(/\D/g, "").slice(0, 6))}/></div></div>
       <div><Label>ATC Details</Label><textarea rows={6} value={form.atc} onChange={(e) => change("atc", e.target.value)} placeholder="Type ATC details here..." className="w-full bg-white border border-gray-400 text-gray-900 rounded px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 resize-none"/></div>
       <div className="pt-2"><button disabled={loading} className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-sm font-semibold px-4 py-3 rounded-lg transition shadow-sm">{loading ? "Saving..." : "Submit & Next"}</button></div>
     </form>
