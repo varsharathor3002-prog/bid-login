@@ -1,12 +1,9 @@
 import { useEffect, useState } from "react";
 import { FaTrash } from "react-icons/fa";
 import { isSupportedOpportunity, itemCategory } from "./bidOpportunityCategory";
+import { BidNoCell, CorrigendumCell, DateCell } from "./BidTableCells";
 
 const API_BASE = import.meta.env.VITE_API_URL;
-const formatDateTime = (value) => value ? new Intl.DateTimeFormat("en-IN", {
-  day: "2-digit", month: "long", year: "numeric",
-  hour: "2-digit", minute: "2-digit", hour12: true,
-}).format(new Date(value)) : "-";
 export default function AdminBidToBeParticipated() {
   const [rows, setRows] = useState([]);
   const [error, setError] = useState("");
@@ -27,7 +24,7 @@ export default function AdminBidToBeParticipated() {
     printer: "A4 and Legal Size MFP", aio: "All in One PC (V2)", workstation: "Fixed Computer Workstation",
     toner: "Toner / Ink Cartridges", bunch_bid: "Bunch Bid",
   };
-  const itemOrder = ["high_end_desktop", "entry_mid_desktop", "printer", "aio", "workstation", "toner", "bunch_bid"];
+  const itemOrder = ["high_end_desktop", "entry_mid_desktop", "printer", "aio", "workstation", "toner"];
   const itemTypes = itemOrder;
   const filteredRows = itemFilter === "all"
     ? rows
@@ -225,13 +222,13 @@ export default function AdminBidToBeParticipated() {
         <div className="overflow-x-auto rounded border border-blue-100 bg-white">
           <table className="min-w-[850px] w-full text-left text-sm">
             <thead className="bg-blue-100 text-xs uppercase text-blue-900"><tr>
-              <th className="px-3 py-3">S.No.</th><th className="px-3 py-3">Bid No.</th><th className="px-3 py-3">Start Date &amp; Time</th><th className="px-3 py-3">End Date &amp; Time</th><th className="px-3 py-3">Item</th><th className="px-3 py-3">Status</th><th className="px-3 py-3 text-center">Action</th>
+              <th className="px-3 py-3">S.No.</th><th className="px-3 py-3">Bid No.</th><th className="px-3 py-3">Start Date</th><th className="px-3 py-3">End Date</th><th className="px-3 py-3">Item</th><th className="px-3 py-3">Corrigendum</th><th className="px-3 py-3">Status</th><th className="px-3 py-3 text-center">Action</th>
             </tr></thead>
-            <tbody>{employeeBids.map((row, index) => <tr key={row.id} className="border-b border-gray-100">
-              <td className="px-3 py-3 font-bold">{index + 1}</td>
-              <td className="px-3 py-3 font-bold text-blue-700">{row.pdf_url ? <a href={row.pdf_url} target="_blank" rel="noreferrer" className="underline">{row.bid_no}</a> : row.bid_no}</td>
-              <td className="px-3 py-3">{formatDateTime(row.bid_date)}</td><td className="px-3 py-3">{formatDateTime(row.end_date)}</td>
-              <td className="max-w-md px-3 py-3">{row.item}</td><td className="px-3 py-3 font-semibold capitalize">{row.status.replace("_", " ")}</td>
+            <tbody>{employeeBids.map((row, index) => <tr key={row.id} className="border-b border-gray-100 align-middle even:bg-slate-50/60 hover:bg-blue-50/40">
+              <td className="px-3 py-3 font-semibold text-slate-500">{index + 1}</td>
+              <BidNoCell row={row} className="px-3 py-3" />
+              <DateCell value={row.bid_date} className="px-3 py-3" /><DateCell value={row.end_date} className="px-3 py-3" />
+              <td className="max-w-xs px-3 py-3 font-medium text-slate-800">{row.item}</td><CorrigendumCell row={row} className="px-3 py-3" /><td className="px-3 py-3 font-semibold capitalize">{row.status.replace("_", " ")}</td>
               <td className="px-3 py-3 text-center"><div className="inline-flex items-center gap-2"><input type="checkbox" checked={selectedEmployeeBidIds.includes(row.id)} onChange={() => setSelectedEmployeeBidIds((current) => current.includes(row.id) ? current.filter((id) => id !== row.id) : [...current, row.id])} className="h-4 w-4 accent-red-600" aria-label={`Select ${row.bid_no}`} /><button type="button" onClick={() => hideAssignedBid(row)}
                 className="rounded p-2 text-red-600 hover:bg-red-50 hover:text-red-700" title="Remove from admin dashboard" aria-label={`Remove ${row.bid_no}`}><FaTrash aria-hidden="true" /></button></div></td>
             </tr>)}</tbody>
@@ -240,24 +237,21 @@ export default function AdminBidToBeParticipated() {
         </div>
       </div>}
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[760px] text-left">
-          <thead className="bg-slate-800 text-xs uppercase text-white"><tr>
-            <th className="px-5 py-4">S.No.</th><th className="px-5 py-4">Bid No.</th><th className="px-5 py-4">Start Date &amp; Time</th><th className="px-5 py-4">End Date &amp; Time</th><th className="px-5 py-4">Item</th><th className="px-5 py-4 text-center">Assign To User</th>
+        <table className="w-full min-w-[900px] text-left">
+          <thead className="sticky top-0 z-10 bg-slate-800 text-xs font-semibold uppercase tracking-wide text-white"><tr>
+            <th className="w-14 px-4 py-3">S.No.</th><th className="px-4 py-3">Bid No.</th><th className="px-4 py-3">Start Date</th><th className="px-4 py-3">End Date</th><th className="px-4 py-3">Item</th><th className="px-4 py-3">Corrigendum</th><th className="px-4 py-3 text-center">Assign To User</th>
           </tr></thead>
-          <tbody>{filteredRows.map((row, index) => <tr key={row.id} className="border-b border-gray-100 hover:bg-gray-50">
-            <td className="px-5 py-4 text-sm font-semibold text-gray-600">{index + 1}</td>
-            <td className="px-5 py-4 font-bold text-blue-700">
-              {row.pdf_url ? <a href={row.pdf_url} target="_blank" rel="noreferrer"
-                className="underline decoration-blue-300 underline-offset-2 hover:text-blue-900"
-                title="Open/download GeM bid PDF">{row.bid_no}</a> : row.bid_no}
-            </td>
-            <td className="px-5 py-4 text-sm text-gray-700">{formatDateTime(row.bid_date)}</td>
-            <td className="px-5 py-4 text-sm font-semibold text-emerald-700">{formatDateTime(row.end_date)}</td>
-            <td className="px-5 py-4 text-sm font-medium text-gray-800">{row.product_name}</td>
-            <td className="px-5 py-4 text-center">
+          <tbody>{filteredRows.map((row, index) => <tr key={row.id} className="border-b border-gray-100 align-middle even:bg-slate-50/60 hover:bg-blue-50/40">
+            <td className="px-4 py-3 text-sm font-semibold text-slate-500">{index + 1}</td>
+            <BidNoCell row={row} className="px-4 py-3" />
+            <DateCell value={row.bid_date} className="px-4 py-3" />
+            <DateCell value={row.end_date} className="px-4 py-3" />
+            <td className="max-w-xs px-4 py-3 text-sm font-medium text-slate-800">{row.product_name}</td>
+            <CorrigendumCell row={row} className="px-4 py-3" />
+            <td className="px-4 py-3 text-center">
               <select defaultValue="" disabled={assigningBidId === row.id}
                 onChange={(event) => assignOneBid(row, event.target.value)}
-                className="min-w-56 rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-500 disabled:cursor-wait disabled:bg-gray-100">
+                className="w-56 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:cursor-wait disabled:bg-gray-100">
                 <option value="">{assigningBidId === row.id ? "Assigning..." : "Select user..."}</option>
                 {employees.map((employee) => <option key={employee.id} value={employee.id}>
                   {employee.username} - {employee.email} ({employee.active_count} active)

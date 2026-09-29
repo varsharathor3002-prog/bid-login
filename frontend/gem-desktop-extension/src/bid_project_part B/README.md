@@ -1,3 +1,50 @@
+# Current-year disqualified bids (3.64.12)
+
+Only disqualification dates in the current calendar year are synced and listed.
+The year is dynamic, not hardcoded to 2026. There is no monthly cutoff and no
+automatic deletion. Stored previous-year records are retained but hidden from
+the dashboard; rejected sync attempts never delete them. Both backend and
+extension updates are required. Verified with 7 backend and 22 extension tests.
+
+# Manual-only deletion for disqualified results (3.64.11)
+
+Supersedes all one-month retention notes below. Disqualified bids have no age
+cutoff in the extension or API. Dashboard reads and sync writes never delete
+stored result rows; rejected incoming records also leave existing rows intact.
+Manual single/bulk Delete remains available. Missing/invalid/future dates still
+need correction before a new record is accepted. Deploy the backend change as
+well as updating the extension; the old server still has automatic cleanup.
+Previously deleted data is not restored by this change; eligible records can
+be recovered by a fresh GeM sync if still available there.
+
+# Disqualified sync continuation (3.64.10)
+
+Supersedes the page-blocking behavior below. After three read/save attempts,
+unresolved bids remain in the pending report while remaining pages are scanned.
+A final scan with any unresolved bids is incomplete, never successful. Explicit
+Technical Status: Pending, Not Evaluated, Under Evaluation and Evaluation Pending
+are recognized; generic bid-level Evaluation is not treated as a seller result.
+Unknown-result diagnostics now include the card text and whether the result
+control was missing or failed to reveal a status. Retry starts from page 1.
+Validated with 22 tests, including later-page saves with first-page failures.
+The four reported unread bids still require authenticated GeM verification.
+
+# Disqualified sync reliability (3.64.9)
+
+Each detected card must have a confirmed technical status. Disqualified cards
+need dated evaluation history and an API-confirmed visible save. Unknown status,
+history failures and unconfirmed saves are retried up to three times per page.
+Unresolved bids prevent pagination and completion; their numbers and reasons
+remain in extension local storage and the popup instead of expiring after 15s.
+Retry starts a fresh full scan from page 1; server upserts preserve already saved
+bids without creating duplicate records. This is not a page-resume checkpoint.
+The one-month disqualification retention rule still applies. Known later pages
+prevent a temporarily disabled Next control from reporting a complete scan.
+
+Validation: automated scan simulations cover failed status reads, transient API
+failures, persistent unresolved records, and premature pagination termination.
+Authenticated live GeM verification is still required after loading the update.
+
 # Current GeM scans (3.63.9)
 
 The valid-save contract now applies to all three scan types. Bid To Be

@@ -18,9 +18,11 @@ def valid_opportunity_dates(bid_date, end_date, now=None):
     reference = now or timezone.now()
     local_now = timezone.localtime(reference, INDIA_TIMEZONE)
     local_bid_date = timezone.localtime(bid_date, INDIA_TIMEZONE).date()
-    first_date = local_now.date() - timedelta(days=3)
+    # Every ongoing bid is kept regardless of how long ago it started; the
+    # scanner reads all Latest First pages and stops once it reaches bids it
+    # has already read.
     return (
-        first_date <= local_bid_date <= local_now.date()
+        local_bid_date <= local_now.date()
         and reference < end_date <= reference + timedelta(days=120)
     )
 

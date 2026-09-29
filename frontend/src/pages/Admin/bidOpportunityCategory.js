@@ -20,8 +20,9 @@ export const itemCategory = (row) => {
   if (/(?:\(\s*PAC\s*Only\s*\)|\bPAC\s*Only\b)/i.test(raw)) return "other";
   const categories = cleanItem(raw).split(/\s*,\s*/).map((value) => value.trim()).filter(Boolean);
   const matched = categories.map((category) => CATEGORY_PATTERNS.find(([, pattern]) => pattern.test(category))?.[0]);
-  if (!categories.length || matched.some((category) => !category)) return "other";
-  return categories.length > 1 ? "bunch_bid" : matched[0];
+  // Bunch bids (more than one item category) are not shown; only single products.
+  if (categories.length !== 1 || !matched[0]) return "other";
+  return matched[0];
 };
 
 export const isSupportedOpportunity = (row) => itemCategory(row) !== "other";

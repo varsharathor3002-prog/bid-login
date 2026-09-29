@@ -201,6 +201,46 @@ async function settings() {
   return chrome.storage.local.get(["token", "apiBase"]);
 }
 
+const ACTIVE_SYNC_STATUSES = new Set(["starting", "running", "paused", "recovering"]);
+
+function interruptedSyncState(state, scanType, hasLiveRunner, now = Date.now()) {
+  if (!state || !ACTIVE_SYNC_STATUSES.has(state.status) || hasLiveRunner) return state;
+  const updatedAt = Number(state.updatedAt || 0);
+  const graceMs = state.status === "recovering" ? 60_000 : state.status === "starting" ? 15_000 : 8_000;
+  if (!updatedAt || now - updatedAt < graceMs) return state;
+  const label = scanType === "opportunity" ? "Bid To Be Participated scan" : "GeM bid sync";
+  return {
+    ...state,
+    status: "failed",
+    message: `${label} was interrupted when the GeM page refreshed or closed. `
+      + "Already saved bids are retained; click Retry Sync to continue from the saved page.",
+    updatedAt: now,
+    extensionVersion: chrome.runtime.getManifest().version,
+  };
+}
+
+async function reconcileInterruptedSyncStates() {
+  const stored = await chrome.storage.local.get(["gemBidSync", "gemOpportunitySync"]);
+  const needsProbe = [stored.gemBidSync, stored.gemOpportunitySync]
+    .some((state) => state && ACTIVE_SYNC_STATUSES.has(state.status));
+  if (!needsProbe) return stored;
+
+  const tabs = await chrome.tabs.query({ url: "https://bidplus.gem.gov.in/seller-bids*" });
+  const probes = await Promise.all(tabs.map((tab) => (
+    chrome.tabs.sendMessage(tab.id, { type: "PROBE_GEM_BID_SYNC" }).catch(() => null)
+  )));
+  const hasDisqualifiedRunner = probes.some((probe) => probe?.syncing && probe.scanType === "disqualified");
+  const hasOpportunityRunner = probes.some((probe) => probe?.syncing && probe.scanType === "opportunity");
+  const now = Date.now();
+  const gemBidSync = interruptedSyncState(stored.gemBidSync, "disqualified", hasDisqualifiedRunner, now);
+  const gemOpportunitySync = interruptedSyncState(stored.gemOpportunitySync, "opportunity", hasOpportunityRunner, now);
+  const changes = {};
+  if (gemBidSync !== stored.gemBidSync) changes.gemBidSync = gemBidSync;
+  if (gemOpportunitySync !== stored.gemOpportunitySync) changes.gemOpportunitySync = gemOpportunitySync;
+  if (Object.keys(changes).length) await chrome.storage.local.set(changes);
+  return { gemBidSync, gemOpportunitySync };
+}
+
 async function recoverAcxxelSession() {
   const saved = await settings();
   if (saved.token) return true;
@@ -273,6 +313,153 @@ async function api(path, options = {}) {
   return data;
 }
 
+const SELLER_BID_LIST_URL = "https://bidplus.gem.gov.in/seller-bids";
+const SELLER_BID_LIST_PATTERN = /^https:\/\/bidplus\.gem\.gov\.in\/seller-bids(?:[/?#]|$)/i;
+
+const GEM_LOGIN_URL_PATTERN = /\/(?:login|signin|sign-in)(?:[/?#]|$)|sso\.gem\.gov\.in/i;
+
+// Runs in the logged-in GeM page: finds the Bids-menu link that leads to
+// bidplus (the portal hands the session over only through its own link) and
+// clicks it. Returns the chosen link, or null when none is on the page.
+function clickGemBidListLink() {
+  const label = (node) => String(node.innerText || node.textContent || "").replace(/\s+/g, " ").trim();
+  const score = (node) => {
+    const href = node.href || node.getAttribute("href") || "";
+    const text = label(node);
+    if (/logout|log-out|signout/i.test(`${href} ${text}`)) return 0;
+    if (/bidplus\.gem\.gov\.in\/(?:seller-bids|auth\/autologin\/sbl)/i.test(href)) return 100;
+    if (/bidplus\.gem\.gov\.in/i.test(href)) {
+      return 50 + (/seller|participat|my\s+bids|bid\s+list|list\s+of\s+bids/i.test(text) ? 30 : 0)
+        + (/\bbids?\b/i.test(text) ? 10 : 0);
+    }
+    if (/seller\s+bids?|participated\s+bids?|bid\s+list|list\s+of\s+bids/i.test(text) && text.length < 60) return 40;
+    return 0;
+  };
+  const best = [...document.querySelectorAll("a, [role=menuitem]")]
+    .map((node) => ({ node, value: score(node) }))
+    .filter((item) => item.value > 0)
+    .sort((x, y) => y.value - x.value)[0];
+  if (!best) return null;
+  const { node } = best;
+  const href = node.getAttribute("href") || "";
+  // GeM opens bidplus via window.open / a _blank form. Without a real user
+  // click Chrome's popup blocker drops that, so keep it in this tab instead.
+  const nativeOpen = window.open;
+  window.open = (url, ...rest) => {
+    if (url) { window.location.assign(url); return window; }
+    return nativeOpen.call(window, url, ...rest);
+  };
+  const nativeSubmit = HTMLFormElement.prototype.submit;
+  HTMLFormElement.prototype.submit = function submitInSameTab() {
+    this.target = "_self";
+    return nativeSubmit.call(this);
+  };
+  document.querySelectorAll("form[target]").forEach((form) => { form.target = "_self"; });
+  // "List of Bids" is javascript:ct.gem.launchBidsPage('<bidplus url>');
+  // call GeM's own launcher so its session hand-off runs.
+  const launch = href.match(/launchBidsPage\(\s*['"]([^'"]+)['"]\s*\)/);
+  if (launch && typeof window.ct?.gem?.launchBidsPage === "function") {
+    window.ct.gem.launchBidsPage(launch[1]);
+  } else {
+    if (node.matches("a[target]")) node.removeAttribute("target");
+    node.click();
+  }
+  return { href: node.href || href, text: label(node).slice(0, 80) };
+}
+
+async function probeScanner(tabId) {
+  const probe = await chrome.tabs.sendMessage(tabId, { type: "PROBE_GEM_BID_SYNC" }).catch(() => null);
+  return Boolean(probe?.ok);
+}
+
+// Opens the Seller Bid List the same way the user does: through the logged-in
+// GeM portal's own Bids link. Typing the bidplus URL directly lands on the
+// login page because GeM keeps the session scoped to the portal until then.
+async function openSellerBidList(activeTab, onWait = null) {
+  const gemTabs = await chrome.tabs.query({ url: "https://*.gem.gov.in/*" });
+  const loggedIn = (tab) => tab?.id && /^https:\/\/[^/]*gem\.gov\.in\//i.test(tab.url || "")
+    && !GEM_LOGIN_URL_PATTERN.test(tab.url || "");
+  // A bidplus tab that is already logged in can switch to seller-bids directly.
+  const bidplusTab = [activeTab, ...gemTabs].find((tab) => loggedIn(tab)
+    && /^https:\/\/bidplus\.gem\.gov\.in\//i.test(tab.url || ""));
+  let watchIds;
+  if (bidplusTab) {
+    await chrome.tabs.update(bidplusTab.id, { url: SELLER_BID_LIST_URL, active: true });
+    watchIds = new Set([bidplusTab.id]);
+  } else {
+    const portalTabs = [activeTab, ...gemTabs.filter((tab) => tab.id !== activeTab?.id)].filter(loggedIn);
+    if (!portalTabs.length) {
+      throw new Error("No logged-in GeM tab found. Log in to GeM, keep the GeM dashboard open, then click Scan Disqualified Bid.");
+    }
+    const before = new Set((await chrome.tabs.query({})).map((tab) => tab.id));
+    let clicked = null;
+    let clickedTab = null;
+    for (const tab of portalTabs) {
+      const [injection] = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        // MAIN world: GeM's javascript: links and ct.gem helpers only run in
+        // the page's own context, not in the extension's isolated world.
+        world: "MAIN",
+        func: clickGemBidListLink,
+      }).catch(() => []);
+      if (injection?.result) {
+        clicked = injection.result;
+        clickedTab = tab;
+        break;
+      }
+    }
+    if (!clicked) {
+      throw new Error("The Bids / Seller Bid List link was not found on the open GeM page. "
+        + "Open the GeM seller dashboard (the page after login), then click Scan Disqualified Bid again.");
+    }
+    await chrome.tabs.update(clickedTab.id, { active: true }).catch(() => {});
+    watchIds = new Set([clickedTab.id]);
+    const trackNewTab = (tab) => { if (!before.has(tab.id)) watchIds.add(tab.id); };
+    chrome.tabs.onCreated.addListener(trackNewTab);
+    try {
+      return await waitForSellerBidList(watchIds, onWait, true, `clicked "${clicked.text}" (${clicked.href || "no href"}) on ${clickedTab.url}`);
+    } finally {
+      chrome.tabs.onCreated.removeListener(trackNewTab);
+    }
+  }
+  return waitForSellerBidList(watchIds, onWait, false);
+}
+
+async function waitForSellerBidList(watchIds, onWait, allowBidplusRedirect, clickedInfo = "") {
+  const deadline = Date.now() + 90_000;
+  const redirected = new Set();
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await onWait?.();
+    for (const tabId of [...watchIds]) {
+      const tab = await chrome.tabs.get(tabId).catch(() => null);
+      if (!tab) { watchIds.delete(tabId); continue; }
+      if (tab.status !== "complete") continue;
+      const url = tab.url || "";
+      if (SELLER_BID_LIST_PATTERN.test(url)) {
+        if (await probeScanner(tab.id)) return tab;
+        continue;
+      }
+      if (/^https:\/\/bidplus\.gem\.gov\.in\//i.test(url) && GEM_LOGIN_URL_PATTERN.test(url)) {
+        throw new Error("GeM asked for login again on bidplus. Open Bids > Seller Bid List once from the GeM dashboard, then click Scan Disqualified Bid.");
+      }
+      // The portal link may land on another bidplus page; the session now
+      // exists there, so moving to seller-bids is safe.
+      // Leave GeM's /auth/autologin hand-off alone until it finishes redirecting.
+      if (allowBidplusRedirect && /^https:\/\/bidplus\.gem\.gov\.in\//i.test(url)
+        && !/^https:\/\/bidplus\.gem\.gov\.in\/auth\//i.test(url) && !redirected.has(tab.id)) {
+        redirected.add(tab.id);
+        await chrome.tabs.update(tab.id, { url: SELLER_BID_LIST_URL, active: true });
+      }
+    }
+    if (!watchIds.size) throw new Error("The GeM Seller Bid List tab was closed before the scan started.");
+  }
+  const endedAt = await Promise.all([...watchIds].map((id) => chrome.tabs.get(id).then((tab) => tab.url).catch(() => "closed")));
+  throw new Error("GeM Seller Bid List did not open within 90 seconds. "
+    + `Diagnostics: ${clickedInfo || "direct bidplus tab"}; tab(s) ended at ${endedAt.join(", ") || "none"}. `
+    + "Open Bids > Seller Bid List from the GeM dashboard once, then click Scan Disqualified Bid.");
+}
+
 async function startJob(jobId) {
   const job = await api(`/gem/extension/jobs/${jobId}/claim/`, {
     method: "POST",
@@ -302,6 +489,14 @@ async function startJob(jobId) {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   (async () => {
+    if (message.type === "GEM_SYNC_WAKE") {
+      // Chrome throttles chained timers in hidden tabs to about one wake-up per
+      // minute. Service-worker timers are not throttled, so the scanner tab
+      // sleeps here and is woken by the message response instead.
+      const ms = Math.min(Math.max(Number(message.ms) || 0, 0), 30000);
+      await new Promise((resolve) => setTimeout(resolve, ms));
+      return { ok: true };
+    }
     if (message.type === "CONNECT_ACXXEL") {
       if (!message.token) throw new Error("Log in to Acxxel before connecting the extension.");
       const previous = await settings();
@@ -331,13 +526,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === "GET_STATE") {
       await recoverAcxxelSession();
       const saved = await settings();
-      const sync = await chrome.storage.local.get(["gemBidSync", "gemOpportunitySync"]);
+      const sync = await reconcileInterruptedSyncStates();
       return { ok: true, connected: Boolean(saved.token), gemBidSync: sync.gemBidSync || null, gemOpportunitySync: sync.gemOpportunitySync || null };
     }
     if (message.type === "GET_GEM_BID_SYNC_STATE") {
       await recoverAcxxelSession();
       const saved = await settings();
-      const sync = await chrome.storage.local.get(["gemBidSync", "gemOpportunitySync"]);
+      const sync = await reconcileInterruptedSyncStates();
       return { ok: true, connected: Boolean(saved.token), gemBidSync: sync.gemBidSync || null, gemOpportunitySync: sync.gemOpportunitySync || null };
     }
     if (message.type === "GET_ACTIVE_JOB") {
@@ -381,7 +576,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         await chrome.storage.local.set({
           gemBidSync: {
             status: "authentication_required",
-            message: "GeM login is active, but Seller Bid List must be opened from the GeM Bids menu.",
+            message: "GeM login is active. Click Scan Disqualified Bid to open the Seller Bid List and start automatically.",
             page: 0,
             saved: 0,
             updatedAt: Date.now(),
@@ -404,8 +599,59 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       await recoverAcxxelSession();
       const saved = await settings();
       if (!saved.token) throw new Error("Open Acxxel and log in before syncing GeM bids.");
+      const syncStates = await reconcileInterruptedSyncStates();
+      const retryState = !opportunityScan && message.resume && Number(syncStates.gemBidSync?.page || 0) > 1
+        ? syncStates.gemBidSync
+        : null;
+      const pendingPages = (retryState?.pending || [])
+        .map((item) => Number(item?.page || 0))
+        .filter((page) => page > 0);
+      const retryPage = retryState
+        ? Math.min(Number(retryState.page), ...(pendingPages.length ? pendingPages : [Number(retryState.page)]))
+        : 0;
+      const resume = retryState ? {
+        page: retryPage, saved: Number(retryState.saved || 0),
+        rejected: Number(retryState.rejected || 0), checked: Number(retryState.checked || 0),
+        pending: Array.isArray(retryState.pending) ? retryState.pending : [],
+      } : null;
+      const alreadyRunning = [syncStates.gemBidSync, syncStates.gemOpportunitySync]
+        .some((state) => state && ACTIVE_SYNC_STATUSES.has(state.status));
+      if (alreadyRunning) {
+        throw new Error("Another GeM scan is already running or paused. Finish or stop it before starting a second scan.");
+      }
       const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
-      const sellerTabs = await chrome.tabs.query({ url: "https://bidplus.gem.gov.in/seller-bids*" });
+      let sellerTabs = await chrome.tabs.query({ url: "https://bidplus.gem.gov.in/seller-bids*" });
+      if (!opportunityScan && !sellerTabs.length) {
+        // One-click start: after GeM login, open the Seller Bid List ourselves.
+        // The scanner then applies the required filters and starts reading.
+        // Keep updatedAt fresh so the interrupted-scan check does not flag
+        // this "starting" state as failed while GeM is still loading.
+        const markOpening = () => chrome.storage.local.set({ [stateKey]: {
+          status: "starting",
+          message: "Opening GeM Seller Bid List...",
+          page: resume?.page || 0,
+          saved: resume?.saved || 0,
+          checked: resume?.checked || 0,
+          pending: resume?.pending || [],
+          updatedAt: Date.now(),
+        } });
+        await markOpening();
+        try {
+          sellerTabs = [await openSellerBidList(activeTabs[0], markOpening)];
+        } catch (error) {
+          await chrome.storage.local.set({ [stateKey]: {
+            status: "authentication_required",
+            message: error.message,
+            page: resume?.page || 0,
+            saved: resume?.saved || 0,
+            checked: resume?.checked || 0,
+            pending: resume?.pending || [],
+            updatedAt: Date.now(),
+            extensionVersion: chrome.runtime.getManifest().version,
+          } });
+          throw error;
+        }
+      }
       const activeSellerTab = activeTabs.find((item) => (
         /^https:\/\/bidplus\.gem\.gov\.in\/seller-bids(?:[/?#]|$)/i.test(item.url || "")
       ));
@@ -423,11 +669,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (!tab?.id) {
         throw new Error("Open Seller Bid List from the logged-in GeM Bids menu, then click Sync. Your current tab was not redirected.");
       }
-      await chrome.storage.local.set({ [stateKey]: { status: "starting", message: opportunityScan ? "Starting Bid To Be Participated scan..." : "Starting disqualified bid sync...", page: 0, saved: 0, updatedAt: Date.now() } });
+      await chrome.storage.local.set({ [stateKey]: {
+        status: "starting",
+        message: opportunityScan ? "Starting Bid To Be Participated scan..."
+          : resume ? `Resuming disqualified bid sync from page ${resume.page}...` : "Starting disqualified bid sync...",
+        page: resume?.page || 0,
+        saved: resume?.saved || 0,
+        checked: resume?.checked || 0,
+        pending: resume?.pending || [],
+        updatedAt: Date.now(),
+      } });
       let response;
       try {
         const sendStart = () => Promise.race([
-          chrome.tabs.sendMessage(tab.id, { type: message.type }),
+          chrome.tabs.sendMessage(tab.id, { type: message.type, resume }),
           new Promise((_, reject) => setTimeout(
             () => reject(new Error("GeM bid scanner did not respond within 5 seconds.")),
             5000,
@@ -453,8 +708,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           [stateKey]: {
             status: "failed",
             message: failureMessage,
-            page: 0,
-            saved: 0,
+            page: resume?.page || 0,
+            saved: resume?.saved || 0,
+            checked: resume?.checked || 0,
+            pending: resume?.pending || [],
             updatedAt: Date.now(),
             extensionVersion: chrome.runtime.getManifest().version,
           },
@@ -464,9 +721,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       await chrome.storage.local.set({
         [stateKey]: {
           status: "running",
-          message: `Scanner started. ${response.cardCount || 0} bid card(s) found on the current GeM page.`,
-          page: 0,
-          saved: 0,
+          message: resume
+            ? `Scanner is restoring saved page ${resume.page}.`
+            : `Scanner started. ${response.cardCount || 0} bid card(s) found on the current GeM page.`,
+          page: resume?.page || 0,
+          saved: resume?.saved || 0,
+          checked: resume?.checked || 0,
+          pending: resume?.pending || [],
           updatedAt: Date.now(),
           extensionVersion: chrome.runtime.getManifest().version,
         },
@@ -546,23 +807,52 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         rejections: result.rejections || [],
       };
     }
+    if (message.type === "GET_CORRIGENDUM_PENDING") {
+      const result = await api("/gem/bid-opportunities/", {
+        method: "POST",
+        body: JSON.stringify({ action: "corrigendum_pending" }),
+      });
+      return { ok: true, bidNos: result.bid_nos || [] };
+    }
+    if (message.type === "MARK_GEM_CORRIGENDUM") {
+      const result = await api("/gem/bid-opportunities/", {
+        method: "POST",
+        body: JSON.stringify({ action: "mark_corrigendum", bid_nos: message.bidNos || [] }),
+      });
+      return { ok: true, updated: result.updated || 0 };
+    }
     if (message.type === "READ_GEM_BID_DETAIL") {
       const detailUrl = String(message.url || "");
       if (!/^https:\/\/[^/]*gem\.gov\.in\//i.test(detailUrl)) {
         throw new Error("Invalid GeM bid detail URL.");
       }
       let response = null;
-      for (let attempt = 1; attempt <= 3; attempt += 1) {
+      let bytes = null;
+      for (let attempt = 1; attempt <= 2; attempt += 1) {
         response = await fetch(detailUrl, {
           credentials: "include",
           cache: "no-store",
         });
         const retryable = response.status === 429 || response.status >= 500;
-        if (response.ok || !retryable || attempt === 3) break;
-        await new Promise((resolve) => setTimeout(resolve, attempt * 1500));
+        if (!response.ok) {
+          if (!retryable || attempt === 2) break;
+          await new Promise((resolve) => setTimeout(resolve, 15000));
+          continue;
+        }
+        bytes = new Uint8Array(await response.arrayBuffer());
+        // GeM sometimes answers a document request with an HTML error or
+        // login page (HTTP 200) instead of the PDF.
+        const isPdf = String.fromCharCode(...bytes.subarray(0, 1024)).includes("%PDF");
+        if (isPdf) break;
+        const head = new TextDecoder().decode(bytes.subarray(0, 20000));
+        if (/type=["']?password|sign\s*in|log\s*in|captcha/i.test(head)) {
+          throw new Error("GeM bid document returned HTTP 401: GeM session expired.");
+        }
+        bytes = null;
+        if (attempt === 2) throw new Error("GeM bid document is not a PDF.");
+        await new Promise((resolve) => setTimeout(resolve, 15000));
       }
       if (!response.ok) throw new Error(`GeM bid document returned HTTP ${response.status}.`);
-      const bytes = new Uint8Array(await response.arrayBuffer());
       if (bytes.length > 15 * 1024 * 1024) throw new Error("GeM bid document is larger than 15 MB.");
       let binary = "";
       for (let offset = 0; offset < bytes.length; offset += 32768) {
@@ -586,10 +876,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         saved: message.saved || 0,
         rejected: message.rejected || 0,
         checked: message.checked || 0,
+        pending: Array.isArray(message.pending) ? message.pending : [],
         updatedAt: Date.now(),
         extensionVersion: chrome.runtime.getManifest().version,
       };
       await chrome.storage.local.set({ [stateKey]: syncState });
+      if (sender.tab?.id && ACTIVE_SYNC_STATUSES.has(syncState.status) && sender.tab.autoDiscardable !== false) {
+        // A discarded background tab silently kills a long scan mid-page.
+        chrome.tabs.update(sender.tab.id, { autoDiscardable: false }).catch(() => {});
+      }
       if (["complete", "failed"].includes(syncState.status) && sender.tab?.id) {
         setTimeout(() => closeBackgroundSyncTab(sender.tab.id), 1200);
       }

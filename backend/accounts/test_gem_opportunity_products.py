@@ -28,12 +28,11 @@ class GemOpportunityProductRulesTests(SimpleTestCase):
             with self.subTest(item=item):
                 self.assertIsNotNone(classify_opportunity_item(item))
 
-    def test_accepts_bunch_only_when_every_category_is_approved(self):
-        valid = classify_opportunity_item(
+    def test_rejects_bunch_even_when_every_category_is_approved(self):
+        self.assertIsNone(classify_opportunity_item(
             "All in One PC (V2) (Q2), Entry and Mid Level Desktop Computer (Q2), "
             "A4 and Legal Size Multifunction Printer (MFP) (Q2)"
-        )
-        self.assertEqual(valid["product_type"], "bunch_bid")
+        ))
 
         invalid = [
             "A3 Size Multifunction Printer (MFP), A4 and Legal Size Multifunction Printer (MFP)",

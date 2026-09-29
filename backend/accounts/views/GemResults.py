@@ -1,10 +1,8 @@
 import json
 import re
-import calendar
-from datetime import datetime, time, timedelta
+from datetime import timedelta
 
 from django.db import transaction
-from django.db.models import Q
 from django.http import JsonResponse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -16,27 +14,6 @@ from .Gem import _require_role
 
 
 FINAL_STATUS_WORDS = ("disqualified", "qualified", "awarded", "cancelled", "closed")
-
-
-def _retention_cutoff():
-    """Start of the same calendar day one month ago in the local timezone."""
-    today = timezone.localdate()
-    year = today.year - (1 if today.month == 1 else 0)
-    month = 12 if today.month == 1 else today.month - 1
-    day = min(today.day, calendar.monthrange(year, month)[1])
-    cutoff_date = today.replace(year=year, month=month, day=day)
-    return timezone.make_aware(datetime.combine(cutoff_date, time.min))
-
-
-def _prune_old_disqualified_results():
-    cutoff = _retention_cutoff()
-    deleted, _ = GemBidResult.objects.filter(
-        Q(is_disqualified=False)
-        | Q(disqualified_at__lt=cutoff)
-        | Q(disqualified_at__gt=timezone.now())
-        | Q(disqualified_at__isnull=True)
-    ).delete()
-    return cutoff, deleted
 
 
 def _parse_datetime(value):
@@ -90,13 +67,12 @@ def gem_bid_results(request):
     if error:
         return error
 
+    current_year = timezone.localdate().year
     if request.method == "GET":
-        cutoff, _ = _prune_old_disqualified_results()
-        results = GemBidResult.objects.prefetch_related("evaluation_history")
+        results = GemBidResult.objects.prefetch_related("evaluation_history").filter(disqualified_at__year=current_year)
         if request.GET.get("status") == "disqualified":
             results = results.filter(
                 is_disqualified=True,
-                disqualified_at__gte=cutoff,
             )
         year = request.GET.get("year", "").strip()
         if year.isdigit():
@@ -109,7 +85,7 @@ def gem_bid_results(request):
             results = results.filter(product_type=product_type)
         summary_scope = GemBidResult.objects.filter(
             is_disqualified=True,
-            disqualified_at__gte=cutoff,
+            disqualified_at__year=current_year,
         )
         if product_type in dict(GemBidResult.PRODUCT_CHOICES):
             summary_scope = summary_scope.filter(product_type=product_type)
@@ -163,7 +139,6 @@ def gem_bid_results(request):
     created = 0
     updated = 0
     rejections = []
-    cutoff = _retention_cutoff()
     now = timezone.now()
     processed_bid_numbers = set()
     with transaction.atomic():
@@ -215,13 +190,11 @@ def gem_bid_results(request):
                 rejection_reason = "not_disqualified"
             elif not disqualified_at:
                 rejection_reason = "missing_disqualified_date"
-            elif disqualified_at < cutoff:
-                rejection_reason = "outside_retention_window"
+            elif timezone.localtime(disqualified_at).year != current_year:
+                rejection_reason = "outside_current_year"
             elif disqualified_at > now:
                 rejection_reason = "future_disqualified_date"
             if rejection_reason:
-                if existing:
-                    existing.delete()
                 rejections.append({"bid_no": bid_no, "reason": rejection_reason})
                 continue
             defaults = {
@@ -256,11 +229,10 @@ def gem_bid_results(request):
             saved.append(result.bid_no)
             created += int(was_created)
             updated += int(not was_created)
-        _prune_old_disqualified_results()
         visible_count = GemBidResult.objects.filter(
             bid_no__in=saved,
             is_disqualified=True,
-            disqualified_at__gte=cutoff,
+            disqualified_at__year=current_year,
             disqualified_at__lte=now,
         ).count()
     return JsonResponse({

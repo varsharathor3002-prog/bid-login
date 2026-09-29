@@ -167,3 +167,55 @@ document.addEventListener("acxxel-gem-select-value", (event) => {
     }));
   }
 });
+
+// Jump the seller-bid list straight to a saved page (used when a disqualified
+// scan resumes after a reload). GeM's list uses jQuery simplePagination
+// (#page-N links); an Angular pager is handled as a fallback. The content
+// script verifies the rendered cards afterwards, so a no-op here is harmless.
+document.addEventListener("acxxel-gem-select-page", (event) => {
+  const requestId = event.detail?.requestId;
+  const page = Number(event.detail?.page || 0);
+  if (!requestId) return;
+  let method = "";
+  try {
+    if (Number.isInteger(page) && page > 0) {
+      const $ = window.jQuery;
+      if ($?.fn?.pagination) {
+        const pager = [...document.querySelectorAll("*")]
+          .find((node) => $(node).data("pagination"));
+        if (pager) {
+          const total = Number($(pager).pagination("getPagesCount") || 0);
+          if (!total || page <= total) {
+            $(pager).pagination("selectPage", page);
+            method = "simplePagination";
+          }
+        }
+      }
+      if (!method && window.angular) {
+        const pagers = document.querySelectorAll(
+          "[uib-pagination], [pagination], [dir-pagination-controls], ul[class*=pagination]"
+        );
+        for (const node of pagers) {
+          const element = window.angular.element(node);
+          const scope = element.isolateScope?.() || element.scope();
+          if (typeof scope?.selectPage === "function") {
+            scope.$evalAsync(() => scope.selectPage(page));
+            method = "angular";
+            break;
+          }
+          if (typeof scope?.setCurrent === "function") {
+            scope.$evalAsync(() => scope.setCurrent(page));
+            method = "angular";
+            break;
+          }
+        }
+      }
+    }
+  } catch {
+    method = "";
+  } finally {
+    document.dispatchEvent(new CustomEvent("acxxel-gem-page-selected", {
+      detail: { requestId, selected: Boolean(method), method },
+    }));
+  }
+});

@@ -23,10 +23,10 @@ test("keeps ordinary desktop categories unchanged", () => {
   assert.equal(itemCategory({ product_name: "Desktop Computer" }), "other");
 });
 
-test("accepts an all-approved bunch and rejects A3 or PAC Only", () => {
+test("hides an all-approved bunch and rejects A3 or PAC Only", () => {
   assert.equal(itemCategory({
     product_name: "All in One PC (V2), Entry and Mid Level Desktop Computer, A4 and Legal Size Multifunction Printer (MFP)",
-  }), "bunch_bid");
+  }), "other");
   assert.equal(itemCategory({
     product_name: "A3 Size Multifunction Printer (MFP), A4 and Legal Size Multifunction Printer (MFP)",
   }), "other");

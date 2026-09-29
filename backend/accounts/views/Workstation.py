@@ -2861,21 +2861,21 @@ def generate_workstation_certificates(request, bid_id):
                     if signature_image:
                         break
 
-        def add_authorized_signatory(page, y=685, compact=False):
+        def add_authorized_signatory(page, y=685, compact=False, spacious=False):
             x = 58
-            header_height = 20 if compact else 24
-            signature_top = 19 if compact else 23
-            signature_bottom = 50 if compact else 62
-            signature_width = 132 if compact else 145
-            details_top = 51 if compact else 63
-            details_bottom = 91 if compact else 112
-            font_size = 7.5 if compact else 8.2
+            header_height = 36 if spacious else (20 if compact else 24)
+            signature_top = 39 if spacious else (19 if compact else 23)
+            signature_bottom = 88 if spacious else (50 if compact else 62)
+            signature_width = 170 if spacious else (132 if compact else 145)
+            details_top = 92 if spacious else (51 if compact else 63)
+            details_bottom = 154 if spacious else (91 if compact else 112)
+            font_size = 10.5 if spacious else (7.5 if compact else 8.2)
             page.insert_textbox(
                 fitz.Rect(x, y, page.rect.width - 45, y + header_height),
                 "Auth. Signatory\nFor Laps N Tabs Technology Pvt. Ltd.",
                 fontsize=font_size,
                 fontname="hebo",
-                lineheight=1.05,
+                lineheight=1.2 if spacious else 1.05,
             )
             if signature_image:
                 page.insert_image(
@@ -2889,7 +2889,7 @@ def generate_workstation_certificates(request, bid_id):
                 "Email:- lapsntabs123@gmail.com\nContact No.:- 9918200166",
                 fontsize=font_size,
                 fontname="hebo",
-                lineheight=1.0 if compact else 1.05,
+                lineheight=1.2 if spacious else (1.0 if compact else 1.05),
             )
         if doc_type == "data_sheet" and uses_workstation_spec_template:
             page_from, page_to = (1, 7)
@@ -3428,6 +3428,10 @@ def generate_workstation_certificates(request, bid_id):
                             )
                     y += row_height
                     line_offset += segment_count
+
+            if y + 180 > 782:
+                page, y = new_compliance_page()
+            add_authorized_signatory(page, y=y + 20, spacious=True)
 
             doc.close()
             snapshot.close()

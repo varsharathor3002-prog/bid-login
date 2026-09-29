@@ -83,7 +83,7 @@ class GemOpportunityExpiryCleanupTests(TestCase):
         self.assertTrue(GemBidOpportunity.objects.filter(id=active.id).exists())
 
     @patch("accounts.views.GemOpportunities._request_user")
-    def test_opportunity_refresh_physically_deletes_expired_rows(self, request_user):
+    def test_opportunity_refresh_hides_expired_rows_without_deleting_them(self, request_user):
         request_user.return_value = self.admin
         expired = self.opportunity("GEM/2026/B/9000003", self.now - timedelta(minutes=1))
         active = self.opportunity("GEM/2026/B/9000004", self.now + timedelta(days=1))
@@ -92,11 +92,11 @@ class GemOpportunityExpiryCleanupTests(TestCase):
         payload = json.loads(response.content)
 
         self.assertEqual(response.status_code, 200)
-        self.assertFalse(GemBidOpportunity.objects.filter(id=expired.id).exists())
+        self.assertTrue(GemBidOpportunity.objects.filter(id=expired.id).exists())
         self.assertEqual([row["id"] for row in payload["results"]], [active.id])
 
     @patch("accounts.views.GemAssignments._require_role")
-    def test_assignment_refresh_deletes_an_expired_assigned_bid(self, require_role):
+    def test_assignment_refresh_preserves_an_expired_assigned_bid(self, require_role):
         require_role.return_value = (self.bid_user, None)
         expired = self.opportunity("GEM/2026/B/9000005", self.now - timedelta(minutes=1))
         assignment = GemBidAssignment.objects.create(
@@ -109,9 +109,8 @@ class GemOpportunityExpiryCleanupTests(TestCase):
         payload = json.loads(response.content)
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(payload["results"], [])
-        self.assertFalse(GemBidOpportunity.objects.filter(id=expired.id).exists())
-        self.assertFalse(GemBidAssignment.objects.filter(id=assignment.id).exists())
+        self.assertTrue(GemBidOpportunity.objects.filter(id=expired.id).exists())
+        self.assertTrue(GemBidAssignment.objects.filter(id=assignment.id).exists())
 
     @patch("accounts.views.GemAssignments._require_role")
     def test_admin_can_assign_an_opportunity(self, require_role):
@@ -171,6 +170,7 @@ class GemOpportunityExpiryCleanupTests(TestCase):
                         "end_date": (self.now + timedelta(days=10)).isoformat(),
                         "product_name": "High End Desktop Computer",
                         "product_type": "desktop",
+                        "quantity": 10,
                         "offer_validity_days": 120,
                     }]}),
                     content_type="application/json",
@@ -182,27 +182,48 @@ class GemOpportunityExpiryCleanupTests(TestCase):
                 self.assertEqual(response.status_code, 200)
                 self.assertEqual(payload["saved"], 1)
 
-    def test_indian_cutoff_day_is_frontend_valid(self):
+    def test_any_past_start_date_is_frontend_valid(self):
         now = datetime(2026, 9, 15, 7, 30, tzinfo=datetime_timezone.utc)
-        cutoff_in_india = datetime(2026, 9, 11, 18, 30, tzinfo=datetime_timezone.utc)
+        tomorrow_in_india = datetime(2026, 9, 15, 18, 30, tzinfo=datetime_timezone.utc)
 
-        self.assertTrue(valid_opportunity_dates(cutoff_in_india, now + timedelta(days=10), now))
-        self.assertFalse(valid_opportunity_dates(cutoff_in_india - timedelta(seconds=1), now + timedelta(days=10), now))
-        self.assertFalse(valid_opportunity_dates(cutoff_in_india, now + timedelta(days=121), now))
+        self.assertTrue(valid_opportunity_dates(now - timedelta(days=40), now + timedelta(days=10), now))
+        self.assertFalse(valid_opportunity_dates(tomorrow_in_india, now + timedelta(days=10), now))
+        self.assertFalse(valid_opportunity_dates(now, now + timedelta(days=121), now))
+
+    @patch("accounts.views.GemOpportunities._request_user")
+    def test_opportunity_with_quantity_below_five_is_rejected(self, request_user):
+        request_user.return_value = self.admin
+        request = self.factory.post(
+            "/api/gem/bid-opportunities/",
+            data=json.dumps({"results": [{
+                "bid_no": "GEM/2026/B/9000030",
+                "bid_date": (self.now - timedelta(days=1)).isoformat(),
+                "end_date": (self.now + timedelta(days=10)).isoformat(),
+                "product_name": "High End Desktop Computer",
+                "product_type": "desktop",
+                "quantity": 4,
+            }]}),
+            content_type="application/json",
+        )
+        response = gem_bid_opportunities(request)
+        payload = json.loads(response.content)
+        self.assertEqual(payload["saved"], 0)
+        self.assertEqual(payload["rejections"][0]["reason"], "minimum_quantity_5")
+        self.assertFalse(GemBidOpportunity.objects.filter(bid_no="GEM/2026/B/9000030").exists())
 
     def test_invalid_unassigned_rows_are_physically_deleted(self):
         stale = self.opportunity(
             "GEM/2026/B/9000006",
             self.now + timedelta(days=1),
         )
-        stale.bid_date = self.now - timedelta(days=4)
-        stale.save(update_fields=["bid_date"])
+        stale.end_date = self.now + timedelta(days=121)
+        stale.save(update_fields=["end_date"])
         assigned = self.opportunity(
             "GEM/2026/B/9000007",
             self.now + timedelta(days=1),
         )
-        assigned.bid_date = self.now - timedelta(days=4)
-        assigned.save(update_fields=["bid_date"])
+        assigned.end_date = self.now + timedelta(days=121)
+        assigned.save(update_fields=["end_date"])
         GemBidAssignment.objects.create(
             opportunity=assigned,
             assigned_to=self.bid_user,
@@ -227,14 +248,15 @@ class GemOpportunityExpiryCleanupTests(TestCase):
             "end_date": (now + timedelta(days=10)).isoformat(),
             "product_name": "High End Desktop Computer",
             "product_type": "desktop",
+            "quantity": 10,
             "offer_validity_days": 120,
         }
-        old = dict(valid, bid_no="GEM/2026/B/9000009", bid_date=(now - timedelta(days=4)).isoformat())
+        future = dict(valid, bid_no="GEM/2026/B/9000009", bid_date=(now + timedelta(days=2)).isoformat())
         too_long = dict(valid, bid_no="GEM/2026/B/9000010", end_date=(now + timedelta(days=121)).isoformat())
         bad_product = dict(valid, bid_no="GEM/2026/B/9000011", product_type="unsupported")
         request = self.factory.post(
             "/api/gem/bid-opportunities/",
-            data=json.dumps({"results": [valid, old, too_long, bad_product]}),
+            data=json.dumps({"results": [valid, future, too_long, bad_product]}),
             content_type="application/json",
         )
 

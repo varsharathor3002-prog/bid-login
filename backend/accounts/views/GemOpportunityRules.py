@@ -70,9 +70,12 @@ def classify_opportunity_item(value):
     classified = [_category_key_and_product(category) for category in categories]
     if any(category_key is None for category_key, _ in classified):
         return None
+    # Only single-product bids are kept; bunch bids (several categories) are not.
+    if len(categories) > 1:
+        return None
     return {
         "clean_name": clean_name,
         "categories": categories,
         "category_keys": [category_key for category_key, _ in classified],
-        "product_type": "bunch_bid" if len(categories) > 1 else classified[0][1],
+        "product_type": classified[0][1],
     }

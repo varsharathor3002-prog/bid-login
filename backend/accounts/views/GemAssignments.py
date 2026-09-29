@@ -11,6 +11,7 @@ from django.views.decorators.http import require_http_methods
 from ..models import GemBidAssignment, GemBidAssignmentHistory, GemBidOpportunity, User
 from .Gem import _require_role
 from .GemOpportunityCleanup import delete_expired_bid_opportunities
+from .GemOpportunities import corrigendum_data
 
 
 FINAL_STATUSES = {"participated", "skipped", "expired"}
@@ -75,6 +76,7 @@ def _assignment_data(row):
         "bid_date": opportunity.bid_date.isoformat() if opportunity.bid_date else "",
         "end_date": opportunity.end_date.isoformat() if opportunity.end_date else "",
         "pdf_url": opportunity.pdf_url,
+        **corrigendum_data(opportunity),
         "assigned_to": {"id": row.assigned_to_id, "username": row.assigned_to.username, "email": row.assigned_to.email},
         "assigned_by": row.assigned_by.username,
         "status": row.status,
@@ -91,7 +93,6 @@ def gem_bid_assignments(request):
         return error
 
     if request.method == "GET":
-        delete_expired_bid_opportunities()
         assignments = GemBidAssignment.objects.select_related("opportunity", "assigned_to", "assigned_by")
         if user.role == "user":
             assignments = assignments.filter(assigned_to=user, hidden_for_user=False)

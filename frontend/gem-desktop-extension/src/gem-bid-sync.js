@@ -4,16 +4,85 @@
   let stopRequested = false;
   let pauseRequested = false;
   let activeScanType = "";
+  let disqualifiedPending = [];
+  let lastGemRemoteActionAt = 0;
+  let gemBackoffMs = 0;
 
   const text = (node) => String(node?.innerText || node?.textContent || "").replace(/\s+/g, " ").trim();
-  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const sleep = (ms) => new Promise((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      resolve();
+    };
+    setTimeout(finish, ms);
+    // The scan runs in a background tab, where Chrome throttles chained timers
+    // to roughly one wake-up per minute. Every Date.now()-based wait loop then
+    // gets one or two polls before its deadline and falsely reports that GeM
+    // stopped rendering. Let the (unthrottled) service worker wake us instead.
+    if (document.visibilityState !== "hidden" || ms < 100) return;
+    try {
+      chrome.runtime.sendMessage({ type: "GEM_SYNC_WAKE", ms }, () => {
+        void chrome.runtime.lastError;
+        finish();
+      });
+    } catch {
+      // Extension was reloaded; the plain timer above still resolves.
+    }
+  });
   const normalizeBidNo = (value) => String(value || "").replace(/\s+/g, "").toUpperCase();
+  const isOriginalBidNo = (value) => /\/B\//.test(normalizeBidNo(value));
+  const originalBidNumbers = (value) => [...new Set(
+    (String(value || "").match(new RegExp(BID_PATTERN.source, "gi")) || [])
+      .map(normalizeBidNo)
+      .filter(isOriginalBidNo),
+  )];
+  const GEM_REMOTE_ACTION_INTERVAL_MS = 2500;
+  const GEM_BACKOFF_START_MS = 4000;
+  const GEM_BACKOFF_MAX_MS = 30000;
+  const GEM_TRANSIENT_ERROR_PATTERN = /something\s+went\s+wrong\s*,?\s*please\s+try\s+again\s+after\s+some\s+time|internal\s+server\s+error|service\s+temporarily\s+unavailable/i;
 
   function stopIfRequested() {
     if (!stopRequested) return;
     const error = new Error("GeM bid sync stopped by user.");
     error.code = "GEM_SYNC_STOPPED";
     throw error;
+  }
+
+  function gemTransientErrorMessage() {
+    const pageText = searchableDocuments()
+      .map((root) => String(root.body?.innerText || root.body?.textContent || root.textContent || ""))
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim();
+    return pageText.match(GEM_TRANSIENT_ERROR_PATTERN)?.[0] || "";
+  }
+
+  function throwIfGemTransientError() {
+    // A GeM result/history request can briefly render this banner while the
+    // seller list remains recoverable. It is a page-level retry signal, not a
+    // reason to terminate the complete scan.
+    return gemTransientErrorMessage();
+  }
+
+  async function waitForGemRemoteActionSlot(minimumInterval = GEM_REMOTE_ACTION_INTERVAL_MS) {
+    stopIfRequested();
+    // GeM's "something went wrong" banner is a rate-limit signal, not just a
+    // one-off glitch. Hitting it again at the same fixed cadence just keeps
+    // drawing more rejections, so back off exponentially while it persists
+    // and reset to the normal cadence the moment it clears.
+    if (gemTransientErrorMessage()) {
+      gemBackoffMs = Math.min(gemBackoffMs ? gemBackoffMs * 2 : GEM_BACKOFF_START_MS, GEM_BACKOFF_MAX_MS);
+      await sleep(gemBackoffMs);
+      stopIfRequested();
+    } else {
+      gemBackoffMs = 0;
+    }
+    const remaining = minimumInterval - (Date.now() - lastGemRemoteActionAt);
+    if (remaining > 0) await sleep(remaining);
+    stopIfRequested();
+    lastGemRemoteActionAt = Date.now();
   }
 
   async function waitWhilePaused(context) {
@@ -42,12 +111,17 @@
   }
 
   async function progress(status, message, extra = {}) {
+    if (activeScanType === "disqualified") {
+      if (extra.pending) disqualifiedPending = extra.pending;
+      extra = { ...extra, pending: disqualifiedPending };
+    }
     await runtimeMessage({ type: "GEM_BID_SYNC_PROGRESS", scanType: activeScanType, status, message, ...extra });
   }
 
   function visible(element) {
-    if (!(element instanceof Element)) return false;
-    const style = getComputedStyle(element);
+    if (!element || element.nodeType !== 1) return false;
+    const view = element.ownerDocument?.defaultView || window;
+    const style = view.getComputedStyle(element);
     const rect = element.getBoundingClientRect();
     return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
   }
@@ -57,8 +131,12 @@
     let best = null;
     while (current?.parentElement) {
       const value = text(current);
-      const matches = value.match(new RegExp(BID_PATTERN.source, "gi")) || [];
-      if (matches.length === 1) {
+      // A GeM result card commonly contains both its original Bid No. (/B/)
+      // and its generated RA No. (/R/). They belong to the same card. Counting
+      // the RA as another bid made us stop at the tiny Bid/RA label instead of
+      // reaching the complete card that contains status and result controls.
+      const bidNumbers = originalBidNumbers(value);
+      if (bidNumbers.length === 1) {
         let score = 0;
         if (current.matches("tr, article, [role=row], [class*=card], [class*=result], [class*=list-item]")) score += 25;
         if (/technical\s+status|view\s+bid\s+result|disqualified|qualified/i.test(value)) score += 80;
@@ -67,7 +145,7 @@
         score += Math.min(value.length, 1500) / 100;
         if (!best || score > best.score) best = { node: current, score };
       }
-      if (matches.length > 1) break;
+      if (bidNumbers.length > 1) break;
       current = current.parentElement;
     }
     return best?.node || null;
@@ -95,6 +173,10 @@
     return roots;
   }
 
+  function queryAllSearchableRoots(selector) {
+    return searchableDocuments().flatMap((root) => [...(root.querySelectorAll?.(selector) || [])]);
+  }
+
   function currentCards() {
     const cards = new Map();
     for (const root of searchableDocuments()) {
@@ -105,6 +187,10 @@
         const match = String(node.nodeValue || "").match(BID_PATTERN);
         if (match) {
           const bidNo = normalizeBidNo(match[0]);
+          if (!isOriginalBidNo(bidNo)) {
+            node = walker.nextNode();
+            continue;
+          }
           const card = bidCardFor(node.parentElement);
           if (card && visible(card) && !cards.has(bidNo)) cards.set(bidNo, card);
         }
@@ -113,9 +199,9 @@
 
       if (!cards.size && BID_PATTERN.test(text(container))) {
         for (const element of root.querySelectorAll("a, p, span, strong, td, th, li, section, article, div")) {
-          const matches = text(element).match(new RegExp(BID_PATTERN.source, "gi")) || [];
-          if (matches.length !== 1) continue;
-          const bidNo = normalizeBidNo(matches[0]);
+          const bidNumbers = originalBidNumbers(text(element));
+          if (bidNumbers.length !== 1) continue;
+          const bidNo = bidNumbers[0];
           if (cards.has(bidNo)) continue;
           const card = bidCardFor(element) || element.closest("tr, article, section, div") || element;
           if (visible(card)) cards.set(bidNo, card);
@@ -160,46 +246,62 @@
     return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString();
   }
 
-  function disqualifiedRetentionCutoff(reference = new Date()) {
-    const cutoff = new Date(reference);
-    const targetDay = cutoff.getDate();
-    cutoff.setHours(0, 0, 0, 0);
-    cutoff.setDate(1);
-    cutoff.setMonth(cutoff.getMonth() - 1);
-    const lastDayOfMonth = new Date(
-      cutoff.getFullYear(), cutoff.getMonth() + 1, 0,
-    ).getDate();
-    cutoff.setDate(Math.min(targetDay, lastDayOfMonth));
-    return cutoff;
-  }
-
-  function isRecentDisqualification(value, reference = new Date()) {
+  function isValidDisqualificationDate(value, reference = new Date()) {
     if (!value) return false;
     const parsed = new Date(value);
     return !Number.isNaN(parsed.getTime())
-      && parsed >= disqualifiedRetentionCutoff(reference)
+      && parsed.getFullYear() === reference.getFullYear()
       && parsed <= reference;
   }
 
   function disqualifiedSaveSummary(saved, created, updated, rejected) {
-    return `${saved} valid in dashboard (${created} new, ${updated} refreshed); ${rejected} invalid/old not saved`;
+    return `${saved} valid in dashboard (${created} new, ${updated} refreshed); ${rejected} invalid not saved`;
   }
 
   function opportunitySaveSummary(saved, created, updated, apiRejected) {
     return `${saved} frontend-valid (${created} new, ${updated} refreshed); ${apiRejected} rejected by API`;
   }
 
-  function opportunityStartCutoff(reference = new Date()) {
-    const cutoff = new Date(reference);
-    cutoff.setHours(0, 0, 0, 0);
-    cutoff.setDate(cutoff.getDate() - 3);
-    return cutoff;
+  // Bid numbers read by the last completed opportunity scan, including bids
+  // that were rejected, so a later scan can tell where the new bids end.
+  const OPPORTUNITY_KNOWN_BIDS_KEY = "gemOpportunityKnownBids";
+  // Bids read by the scan in progress. They only become "known" once that
+  // scan completes; an interrupted run must not hide the pages it never read.
+  const OPPORTUNITY_RUN_BIDS_KEY = "gemOpportunityRunBids";
+  const OPPORTUNITY_KNOWN_PAGES_TO_STOP = 2;
+  const OPPORTUNITY_KNOWN_BID_TTL_MS = 150 * 86400000;
+
+  async function storedBidMap(key) {
+    try {
+      const value = (await chrome.storage.local.get(key))[key];
+      return value && typeof value === "object" ? value : {};
+    } catch {
+      return {};
+    }
   }
 
-  function isOpportunityBeforeStartCutoff(value, reference = new Date()) {
-    if (!value) return false;
-    const parsed = new Date(value);
-    return !Number.isNaN(parsed.getTime()) && parsed < opportunityStartCutoff(reference);
+  async function storeBidMap(key, value) {
+    try {
+      await chrome.storage.local.set({ [key]: value });
+    } catch {
+      // Losing this only means the next scan reads a few extra pages.
+    }
+  }
+
+  function isKnownOpportunityPage(cards, knownBids) {
+    return cards.length > 0 && cards.every(({ bidNo }) => knownBids[bidNo]);
+  }
+
+  function mergeKnownBids(knownBids, runBids, now = Date.now()) {
+    const merged = {};
+    for (const [bidNo, seenAt] of Object.entries({ ...knownBids, ...runBids })) {
+      if (now - Number(seenAt || 0) < OPPORTUNITY_KNOWN_BID_TTL_MS) merged[bidNo] = seenAt;
+    }
+    return merged;
+  }
+
+  function opportunityCardQuantity(card) {
+    return Number(text(card).match(/\bQuantity\s*:?\s*(\d+)\b/i)?.[1] || 0);
   }
 
   function opportunityCardStartDate(card) {
@@ -227,6 +329,11 @@
     const direct = marker.closest("a, button, [role=button], [ng-click]");
     const markerRect = marker.getBoundingClientRect();
     const candidates = [];
+    for (const node of card.querySelectorAll(
+      "a.view_reason, button.view_reason, [class~=view_reason], [ng-click*=reason i], [data-ng-click*=reason i]"
+    )) {
+      if (visible(node)) candidates.push({ node, score: 500 });
+    }
     if (direct && !BID_PATTERN.test(text(direct))) candidates.push({ node: direct, score: 120 });
 
     for (const icon of card.querySelectorAll("i, svg, img, [class*=eye]")) {
@@ -242,7 +349,7 @@
     }
     let parent = marker.parentElement;
     for (let depth = 0; parent && depth < 4; depth += 1, parent = parent.parentElement) {
-      for (const node of parent.querySelectorAll("a, button, [role=button], [ng-click]")) {
+      for (const node of parent.querySelectorAll("a, button, [role=button], [ng-click], [data-ng-click]")) {
         if (!visible(node) || BID_PATTERN.test(text(node))) continue;
         const href = node.getAttribute("href") || "";
         if (href && href !== "#" && !/^javascript:/i.test(href) && !node.hasAttribute("ng-click")) continue;
@@ -271,11 +378,29 @@
   function activateControl(control) {
     control.scrollIntoView({ block: "center", inline: "center" });
     const clickId = `bid-history-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const ownerDocument = control.ownerDocument || document;
+    let clicked = false;
+    const acknowledge = (event) => {
+      if (event.detail?.clickId === clickId) clicked = Boolean(event.detail.clicked);
+    };
     control.setAttribute("data-acxxel-click-id", clickId);
-    document.dispatchEvent(new CustomEvent("acxxel-gem-click-control", {
-      detail: { clickId },
-    }));
-    control.removeAttribute("data-acxxel-click-id");
+    ownerDocument.addEventListener("acxxel-gem-control-clicked", acknowledge);
+    try {
+      ownerDocument.dispatchEvent(new CustomEvent("acxxel-gem-click-control", {
+        detail: { clickId },
+      }));
+    } finally {
+      ownerDocument.removeEventListener("acxxel-gem-control-clicked", acknowledge);
+      control.removeAttribute("data-acxxel-click-id");
+    }
+    // Reloading/reinstalling an unpacked extension does not retroactively run
+    // its MAIN-world bridge in an already-open GeM document. In that case the
+    // bridge emits no acknowledgement; a native click still reaches GeM's
+    // Angular/jQuery handler and prevents every modal/pagination action from
+    // silently becoming stuck. Never fire this after an acknowledged bridge
+    // click, because that would submit the control twice.
+    if (!clicked) control.click();
+    return clicked;
   }
 
   function describeControl(control) {
@@ -295,7 +420,8 @@
     const end = Date.now() + timeout;
     while (Date.now() < end) {
       stopIfRequested();
-      const title = [...document.querySelectorAll("h1,h2,h3,h4,div,span")]
+      throwIfGemTransientError();
+      const title = [...document.querySelectorAll("h1,h2,h3,h4,h5,h6,p,div,span")]
         .find((node) => visible(node) && /^reason for technical evaluation$/i.test(text(node)));
       if (title) {
         let modal = title.closest("[role=dialog], .modal, .modal-content, .ngdialog-content, .modal-dialog");
@@ -316,14 +442,15 @@
       "table tr, [role=row], .table-row, .row, tbody > *, [class*=history] > *"
     );
     for (const row of rowCandidates) {
-      let cellNodes = [...row.querySelectorAll(":scope > td, :scope > [role=cell], :scope > [class*=col-], :scope > .column")];
+      let cellNodes = [...row.querySelectorAll(":scope > td, :scope > th, :scope > [role=cell], :scope > [class*=col-], :scope > .column")];
       if (cellNodes.length < 3) {
-        cellNodes = [...row.querySelectorAll("td, [role=cell], [class*=col-], .column")]
+        cellNodes = [...row.querySelectorAll("td, th, [role=cell], [class*=col-], .column")]
           .filter((node) => visible(node));
       }
-      const cells = cellNodes.map(text).filter(Boolean)
-        .filter((value, index, values) => values.indexOf(value) === index);
-      if (cells.length < 3) continue;
+      // Preserve column positions: empty or repeated reason/comment values
+      // must not shift the date and status columns.
+      const cells = cellNodes.map(text);
+      if (cells.length < 2) continue;
       if (!/\d{4}[-/]\d{2}[-/]\d{2}|\d{2}[-/]\d{2}[-/]\d{4}/.test(cells[0])) continue;
       rows.push({
         date_time: dateFrom(cells[0]) || cells[0],
@@ -381,8 +508,9 @@
     const end = Date.now() + timeout;
     while (Date.now() < end) {
       stopIfRequested();
+      throwIfGemTransientError();
       const rows = historyRows(modal);
-      if (rows.length) return rows;
+      if (rows.some((row) => row.date_time && /disqualified/i.test(row.status))) return rows;
       await sleep(250);
     }
     return [];
@@ -407,11 +535,28 @@
   }
 
   async function historyFor(card) {
+    // A previous close failure can leave an overlay intercepting all retries.
+    // Never read a still-open popup as though it belonged to the next bid.
+    const existingModal = [...document.querySelectorAll("[role=dialog], .modal, .ngdialog-content")]
+      .find((node) => visible(node) && /reason for technical evaluation/i.test(text(node)));
+    if (existingModal && !await closeModal(existingModal)) {
+      return { rows: [], error: "previous technical evaluation popup is still open" };
+    }
     const controls = disqualifiedControls(card);
     if (!controls.length) return { rows: [], error: "history control not found" };
+    if (gemTransientErrorMessage()) {
+      return { rows: [], error: "GeM temporarily rejected the evaluation-history request" };
+    }
     let modalOpened = false;
     let modalSample = "";
     for (const control of controls) {
+      if (gemTransientErrorMessage()) {
+        return { rows: [], error: "GeM temporarily rejected the evaluation-history request" };
+      }
+      await waitForGemRemoteActionSlot();
+      if (gemTransientErrorMessage()) {
+        return { rows: [], error: "GeM temporarily rejected the evaluation-history request" };
+      }
       activateControl(control);
       const modal = await waitForHistoryModal(3000);
       if (!modal) continue;
@@ -434,7 +579,7 @@
   }
 
   function bidResultControl(card) {
-    return [...card.querySelectorAll("button, a, [role=button], [ng-click]")]
+    return [...card.querySelectorAll("button, a, [role=button], [ng-click], [data-ng-click]")]
       .filter(visible)
       .find((node) => {
         const label = [
@@ -447,7 +592,7 @@
 
   function visibleTechnicalStatus(card) {
     const raw = text(card);
-    const labelled = raw.match(/technical\s+status\s*:?\s*(disqualified|qualified)/i);
+    const labelled = raw.match(/technical\s+status\s*:?\s*(disqualified|qualified|not\s+evaluated|under\s+evaluation|evaluation\s+pending|pending|evaluated)\b/i);
     if (labelled) return labelled[1];
 
     // GeM's table layout renders the status and its heading in separate cells, so
@@ -463,29 +608,57 @@
     if (existingStatus) return { card, status: existingStatus, read: true };
 
     const control = bidResultControl(card);
-    if (!control) return { card, status: "", read: false };
+    if (!control) {
+      // GeM only renders View Bid Results once the technical result is
+      // published. A bid still in Technical Evaluation cannot be disqualified
+      // yet, so it is checked (not pending) and a later scan picks it up.
+      if (/\bStatus\s*:?\s*Technical\s+Evaluation\b/i.test(text(card))) {
+        return { card, status: "Under Evaluation", read: true };
+      }
+      return { card, status: "", read: false, error: `No View Bid Results control found. Card: ${text(card).slice(0, 900)}` };
+    }
+    if (gemTransientErrorMessage()) {
+      return { card, status: "", read: false, error: "GeM temporarily rejected the Bid Result request" };
+    }
+    await waitForGemRemoteActionSlot();
+    if (gemTransientErrorMessage()) {
+      return { card, status: "", read: false, error: "GeM temporarily rejected the Bid Result request" };
+    }
     activateControl(control);
 
     const end = Date.now() + timeout;
     while (Date.now() < end) {
       stopIfRequested();
+      throwIfGemTransientError();
       await sleep(250);
       const liveCard = currentCards().find((item) => item.bidNo === bidNo)?.card || card;
       const status = visibleTechnicalStatus(liveCard);
       if (status) return { card: liveCard, status, read: true };
     }
-    return { card, status: "", read: false };
+    const latestCard = currentCards().find((item) => item.bidNo === bidNo)?.card || card;
+    return { card: latestCard, status: "", read: false, error: `View Bid Results did not reveal a recognized technical status. Card: ${text(latestCard).slice(0, 900)}` };
   }
 
-  async function extractPage(onRecord) {
+  async function extractPage(onRecord, processed = new Set()) {
     const cards = currentCards();
     const results = [];
     for (const { bidNo, card } of cards) {
       stopIfRequested();
+      if (processed.has(bidNo)) continue;
       // Opening and closing evaluation history can make Angular replace every row.
       // Always reacquire the current card instead of using a detached snapshot.
       const currentCard = currentCards().find((item) => item.bidNo === bidNo)?.card || card;
-      const evaluation = await revealBidResult(bidNo, currentCard);
+      // Disqualified tracking follows the status printed on the seller-list
+      // card. Do not open View Bid Results for Evaluated, Qualified, Pending,
+      // or status-less cards: those requests add load to GeM and this scan is
+      // only meant to persist explicitly disqualified bids.
+      const listedStatus = visibleTechnicalStatus(currentCard);
+      const evaluation = {
+        card: currentCard,
+        status: listedStatus,
+        read: true,
+        error: "",
+      };
       const liveCard = evaluation.card;
       const raw = text(liveCard);
       const isDisqualified = evaluation.read && /disqualified/i.test(evaluation.status);
@@ -508,6 +681,7 @@
         status: valueAfterLabel(raw, ["Bid/RA Status", "Status"]),
         technical_status: evaluation.read ? evaluation.status : valueAfterLabel(raw, ["Technical Status"]),
         evaluation_read: evaluation.read,
+        evaluation_error: evaluation.error || "",
         is_disqualified: isDisqualified,
         disqualified_at: disqualifiedDate || "",
         history,
@@ -527,7 +701,7 @@
   }
 
   function paginationNextLegacy() {
-    const controls = [...document.querySelectorAll("button, a, [role=button], li")]
+    const controls = queryAllSearchableRoots("button, a, [role=button], li")
       .filter((node) => visible(node) && /^next\s*(›|»|>)?$/i.test(text(node)) && enabled(node));
     const scored = controls.map((node) => {
       let parent = node.parentElement;
@@ -542,16 +716,16 @@
     }).sort((a, b) => b.score - a.score);
     if (scored[0]?.node) return scored[0].node;
 
-    const activePage = [...document.querySelectorAll(".active, [aria-current=page]")]
+    const activePage = queryAllSearchableRoots(".active, [aria-current=page]")
       .find((node) => visible(node) && /^\d+$/.test(text(node)));
     const page = Number(text(activePage));
     if (!page) return null;
-    return [...document.querySelectorAll("button, a, [role=button], li")]
+    return queryAllSearchableRoots("button, a, [role=button], li")
       .find((node) => visible(node) && enabled(node) && text(node) === String(page + 1)) || null;
   }
 
   function paginationNext() {
-    const controls = [...document.querySelectorAll("button, a, [role=button], li")]
+    const controls = queryAllSearchableRoots("button, a, [role=button], li")
       .filter((node) => {
         if (!visible(node) || !enabled(node)) return false;
         const disabledParent = node.closest(".disabled, [aria-disabled=true]");
@@ -584,11 +758,11 @@
       return node.matches("li") ? node.querySelector("a, button, [role=button]") || node : node;
     }
 
-    const activePage = [...document.querySelectorAll(".active, [aria-current=page]")]
+    const activePage = queryAllSearchableRoots(".active, [aria-current=page]")
       .find((node) => visible(node) && /^\d+$/.test(text(node)));
     const page = Number(text(activePage));
     if (!page) return null;
-    const numericNext = [...document.querySelectorAll("button, a, [role=button], li")]
+    const numericNext = queryAllSearchableRoots("button, a, [role=button], li")
       .find((node) => visible(node) && enabled(node) && text(node) === String(page + 1));
     if (!numericNext) return null;
     return numericNext.matches("li")
@@ -604,7 +778,7 @@
       "i[class*=angle-right]", "i[class*=chevron-right]",
       "svg[class*=angle-right]", "svg[class*=chevron-right]",
     ].join(",");
-    const candidates = [...document.querySelectorAll(selector)]
+    const candidates = queryAllSearchableRoots(selector)
       .filter((node) => {
         if (node.closest("[role=dialog], .modal, .modal-dialog, .modal-content, .ngdialog-content")) return false;
         if (!visible(node) || !enabled(node) || node.closest(".disabled, [aria-disabled=true]")) return false;
@@ -636,11 +810,11 @@
         : clickable;
     }
 
-    const activePage = [...document.querySelectorAll(".active, [aria-current=page], [class*=current-page]")]
+    const activePage = queryAllSearchableRoots(".active, [aria-current=page], [class*=current-page]")
       .find((node) => visible(node) && /^\d+$/.test(text(node)));
     const page = Number(text(activePage));
     if (!page) return null;
-    const numericNext = [...document.querySelectorAll(selector)]
+    const numericNext = queryAllSearchableRoots(selector)
       .find((node) => visible(node) && enabled(node) && text(node) === String(page + 1));
     return numericNext?.matches("li")
       ? numericNext.querySelector("a, button, [role=button]") || numericNext
@@ -648,7 +822,7 @@
   }
 
   function mainPaginationNextState() {
-    const candidates = [...document.querySelectorAll("button, a, [role=button], li")]
+    const candidates = queryAllSearchableRoots("button, a, [role=button], li")
       .filter((node) => {
         if (!visible(node)) return false;
         if (node.closest("[role=dialog], .modal, .modal-dialog, .modal-content, .ngdialog-content")) return false;
@@ -665,24 +839,32 @@
         return { node: clickable, score };
       })
       .sort((a, b) => b.score - a.score);
-    if (!candidates.length) return { found: false, disabled: false, node: null };
+    if (!candidates.length) {
+      const fallback = paginationNextRobust() || paginationNext() || paginationNextLegacy();
+      if (!fallback) return { found: false, disabled: false, node: null };
+      return {
+        found: true,
+        disabled: !enabled(fallback) || Boolean(fallback.closest?.(".disabled, [aria-disabled=true]")),
+        node: fallback,
+      };
+    }
     const node = candidates[0].node;
     const disabled = !enabled(node) || Boolean(node.closest(".disabled, [aria-disabled=true]"));
     return { found: true, disabled, node };
   }
 
   function paginationTotalPages() {
-    const paginationNodes = [...document.querySelectorAll(
+    const paginationNodes = queryAllSearchableRoots(
       "[class*=pagination] a, [class*=pagination] button, [class*=pagination] li, "
       + "[class*=pager] a, [class*=pager] button, [class*=pager] li, [aria-label*=page i]"
-    )].filter((node) => !node.closest(
+    ).filter((node) => !node.closest(
       "[role=dialog], .modal, .modal-dialog, .modal-content, .ngdialog-content"
     ));
     const pages = paginationNodes
       .map((node) => Number(text(node)))
       .filter((value) => Number.isInteger(value) && value > 0 && value <= 500);
     if (!pages.length) {
-      const next = [...document.querySelectorAll("a, button, li, [role=button]")]
+      const next = queryAllSearchableRoots("a, button, li, [role=button]")
         .find((node) => visible(node) && /^next$/i.test(text(node)));
       let parent = next?.parentElement;
       for (let depth = 0; parent && depth < 4; depth += 1, parent = parent.parentElement) {
@@ -695,10 +877,85 @@
     return pages.length ? Math.max(...pages) : 0;
   }
 
+  const PAGINATION_SCOPE = "[class*=pagination], [class*=pager], [class*=paging]";
+  const MODAL_SCOPE = "[role=dialog], .modal, .modal-dialog, .modal-content, .ngdialog-content";
+
+  function activePageNumber() {
+    const node = queryAllSearchableRoots(
+      "[class*=pagination] .active, [class*=pagination] .current, [class*=pagination] [aria-current=page], "
+      + "[class*=pager] .active, [class*=pager] .current, [class*=pager] [aria-current=page]"
+    ).find((item) => !item.closest(MODAL_SCOPE) && visible(item) && /^\d+$/.test(text(item)));
+    return node ? Number(text(node)) : 0;
+  }
+
+  function paginationPageLinks() {
+    return queryAllSearchableRoots("a, button, [role=button]")
+      .filter((node) => (node.closest(PAGINATION_SCOPE) || /^#page-\d+$/i.test(node.getAttribute("href") || ""))
+        && !node.closest(MODAL_SCOPE)
+        && visible(node) && enabled(node)
+        && !node.closest(".disabled, .active, [aria-current=page]"))
+      .map((node) => ({ node, page: /^\d+$/.test(text(node)) ? Number(text(node)) : 0 }))
+      .filter((item) => item.page > 0 && item.page <= 500);
+  }
+
+  // Ask GeM's own pager (in the page's MAIN world) to select a page directly.
+  function requestBridgePageSelect(page) {
+    const requestId = `page-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    let selected = false;
+    const acknowledge = (event) => {
+      if (event.detail?.requestId === requestId) selected = Boolean(event.detail.selected);
+    };
+    document.addEventListener("acxxel-gem-page-selected", acknowledge);
+    try {
+      document.dispatchEvent(new CustomEvent("acxxel-gem-select-page", { detail: { requestId, page } }));
+    } finally {
+      document.removeEventListener("acxxel-gem-page-selected", acknowledge);
+    }
+    return selected;
+  }
+
+  // Jump from the current list page to a saved page without stepping through
+  // every page with Next: first GeM's pager API, then the numbered page link
+  // nearest to the target (1 -> 5 -> 6 instead of 1 -> 2 -> ... -> 6).
+  async function jumpToSavedPage(page, startSignature, onStep = null) {
+    let signature = startSignature;
+    let current = activePageNumber() || 1;
+    const settle = async (expectedPage) => {
+      const cards = await waitForBidCards(60000);
+      const nextSignature = cards.map((item) => item.bidNo).join("|");
+      if (nextSignature) signature = nextSignature;
+      current = activePageNumber() || expectedPage;
+    };
+    if (current === page) return { restored: true, signature, current };
+
+    await onStep?.(current, page);
+    await waitForGemRemoteActionSlot(5000);
+    if (requestBridgePageSelect(page) && await waitForPageChange(signature, 20000)) {
+      await settle(page);
+      if (current === page) return { restored: true, signature, current, method: "pager" };
+    }
+
+    for (let hop = 0; hop < 80 && current !== page; hop += 1) {
+      stopIfRequested();
+      if (gemTransientErrorMessage()) break;
+      const best = paginationPageLinks()
+        .filter((item) => item.page !== current)
+        .sort((a, b) => Math.abs(a.page - page) - Math.abs(b.page - page))[0];
+      if (!best || Math.abs(best.page - page) >= Math.abs(current - page)) break;
+      await onStep?.(current, best.page);
+      await waitForGemRemoteActionSlot(5000);
+      activateControl(best.node);
+      if (!await waitForPageChange(signature, 20000)) break;
+      await settle(best.page);
+    }
+    return { restored: current === page, signature, current, method: "page-links" };
+  }
+
   async function waitForPageChange(signature, timeout = 12000) {
     const end = Date.now() + timeout;
     while (Date.now() < end) {
       stopIfRequested();
+      if (gemTransientErrorMessage()) return false;
       await sleep(350);
       const nextSignature = currentCards().map((item) => item.bidNo).join("|");
       if (nextSignature && nextSignature !== signature) return true;
@@ -713,19 +970,35 @@
     // available in a background tab, so pagination should remain unobtrusive.
     window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "instant" });
     await sleep(500);
+    if (gemTransientErrorMessage()) return { advanced: false, reason: "gem-server-error" };
     let lastReason = "missing";
     for (let attempt = 1; attempt <= 2; attempt += 1) {
-      const state = mainPaginationNextState();
+      let state = mainPaginationNextState();
       if (!state.found) {
         lastReason = "missing";
+        const renderDeadline = Date.now() + (attempt === 1 ? 10000 : 3000);
+        while (!state.found && Date.now() < renderDeadline) {
+          stopIfRequested();
+          if (gemTransientErrorMessage()) return { advanced: false, reason: "gem-server-error" };
+          await sleep(500);
+          state = mainPaginationNextState();
+        }
+        if (!state.found) continue;
+      }
+      if (state.disabled) {
         await sleep(1500);
+        const confirmed = mainPaginationNextState();
+        if (confirmed.found && confirmed.disabled && paginationTotalPages() <= page) {
+          return { advanced: false, reason: "end" };
+        }
+        lastReason = "temporarily disabled";
         continue;
       }
-      if (state.disabled) return { advanced: false, reason: "end" };
       lastReason = "stuck";
       const next = state.node;
       next.scrollIntoView({ block: "center", inline: "center" });
-      await sleep(250);
+      await waitForGemRemoteActionSlot(5000);
+      if (gemTransientErrorMessage()) return { advanced: false, reason: "gem-server-error" };
       activateControl(next);
       if (await waitForPageChange(signature, 15000)) return { advanced: true };
     }
@@ -737,19 +1010,38 @@
     const targetHash = `#page-${page + 1}`;
     for (let routeAttempt = 1; routeAttempt <= 1; routeAttempt += 1) {
       // A failed Angular request can leave the address at the target page while
-      // the old cards remain rendered. Bounce through the known current route
-      // so assigning targetHash always emits a fresh hashchange.
+      // the old cards remain rendered. Reset the URL without dispatching an
+      // extra hashchange, then emit exactly one verified target-page request.
       if (location.hash.toLowerCase() === targetHash) {
-        location.hash = currentHash;
-        await sleep(1000);
+        history.replaceState(history.state, "", `${location.pathname}${location.search}${currentHash}`);
+        await sleep(250);
       }
+      await waitForGemRemoteActionSlot(5000);
       location.hash = targetHash;
       if (await waitForPageChange(signature, 20000)) return { advanced: true };
     }
     return { advanced: false, reason: lastReason };
   }
 
+  // GeM's "Something went wrong, please try again after some time" banner can
+  // also appear while a page's bid cards are still rendering, not just while
+  // clicking Next. Reload the tab and resume at the same page, mirroring the
+  // pagination recovery below, instead of spinning until an unrecoverable
+  // timeout ends the whole scan.
+  async function reloadAndResumeDisqualifiedScan(state, message) {
+    sessionStorage.setItem("acxxelDisqualifiedResume", JSON.stringify({ ...state, savedAt: Date.now() }));
+    await progress("recovering", message, {
+      page: state.page, saved: state.saved, rejected: state.rejected, checked: state.checked, pending: state.pending,
+    });
+    // Give GeM a short cooldown before rebuilding the same filtered page. An
+    // immediate reload after its generic error tends to reproduce the error.
+    await sleep(Math.min(8000 + Number(state.serverRecoveryAttempts || 0) * 5000, 30000));
+    location.reload();
+    await new Promise(() => {});
+  }
+
   const MAX_PAGINATION_RECOVERY_ATTEMPTS = 4;
+  const MAX_SERVER_RECOVERY_ATTEMPTS = 8;
 
   async function advancePageWithRecovery(signature, page, onRetry) {
     let recoveryAttempt = 0;
@@ -757,6 +1049,13 @@
       stopIfRequested();
       const advance = await advancePage(signature, page);
       if (advance.advanced || advance.reason === "end") return advance;
+      // The banner prevents advancePage from issuing any request. Repeating
+      // that guard cannot recover the tab; let the caller rebuild the list.
+      if (advance.reason === "gem-server-error") {
+        const error = new Error(`GeM server error blocked pagination on page ${page}.`);
+        error.reason = advance.reason;
+        throw error;
+      }
       recoveryAttempt += 1;
       await onRetry?.(recoveryAttempt, advance.reason);
 
@@ -774,26 +1073,125 @@
     );
   }
 
-  async function scanAllPages() {
+  async function scanAllPages(resume = null) {
     if (syncing) throw new Error("A GeM bid sync is already running in this tab.");
     syncing = true;
     activeScanType = "disqualified";
+    disqualifiedPending = [];
     stopRequested = false;
     pauseRequested = false;
-    let page = 1;
-    let saved = 0;
-    let created = 0;
-    let updated = 0;
-    let rejected = 0;
-    let checked = 0;
-    let totalPages = 0;
+    let page = Number(resume?.page || 1);
+    let saved = Number(resume?.saved || 0);
+    let created = Number(resume?.created || 0);
+    let updated = Number(resume?.updated || 0);
+    let rejected = Number(resume?.rejected || 0);
+    let checked = Number(resume?.checked || 0);
+    let totalPages = Number(resume?.totalPages || 0);
+    let serverRecoveryAttempts = Number(resume?.serverRecoveryAttempts || 0);
+    const pending = new Map((resume?.pending || []).map((item) => [item.bidNo, item]));
+    const processed = new Set(resume?.processedBidNos || []);
+    const seen = new Set(resume?.seenBidNos || []);
     const visited = new Set();
     try {
-      await progress("running", "Preparing the complete GeM bid list...", { page, saved, rejected });
+      await progress("running", resume
+        ? `Restoring the disqualified-bid scan at page ${page} after GeM stopped rendering pagination...`
+        : "Preparing the complete GeM bid list...", { page, saved, rejected, checked, pending: [...pending.values()] });
       // Always start from the complete evaluated-bid listing and page 1. Leaving
       // this to the user's current UI state silently syncs only a filtered subset.
       await applyCompleteBidListFilter();
       await sleep(1500);
+      if (page > 1) {
+        // A forced location.reload() cold-boots GeM's whole Angular app, which is
+        // slower than a normal hash-based page change, so give it a longer window
+        // than the routine per-page wait. Page 1 failing to render here is not
+        // always accompanied by GeM's "something went wrong" banner text (it can
+        // just be a slow/incomplete boot), so retry regardless of that match.
+        const firstPageCards = await waitForBidCards(60000, async (seconds) => {
+          await progress("running", `Restoring page ${page}: waiting for GeM page 1 to load (${seconds}s)...`, {
+            page, saved, rejected, checked,
+          });
+        });
+        const firstPageSignature = firstPageCards.map((item) => item.bidNo).join("|");
+        if (!firstPageSignature) {
+          if (serverRecoveryAttempts < MAX_SERVER_RECOVERY_ATTEMPTS) {
+            const transientError = gemTransientErrorMessage();
+            await reloadAndResumeDisqualifiedScan({
+              page, saved, created, updated, rejected, checked, totalPages,
+              serverRecoveryAttempts: serverRecoveryAttempts + 1,
+              processedBidNos: [...processed], seenBidNos: [...seen], pending: [...pending.values()],
+            }, transientError
+              ? `GeM showed "${transientError}" while restoring page ${page}. Reapplying the required filters and retrying the same page automatically (${serverRecoveryAttempts + 1}/${MAX_SERVER_RECOVERY_ATTEMPTS})...`
+              : `GeM's filtered bid list did not finish loading while restoring page ${page}. Reapplying the required filters and retrying the same page automatically (${serverRecoveryAttempts + 1}/${MAX_SERVER_RECOVERY_ATTEMPTS})...`);
+          }
+          throw new Error("GeM page 1 did not load while restoring the interrupted scan.");
+        }
+        // Jump straight to the saved page (pager API / numbered page links)
+        // instead of walking 1 -> 2 -> ... -> N with Next.
+        const jump = await jumpToSavedPage(page, firstPageSignature, async (fromPage, toPage) => {
+          await progress("running", `Jumping directly to saved page ${page} (page ${fromPage} -> ${toPage})...`, {
+            page, saved, rejected, checked, pending: [...pending.values()],
+          });
+        });
+        let restored = jump.restored;
+        let restoreFailure = "direct page jump did not render the saved page";
+        let jumpPage = jump.current || 1;
+        let jumpSignature = jump.signature || firstPageSignature;
+        if (!restored && !gemTransientErrorMessage()) {
+          const targetHash = `#page-${page}`;
+          if (location.hash.toLowerCase() === targetHash) {
+            history.replaceState(history.state, "", `${location.pathname}${location.search}#page-${jumpPage}`);
+          }
+          await waitForGemRemoteActionSlot(5000);
+          location.hash = targetHash;
+          restored = await waitForPageChange(jumpSignature, 20000);
+          if (!restored) restoreFailure = "direct page route did not render new cards";
+        }
+        // Some GeM sessions update #page-N without asking Angular to replace
+        // the cards. Fall back to the real Next control and fast-forward from
+        // wherever the jump stopped, without processing intermediate pages.
+        if (!restored && !gemTransientErrorMessage()) {
+          history.replaceState(history.state, "", `${location.pathname}${location.search}#page-${jumpPage}`);
+          let cursorPage = jumpPage;
+          let cursorSignature = jumpSignature;
+          try {
+            while (cursorPage < page) {
+              stopIfRequested();
+              await progress(
+                "running",
+                `Restoring saved page ${page}: moving through GeM pagination (${cursorPage} of ${page}) without rescanning earlier pages...`,
+                { page, saved, rejected, checked, pending: [...pending.values()] },
+              );
+              const advance = await advancePageWithRecovery(cursorSignature, cursorPage);
+              if (!advance.advanced) {
+                restoreFailure = `GeM pagination ended at page ${cursorPage} before saved page ${page}`;
+                break;
+              }
+              cursorPage += 1;
+              const restoredCards = await waitForBidCards(60000);
+              const nextSignature = restoredCards.map((item) => item.bidNo).join("|");
+              if (!nextSignature || nextSignature === cursorSignature) {
+                restoreFailure = `GeM did not render cards for recovery page ${cursorPage}`;
+                break;
+              }
+              cursorSignature = nextSignature;
+            }
+            restored = cursorPage === page && Boolean(cursorSignature);
+          } catch (error) {
+            restoreFailure = error.message || "pagination fast-forward failed";
+          }
+        }
+        if (!restored) {
+          if (serverRecoveryAttempts < MAX_SERVER_RECOVERY_ATTEMPTS) {
+            await reloadAndResumeDisqualifiedScan({
+              page, saved, created, updated, rejected, checked, totalPages,
+              serverRecoveryAttempts: serverRecoveryAttempts + 1,
+              processedBidNos: [...processed], seenBidNos: [...seen], pending: [...pending.values()],
+            }, `GeM did not render saved page ${page} (${restoreFailure}). Reapplying the required filters and retrying page ${page} automatically (${serverRecoveryAttempts + 1}/${MAX_SERVER_RECOVERY_ATTEMPTS})...`);
+          }
+          throw new Error(`GeM did not restore seller-list page ${page} after an automatic reload.`);
+        }
+        await sleep(1500);
+      }
       while (true) {
         stopIfRequested();
         await waitWhilePaused({ page, saved, rejected, checked });
@@ -806,86 +1204,180 @@
           );
         });
         if (!cards.length) {
+          const transientError = gemTransientErrorMessage();
+          if (serverRecoveryAttempts < MAX_SERVER_RECOVERY_ATTEMPTS) {
+            await reloadAndResumeDisqualifiedScan({
+              page, saved, created, updated, rejected, checked, totalPages,
+              serverRecoveryAttempts: serverRecoveryAttempts + 1,
+              processedBidNos: [...processed], seenBidNos: [...seen], pending: [...pending.values()],
+            }, transientError
+              ? `GeM showed "${transientError}" while loading page ${page}. Reapplying the required filters and retrying page ${page} automatically (${serverRecoveryAttempts + 1}/${MAX_SERVER_RECOVERY_ATTEMPTS})...`
+              : `GeM stopped rendering filtered cards on page ${page}. Reapplying the required filters and retrying page ${page} automatically (${serverRecoveryAttempts + 1}/${MAX_SERVER_RECOVERY_ATTEMPTS})...`);
+          }
           throw new Error(
             `GeM Bid List opened, but its bid cards did not load within 180 seconds. ${bidPageDiagnostics()}`,
           );
         }
+        // Rendering old cards is not recovery: keep the budget until Next
+        // actually succeeds, otherwise a persistent banner loops forever.
         const signature = cards.map((item) => item.bidNo).join("|");
         totalPages = Math.max(totalPages, paginationTotalPages());
         if (visited.has(signature)) {
           throw new Error(`GeM returned an already-scanned bid page at page ${page}; refusing to mark a partial scan complete.`);
         }
         visited.add(signature);
-        await extractPage(async (result, recordNumber, totalRecords) => {
-          stopIfRequested();
-          await waitWhilePaused({ page, saved, rejected, checked });
-          checked += 1;
-          if (!result.is_disqualified) {
+        // Resolve every card on this page before allowing pagination. Retries
+        // reacquire live cards because GeM replaces them when modals close.
+        // Read each GeM card only once per pass. Reopening the same result/history
+        // three times in quick succession was throttling GeM and removing the
+        // seller-list pagination. API confirmation still has its own retries.
+        for (let attempt = 1; attempt <= 1; attempt += 1) {
+          await extractPage(async (result, recordNumber, totalRecords) => {
+            if (processed.has(result.bid_no)) return;
+            if (!seen.has(result.bid_no)) { seen.add(result.bid_no); checked += 1; }
+            pending.set(result.bid_no, { bidNo: result.bid_no, page, attempts: attempt, reason: "Awaiting save confirmation" });
+            try {
+              stopIfRequested();
+              await waitWhilePaused({ page, saved, rejected, checked });
+              if (!result.evaluation_read) {
+                throw new Error(result.evaluation_error || "Technical status could not be read; bid has not been classified as qualified or skipped.");
+              }
+              if (!result.is_disqualified) {
+                processed.add(result.bid_no);
+                pending.delete(result.bid_no);
+                await progress(
+                  "running",
+                  `Checked ${result.bid_no} (${recordNumber}/${totalRecords} on page ${page}).`,
+                  { page, saved, rejected, checked },
+                );
+                return;
+              }
+              if (result.history_sync_error || !result.disqualified_at) {
+                throw new Error(`Could not confirm evaluation history for ${result.bid_no}: ${result.history_sync_error || "disqualification date was not read"}. This bid has NOT been classified as old. Reopen the GeM tab and retry the scan.`);
+              }
+              // Only this calendar year is synced; there is no monthly cutoff.
+              if (!isValidDisqualificationDate(result.disqualified_at)) {
+                rejected += 1;
+                processed.add(result.bid_no);
+                pending.delete(result.bid_no);
+                await progress(
+                  "running",
+                  `Not saving ${result.bid_no}: disqualification date is outside the current year, invalid, or in the future.`,
+                  { page, saved, rejected, checked },
+                );
+                return;
+              }
+              await progress(
+                "running",
+                `Saving disqualified bid ${result.bid_no}.`,
+                { page, saved, rejected, checked },
+              );
+              let response = null;
+              for (let saveAttempt = 1; saveAttempt <= 3; saveAttempt += 1) {
+                response = await runtimeMessage({
+                  type: "SAVE_GEM_BID_RESULTS",
+                  results: [result],
+                });
+                if (response.saved === 1 && response.frontendVisible) break;
+                if (saveAttempt < 3) await sleep(saveAttempt * 2000);
+              }
+              if (response.saved !== 1 || !response.frontendVisible) {
+                const reason = (response.rejections || []).map((item) => item.reason).join(", ");
+                throw new Error(`${result.bid_no}: save not confirmed by dashboard API${reason ? ` (${reason})` : ""}.`);
+              }
+              processed.add(result.bid_no);
+              pending.delete(result.bid_no);
+              saved += response.saved || 0;
+              created += response.created || 0;
+              updated += response.updated || 0;
+              rejected += response.rejected || 0;
+              await progress(
+                "running",
+                `Completed ${result.bid_no} (${recordNumber}/${totalRecords} on page ${page}).`,
+                { page, saved, rejected, checked },
+              );
+            } catch (error) {
+              if (error.code === "GEM_SYNC_STOPPED") throw error;
+              pending.set(result.bid_no, { bidNo: result.bid_no, page, attempts: attempt, reason: error.message });
+              await progress("running", `Retry required for ${result.bid_no}: ${error.message}`, { page, saved, rejected, checked, pending: [...pending.values()] });
+            }
+          }, processed);
+          // A card disappearing during a GeM refresh must not silently disappear
+          // from the page's accounting either.
+          for (const card of cards) {
+            if (!processed.has(card.bidNo) && !pending.has(card.bidNo)) {
+              pending.set(card.bidNo, { bidNo: card.bidNo, page, attempts: attempt, reason: "Card disappeared during page refresh" });
+            }
+          }
+          const pagePending = [...pending.values()].filter((item) => item.page === page);
+          if (!pagePending.length) break;
+          if (attempt < 1) await sleep(1500 * attempt);
+        }
+        const pagePending = [...pending.values()].filter((item) => item.page === page);
+        const firstPending = pagePending[0];
+        const pendingDetail = firstPending
+          ? ` First unresolved: ${firstPending.bidNo}: ${String(firstPending.reason || "unknown reason").slice(0, 240)}.`
+          : "";
+        await progress("running", `Scanned page ${page}. Checked ${checked}; ${disqualifiedSaveSummary(saved, created, updated, rejected)}. ${pending.size} unresolved bids retained for retry; continuing remaining pages.${pendingDetail}`, { page, saved, rejected, checked, pending: [...pending.values()] });
+        let advance;
+        // GeM rate-limits rapid page changes with its generic server-error
+        // banner. Pause 3-5s (with jitter) before each Next click.
+        await sleep(3000 + Math.floor(Math.random() * 2000));
+        stopIfRequested();
+        try {
+          advance = await advancePageWithRecovery(signature, page, async (attempt, reason) => {
             await progress(
               "running",
-              `Checked ${result.bid_no} (${recordNumber}/${totalRecords} on page ${page}).`,
-              { page, saved, rejected, checked },
+              `GeM pagination on page ${page} is ${reason}; retrying in the same tab before any reload (${attempt}/${MAX_PAGINATION_RECOVERY_ATTEMPTS})...`,
+              { page, saved, rejected, checked, pending: [...pending.values()] },
             );
-            return;
-          }
-          // The dashboard retains one calendar month of confirmed results.
-          // Apply that eligibility rule before calling the API so an old or
-          // undated bid is neither written nor reported as saved.
-          if (!isRecentDisqualification(result.disqualified_at)) {
-            rejected += 1;
-            await progress(
-              "running",
-              `Not saving ${result.bid_no}: disqualification date is missing, future, or outside the dashboard's one-month window.`,
-              { page, saved, rejected, checked },
-            );
-            return;
-          }
-          await progress(
-            "running",
-            `Saving disqualified bid ${result.bid_no}.`,
-            { page, saved, rejected, checked },
-          );
-          const response = await runtimeMessage({
-            type: "SAVE_GEM_BID_RESULTS",
-            results: [result],
           });
-          if (response.saved > 0 && !response.frontendVisible) {
-            throw new Error(`${result.bid_no} was saved but the API did not confirm frontend visibility.`);
+        } catch (paginationError) {
+          if (paginationError.code === "GEM_SYNC_STOPPED") throw paginationError;
+          const retryCurrentPage = paginationError.reason === "gem-server-error" && pagePending.length > 0;
+          const resumePage = retryCurrentPage ? page : page + 1;
+          const nextServerRecoveryAttempts = serverRecoveryAttempts + 1;
+          if (nextServerRecoveryAttempts <= MAX_SERVER_RECOVERY_ATTEMPTS) {
+            await reloadAndResumeDisqualifiedScan({
+              page: resumePage,
+              saved,
+              created,
+              updated,
+              rejected,
+              checked,
+              totalPages,
+              serverRecoveryAttempts: nextServerRecoveryAttempts,
+              processedBidNos: [...processed],
+              seenBidNos: [...seen],
+              pending: [...pending.values()],
+            }, `GeM pagination failed on page ${page}. Cooling down, reloading the list and resuming at page ${resumePage} (${nextServerRecoveryAttempts}/${MAX_SERVER_RECOVERY_ATTEMPTS})...`);
           }
-          saved += response.saved || 0;
-          created += response.created || 0;
-          updated += response.updated || 0;
-          rejected += response.rejected || 0;
-          await progress(
-            "running",
-            `Completed ${result.bid_no} (${recordNumber}/${totalRecords} on page ${page}).`,
-            { page, saved, rejected, checked },
-          );
-        });
-        await progress("running", `Synced page ${page}. Checked ${checked}; ${disqualifiedSaveSummary(saved, created, updated, rejected)}.`, { page, saved, rejected, checked });
-        const advance = await advancePageWithRecovery(signature, page, async (attempt, reason) => {
-          await progress(
-            "running",
-            `GeM pagination is temporarily unavailable after page ${page} (${reason}). Recovering automatically, attempt ${attempt}...`,
-            { page, saved, rejected, checked },
-          );
-        });
+          throw paginationError;
+        }
         if (!advance.advanced) {
+          if (totalPages > page) throw new Error(`Scan incomplete: stopped at page ${page}, but pagination showed at least ${totalPages} pages.`);
           break;
         }
         page += 1;
+        serverRecoveryAttempts = 0;
+      }
+      if (pending.size) {
+        throw new Error(`All available pages scanned, but ${pending.size} bids still need retry: ${[...pending.values()].map((item) => `${item.bidNo} (page ${item.page}): ${item.reason}`).join(" | ")}. Saved bids are retained; scan is not complete.`);
       }
       await progress(
         "complete",
         `Full GeM scan complete. Checked ${checked} bids; ${disqualifiedSaveSummary(saved, created, updated, rejected)}.`,
         { page, saved, rejected, checked },
       );
+      sessionStorage.removeItem("acxxelDisqualifiedResume");
     } catch (error) {
       if (error.code === "GEM_SYNC_STOPPED") {
-        await progress("stopped", `GeM bid sync stopped by user. ${disqualifiedSaveSummary(saved, created, updated, rejected)}.`, { page, saved, rejected, checked });
+        await progress("stopped", `GeM bid sync stopped by user. ${disqualifiedSaveSummary(saved, created, updated, rejected)}.`, { page, saved, rejected, checked, pending: [...pending.values()] });
+        sessionStorage.removeItem("acxxelDisqualifiedResume");
         return;
       }
-      await progress("failed", error.message || "GeM bid sync failed.", { page, saved, rejected, checked });
+      sessionStorage.removeItem("acxxelDisqualifiedResume");
+      await progress("failed", error.message || "GeM bid sync failed.", { page, saved, rejected, checked, pending: [...pending.values()] });
       error.syncProgressReported = true;
       throw error;
     } finally {
@@ -911,9 +1403,16 @@
     ["AIO", "All in One PC", /all\s+in\s+one\s+pc/i],
   ];
 
-  function opportunityFromText(bidNo, raw, cardStartDate = "") {
+  function opportunityFromText(bidNo, raw, cardStartDate = "", cardQuantity = 0) {
     const flat = String(raw || "").replace(/[\u0000-\u001f]+/g, " ").replace(/\s+/g, " ").trim();
     const bounded = (start, end) => flat.match(new RegExp(`${start}\\s*:?\\s*(.+?)(?=${end})`, "i"))?.[1]?.trim() || "";
+    const quantity = Number(flat.match(/\bTotal\s+Quantity\s*:?\s*(\d+)\b/i)?.[1]
+      || cardQuantity
+      || flat.match(/\bQuantity\s*:?\s*(\d+)\b/i)?.[1] || 0);
+    // Bids below 5 units are never received; a bid whose quantity could not
+    // be read is rejected too rather than risk saving a small one.
+    if (!quantity) return { reject: "quantity_unread" };
+    if (quantity < 5) return { reject: "quantity" };
     const itemName = bounded(
       "Item\\s+Category",
       "(?:Minimum\\s+Average|Years?\\s+of\\s+Past|MSE\\s+Relaxation|Startup\\s+Relaxation|Bidder\\s+Turnover|$)"
@@ -932,11 +1431,11 @@
     const matchedProducts = categories.map((category) => (
       OPPORTUNITY_PRODUCTS.find(([, pattern]) => pattern.test(category)) || null
     ));
-    // A bunch bid is eligible only when every category belongs to the exact
-    // allowlist. One A3 printer, UPS, scanner, laptop, projector, etc. rejects
-    // the complete bid even when another category is supported.
+    // Only single-product bids are received. A bunch bid (more than one item
+    // category) is rejected even when every category is supported.
     if (!categories.length || matchedProducts.some((product) => !product)) return { reject: "product" };
-    const product = categories.length > 1 ? ["bunch_bid", /./] : matchedProducts[0];
+    if (categories.length > 1) return { reject: "bunch" };
+    const product = matchedProducts[0];
     const deliveryText = bounded(
       "Consignees?/Reporting\\s+Officer\\s+and\\s+Quantity",
       "(?:Special\\s+terms|Buyer\\s+Added|Technical\\s+Specifications|$)"
@@ -974,10 +1473,8 @@
       || dateFrom(flat.match(new RegExp(`(?:Dated|Bid\\s+Start\\s+Date(?:/Time)?)\\s*:?\\s*${indianDateTime}`, "i"))?.[1]);
     if (!bidDate) return { reject: "date" };
     const now = new Date();
-    const firstAllowedDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 3);
     const lastAllowedDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
-    const bidStartTime = Date.parse(bidDate);
-    if (bidStartTime < firstAllowedDate.getTime() || bidStartTime >= lastAllowedDate.getTime()) {
+    if (Date.parse(bidDate) >= lastAllowedDate.getTime()) {
       return { reject: "date" };
     }
     return {
@@ -987,6 +1484,7 @@
       end_date: endDate,
       product_name: cleanItemName.slice(0, 500),
       product_type: product[0],
+      quantity,
       offer_validity_days: validityDays || null,
       department: bounded("Department\\s+Name", "(?:Organisation|Office|Contact|Buyer|Item\\s+Category|$)"),
       delivery_pincode: pins[0] || "",
@@ -1007,21 +1505,177 @@
     const cardStartDate = opportunityCardStartDate(card);
     let response;
     try {
+      await waitForGemRemoteActionSlot();
       response = await runtimeMessage({ type: "READ_GEM_BID_DETAIL", url, bidNo });
     } catch (error) {
       const message = String(error?.message || error);
       if (/HTTP\s+(?:401|403)\b/i.test(message)) {
         throw new Error("GeM session expired or access was denied. Please log in to GeM again.");
       }
-      if (/no tab with id|tab.*(?:closed|not found)|invalid tab id|GeM bid document returned HTTP|failed to fetch|networkerror/i.test(message)) {
+      // One unreadable or non-PDF document skips only that bid; it is not
+      // marked as read, so the next scan tries it again.
+      if (/no tab with id|tab.*(?:closed|not found)|invalid tab id|GeM bid document (?:returned HTTP|could not be read|is not a PDF|is larger than)|failed to fetch|networkerror/i.test(message)) {
         return { reject: "detail" };
       }
       throw error;
     }
     if (!response.detailText) return { reject: "detail" };
-    const opportunity = opportunityFromText(bidNo, response.detailText, cardStartDate);
+    const opportunity = opportunityFromText(bidNo, response.detailText, cardStartDate, opportunityCardQuantity(card));
     if (opportunity?.eligible) opportunity.pdf_url = url;
     return opportunity;
+  }
+
+  function corrigendumControl(card) {
+    return [...card.querySelectorAll("a, button, [role=button], [ng-click], [data-ng-click]")]
+      .filter(visible)
+      .find((node) => /^view\s+corrigendum$/i.test(text(node))) || null;
+  }
+
+  function openCorrigendumModal() {
+    return [...document.querySelectorAll("[role=dialog], .modal.show, .modal.in, .bootbox, .ngdialog-content, .modal-dialog")]
+      .filter(visible)
+      .find((node) => text(node) && !/reason for technical evaluation/i.test(text(node))) || null;
+  }
+
+  async function closeCorrigendumModal(modal) {
+    const close = [...modal.querySelectorAll("button, a, [role=button], .close, [data-dismiss], [data-bs-dismiss]")]
+      .filter(visible)
+      .find((node) => /^(?:ok|close|x|×)$/i.test(text(node))
+        || node.hasAttribute("data-dismiss") || node.hasAttribute("data-bs-dismiss")
+        || /\bclose\b/i.test(node.getAttribute("aria-label") || ""));
+    if (close) activateControl(close);
+    const end = Date.now() + 5000;
+    while (Date.now() < end) {
+      if (!openCorrigendumModal()) return true;
+      await sleep(150);
+    }
+    return false;
+  }
+
+  // Clicks the card's View Corrigendum link. GeM answers either with "No
+  // corrigendum found for this bid" or with the corrigendum details. Returns
+  // has_corrigendum: null when the popup could not be read, so a flaky read
+  // never changes what the dashboard already shows.
+  async function corrigendumFor(bidNo, card) {
+    const unknown = { has_corrigendum: null };
+    const liveCard = currentCards().find((item) => item.bidNo === bidNo)?.card || card;
+    const control = corrigendumControl(liveCard);
+    if (!control) return unknown;
+    const stale = openCorrigendumModal();
+    if (stale && !await closeCorrigendumModal(stale)) return unknown;
+    await waitForGemRemoteActionSlot();
+    if (gemTransientErrorMessage()) return unknown;
+    activateControl(control);
+    let lastBody = "";
+    let stableChecks = 0;
+    const end = Date.now() + 10000;
+    while (Date.now() < end) {
+      stopIfRequested();
+      await sleep(250);
+      if (gemTransientErrorMessage()) break;
+      const modal = openCorrigendumModal();
+      if (!modal) continue;
+      const body = text(modal);
+      if (/no\s+corrigendum\s+found/i.test(body)) {
+        await closeCorrigendumModal(modal);
+        return { has_corrigendum: false };
+      }
+      // The details are loaded after the popup opens; read them only once
+      // the popup text has stopped changing.
+      stableChecks = body === lastBody && !/loading|please\s+wait/i.test(body) ? stableChecks + 1 : 0;
+      lastBody = body;
+      if (stableChecks >= 3) {
+        await closeCorrigendumModal(modal);
+        return { has_corrigendum: true };
+      }
+    }
+    const leftOpen = openCorrigendumModal();
+    if (leftOpen) await closeCorrigendumModal(leftOpen);
+    return unknown;
+  }
+
+  function bidSearchInput() {
+    return queryAllSearchableRoots('input[type="text"], input[type="search"], input:not([type])')
+      .filter((input) => visible(input) && !input.disabled && !input.readOnly)
+      .filter((input) => !input.closest(
+        "[role=dialog], .modal, .ui-select-container, .multiSelect, .dropdown-menu, [class*=multiselect]"
+      ))
+      .find((input) => /search|bid\s*(?:no|number)|keyword/i.test([
+        input.placeholder, input.name, input.id,
+        input.getAttribute("aria-label"), input.getAttribute("ng-model"),
+      ].filter(Boolean).join(" "))) || null;
+  }
+
+  async function submitBidSearch(input, value) {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+    if (setter) setter.call(input, value); else input.value = value;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    await waitForGemRemoteActionSlot();
+    const group = input.closest("form, .input-group, [class*=search]") || input.parentElement;
+    const button = [...(group?.querySelectorAll("button, [role=button], a, i, span") || [])]
+      .filter(visible)
+      .find((node) => /search/i.test([
+        text(node), node.getAttribute("title"), node.getAttribute("aria-label"),
+        typeof node.className === "string" ? node.className : node.className?.baseVal,
+      ].filter(Boolean).join(" ")));
+    if (button) {
+      activateControl(button.closest("button, [role=button], a") || button);
+      return;
+    }
+    for (const type of ["keydown", "keypress", "keyup"]) {
+      input.dispatchEvent(new KeyboardEvent(type, { key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true }));
+    }
+  }
+
+  async function findBidBySearch(bidNo, input) {
+    await submitBidSearch(input, bidNo);
+    const end = Date.now() + 20000;
+    while (Date.now() < end) {
+      stopIfRequested();
+      await sleep(500);
+      if (gemTransientErrorMessage()) return null;
+      const match = currentCards().find((item) => item.bidNo === bidNo);
+      if (match) return match.card;
+    }
+    return null;
+  }
+
+  // A corrigendum can be issued days after a bid was received, and later scans
+  // skip already-read bids. Search each active dashboard bid that has no
+  // corrigendum yet and click only its View Corrigendum link (no PDF download).
+  async function recheckSavedCorrigenda(skipBids, context) {
+    const summary = { checked: 0, found: 0, notFound: 0, error: "" };
+    const pending = (await runtimeMessage({ type: "GET_CORRIGENDUM_PENDING" })).bidNos || [];
+    const bids = pending.filter((bidNo) => !skipBids[bidNo]);
+    if (!bids.length) return summary;
+    const input = bidSearchInput();
+    if (!input) {
+      summary.notFound = bids.length;
+      summary.error = "GeM bid search box was not found";
+      return summary;
+    }
+    try {
+      for (const [index, bidNo] of bids.entries()) {
+        stopIfRequested();
+        await waitWhilePaused(context);
+        await progress("running", `Checking saved bid ${bidNo} for a new corrigendum (${index + 1}/${bids.length})...`, context);
+        const card = await findBidBySearch(bidNo, bidSearchInput() || input);
+        // A bid outside the selected category is checked when its category is scanned.
+        if (!card) { summary.notFound += 1; continue; }
+        const result = await corrigendumFor(bidNo, card);
+        summary.checked += 1;
+        if (result.has_corrigendum) {
+          await runtimeMessage({ type: "MARK_GEM_CORRIGENDUM", bidNos: [bidNo] });
+          summary.found += 1;
+        }
+      }
+    } finally {
+      // Leaving a bid number in the search box would filter the next scan.
+      const current = bidSearchInput();
+      if (current?.value) await submitBidSearch(current, "").catch(() => {});
+    }
+    return summary;
   }
 
   async function selectLatestBidSort() {
@@ -1033,6 +1687,7 @@
       if (!latest) continue;
       const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set;
       if (setter) setter.call(select, latest.value); else select.value = latest.value;
+      await waitForGemRemoteActionSlot();
       select.dispatchEvent(new Event("input", { bubbles: true }));
       select.dispatchEvent(new Event("change", { bubbles: true }));
       await sleep(3000);
@@ -1058,6 +1713,7 @@
     const latestOption = exact(/Bid\s+Start\s+Date\s*:\s*Latest\s+First/i)
       .find((node) => node !== current);
     if (!latestOption) return false;
+    await waitForGemRemoteActionSlot();
     activateControl(latestOption);
     const end = Date.now() + 10000;
     while (Date.now() < end) {
@@ -1076,15 +1732,15 @@
         return pattern.test(text(label || input.parentElement));
       });
     const ongoing = inputFor(/^ongoing\s+bids?\s+available\s+for\s+participation$/i);
-    if (ongoing && !ongoing.checked) { ongoing.click(); await sleep(2500); }
+    if (ongoing && !ongoing.checked) { await waitForGemRemoteActionSlot(); ongoing.click(); await sleep(2500); }
     const ongoingRa = inputFor(/^ongoing\s+ras?\s+available\s+for\s+participation$/i);
-    if (ongoingRa?.checked && ongoingRa.type === "checkbox") { ongoingRa.click(); await sleep(2000); }
+    if (ongoingRa?.checked && ongoingRa.type === "checkbox") { await waitForGemRemoteActionSlot(); ongoingRa.click(); await sleep(2000); }
     const submitted = inputFor(/already\s+submitted|participated/i);
-    if (submitted?.checked && submitted.type === "checkbox") { submitted.click(); await sleep(2000); }
+    if (submitted?.checked && submitted.type === "checkbox") { await waitForGemRemoteActionSlot(); submitted.click(); await sleep(2000); }
     const evaluated = inputFor(/^technical\s+evaluated$/i);
-    if (evaluated?.checked && evaluated.type === "checkbox") { evaluated.click(); await sleep(2000); }
+    if (evaluated?.checked && evaluated.type === "checkbox") { await waitForGemRemoteActionSlot(); evaluated.click(); await sleep(2000); }
     const all = inputFor(/^all\s+bids?\/ras?$/i);
-    if (all && !all.checked) { all.click(); await sleep(2500); }
+    if (all && !all.checked) { await waitForGemRemoteActionSlot(); all.click(); await sleep(2500); }
     const sortedAutomatically = await selectLatestBidSort();
     if (!sortedAutomatically) {
       await progress(
@@ -1093,6 +1749,7 @@
         { page: 1, saved: 0 },
       );
     }
+    await waitForGemRemoteActionSlot(5000);
     location.hash = "page-1";
     await sleep(2500);
     return sortedAutomatically;
@@ -1169,6 +1826,7 @@
       )].filter(visible).find((node) => pattern.test(text(node)));
       if (!choice) continue;
       const clickable = choice.querySelector("button, a, [role=option], label") || choice;
+      await waitForGemRemoteActionSlot();
       activateControl(clickable);
       await sleep(3000);
       const selectedText = text(container);
@@ -1176,6 +1834,7 @@
         const checked = choice.querySelector('input[type="checkbox"]')?.checked;
         if (!checked) throw new Error(`GeM category "${query}" did not become selected.`);
       }
+      await waitForGemRemoteActionSlot(5000);
       location.hash = "page-1";
       await sleep(2500);
       return;
@@ -1194,15 +1853,20 @@
     let created = Number(resume?.created || 0);
     let updated = Number(resume?.updated || 0);
     let checked = Number(resume?.checked || 0);
-    let stoppedAtStartCutoff = false;
+    let stoppedAtKnownBids = false;
+    let knownPages = Number(resume?.knownPages || 0);
+    let corrigendaFound = 0;
     const rejected = {
-      product: 0, pac: 0, location: 0, date: 0, expired: 0, over120: 0, detail: 0, api: 0,
+      product: 0, bunch: 0, quantity: 0, quantity_unread: 0, pac: 0, location: 0, date: 0, expired: 0, over120: 0, detail: 0, api: 0,
       ...(resume?.rejected || {}),
     };
     try {
       await progress("running", resume
         ? `Restoring the selected category scan at page ${page} after GeM stopped loading...`
         : "Preparing the manually selected GeM category...", { page, saved, checked });
+      const knownBids = await storedBidMap(OPPORTUNITY_KNOWN_BIDS_KEY);
+      const runBids = resume ? await storedBidMap(OPPORTUNITY_RUN_BIDS_KEY) : {};
+      if (!resume) await storeBidMap(OPPORTUNITY_RUN_BIDS_KEY, {});
       const latestFirst = await applyOpportunityFilters();
       if (resume?.categoryQuery) {
         const category = OPPORTUNITY_CATEGORIES.find((entry) => entry[1] === resume.categoryQuery);
@@ -1210,6 +1874,7 @@
         await selectOpportunityCategory(category[1], category[2]);
       }
       if (page > 1) {
+        await waitForGemRemoteActionSlot(5000);
         location.hash = `page-${page}`;
         await sleep(3000);
       }
@@ -1219,25 +1884,32 @@
         const signature = cards.map((item) => item.bidNo).join("|");
         if (!signature || visited.has(signature)) throw new Error(`Selected category scan repeated/stalled at page ${page}.`);
         visited.add(signature);
+        // With Latest First sorting, new bids come first. Once whole pages
+        // contain only bids the previous completed scan already read, every
+        // later page is older still, so stop instead of re-reading them.
+        if (latestFirst && isKnownOpportunityPage(cards, knownBids)) {
+          knownPages += 1;
+          if (knownPages >= OPPORTUNITY_KNOWN_PAGES_TO_STOP) {
+            stoppedAtKnownBids = true;
+            break;
+          }
+        } else {
+          knownPages = 0;
+        }
         for (const { bidNo, card } of cards) {
           stopIfRequested();
           await waitWhilePaused({ page, saved, checked });
+          if (knownBids[bidNo] || runBids[bidNo]) continue;
           checked += 1;
-          const cardStartDate = opportunityCardStartDate(card);
-          if (latestFirst && isOpportunityBeforeStartCutoff(cardStartDate)) {
-            rejected.date += 1;
-            stoppedAtStartCutoff = true;
-            const cutoffDate = opportunityStartCutoff();
-            await progress(
-              "running",
-              `Start Date cutoff reached at ${bidNo} on page ${page} (card Start Date ${cardStartDate || "unparsed"}, cutoff ${cutoffDate.toISOString()}). Remaining older cards and pages will not be read. If this bid should still be within the three-day window, check the GeM Sort by control and card Start Date label.`,
-              { page, saved, checked },
-            );
-            break;
-          }
           await progress("running", `Opening ${bidNo} to verify full bid details...`, { page, saved, checked });
           const row = await opportunityFromBidDetail(bidNo, card);
           if (row?.eligible) {
+            const corrigendum = await corrigendumFor(bidNo, card);
+            if (corrigendum.has_corrigendum !== null) Object.assign(row, corrigendum);
+            if (corrigendum.has_corrigendum) {
+              corrigendaFound += 1;
+              await progress("running", `Corrigendum found for ${bidNo}.`, { page, saved, checked });
+            }
             // Save immediately instead of holding a whole page in memory. A
             // Pause/Stop after this point cannot discard already-read bids.
             const response = await runtimeMessage({ type: "SAVE_GEM_BID_OPPORTUNITIES", results: [row] });
@@ -1249,9 +1921,11 @@
             updated += response.updated || 0;
             rejected.api += response.rejected || 0;
           } else if (row?.reject) rejected[row.reject] += 1;
+          // A failed detail download is retried by the next scan.
+          if (row?.reject !== "detail") runBids[bidNo] = Date.now();
         }
-        await progress("running", `Selected category page ${page}: checked ${checked}; ${opportunitySaveSummary(saved, created, updated, rejected.api)}. Rejected before API: detail ${rejected.detail}, product ${rejected.product}, PAC ${rejected.pac}, location ${rejected.location}, date ${rejected.date}, expired ${rejected.expired}, >120d ${rejected.over120}.`, { page, saved, checked });
-        if (stoppedAtStartCutoff) break;
+        await storeBidMap(OPPORTUNITY_RUN_BIDS_KEY, runBids);
+        await progress("running", `Selected category page ${page}: checked ${checked}; ${opportunitySaveSummary(saved, created, updated, rejected.api)}. Rejected before API: detail ${rejected.detail}, product ${rejected.product}, bunch ${rejected.bunch || 0}, qty<5 ${rejected.quantity}, qty unread ${rejected.quantity_unread}, PAC ${rejected.pac}, location ${rejected.location}, date ${rejected.date}, expired ${rejected.expired}, >120d ${rejected.over120}.`, { page, saved, checked });
         const advance = await advancePageWithRecovery(signature, page, async (attempt, reason) => {
           await progress(
             "running",
@@ -1267,6 +1941,7 @@
             updated,
             checked,
             rejected,
+            knownPages,
             categoryQuery: category?.[1] || "",
             savedAt: Date.now(),
           }));
@@ -1279,9 +1954,19 @@
         }
         page += 1;
       }
+      await storeBidMap(OPPORTUNITY_KNOWN_BIDS_KEY, mergeKnownBids(knownBids, runBids));
+      await storeBidMap(OPPORTUNITY_RUN_BIDS_KEY, {});
+      let recheck;
+      try {
+        recheck = await recheckSavedCorrigenda(runBids, { page, saved, checked });
+      } catch (error) {
+        if (error.code === "GEM_SYNC_STOPPED") throw error;
+        recheck = { checked: 0, found: 0, notFound: 0, error: error.message || "failed" };
+      }
+      const recheckSummary = ` Corrigendum re-check of saved bids: ${recheck.checked} checked, ${recheck.found} new corrigendum, ${recheck.notFound} not in this category/list${recheck.error ? ` (${recheck.error})` : ""}.`;
       await progress(
         "complete",
-        `${stoppedAtStartCutoff ? `Three-day Start Date cutoff reached on page ${page}; older pages were skipped` : "Selected category scan complete"}. Checked ${checked} bids; ${opportunitySaveSummary(saved, created, updated, rejected.api)}. Select the next category manually and scan again.`,
+        `${stoppedAtKnownBids ? `Reached already-read bids on page ${page}; older pages were skipped` : "Selected category scan complete"}. Checked ${checked} bids; ${opportunitySaveSummary(saved, created, updated, rejected.api)}; ${corrigendaFound} with a corrigendum.${recheckSummary} Select the next category manually and scan again.`,
         { page, saved, checked },
       );
       sessionStorage.removeItem("acxxelOpportunityResume");
@@ -1289,7 +1974,7 @@
       if (error.code === "GEM_SYNC_STOPPED") {
         await progress(
           "stopped",
-          `Opportunity scan stopped after ${checked} bids; ${opportunitySaveSummary(saved, created, updated, rejected.api)}. Rejected before API: detail ${rejected.detail}, product ${rejected.product}, PAC ${rejected.pac}, location ${rejected.location}, date ${rejected.date}, expired ${rejected.expired}, >120d ${rejected.over120}.`,
+          `Opportunity scan stopped after ${checked} bids; ${opportunitySaveSummary(saved, created, updated, rejected.api)}. Rejected before API: detail ${rejected.detail}, product ${rejected.product}, bunch ${rejected.bunch || 0}, qty<5 ${rejected.quantity}, qty unread ${rejected.quantity_unread}, PAC ${rejected.pac}, location ${rejected.location}, date ${rejected.date}, expired ${rejected.expired}, >120d ${rejected.over120}.`,
           { page, saved, checked },
         );
         return;
@@ -1311,6 +1996,9 @@
     let stableChecks = 0;
     while (Date.now() < end) {
       stopIfRequested();
+      // Don't wait out the full timeout behind GeM's transient error banner;
+      // let the caller reload and resume right away.
+      if (gemTransientErrorMessage()) return [];
       const cards = currentCards();
       const signature = cards.map((item) => item.bidNo).join("|");
       if (signature && signature === lastSignature) stableChecks += 1;
@@ -1386,13 +2074,64 @@
         return pattern.test(text(label || input.parentElement));
       });
 
-    // Do not combine All/Submitted filters automatically: that combination was
-    // shrinking GeM's result set. Only Technical Evaluated is required to expose
-    // the status/history used by this sync.
-    const technicalEvaluated = labelledInput(/^technical\s+evaluated$/i);
-    if (technicalEvaluated && !technicalEvaluated.checked) {
-      technicalEvaluated.click();
-      await sleep(3000);
+    const waitForInput = async (pattern, timeout = 30000) => {
+      const end = Date.now() + timeout;
+      while (Date.now() < end) {
+        stopIfRequested();
+        const input = labelledInput(pattern);
+        if (input) return input;
+        await sleep(500);
+      }
+      return null;
+    };
+
+    const desiredFilters = [
+      ["Bids/RAs Already Submitted/Participated", /^bids?\s*\/\s*ras?\s+already\s+submitted\s*\/\s*participated$/i, true, true],
+      ["All Bid/RAs", /^all\s+bids?\s*\/\s*ras?$/i, true, true],
+      ["Technical Evaluated", /^technical\s+evaluated$/i, true, true],
+      ["Ongoing Bids Available For Participation", /^ongoing\s+bids?\s+available\s+for\s+participation$/i, false, false],
+      ["Ongoing RAs Available For Participation", /^ongoing\s+ras?\s+available\s+for\s+participation$/i, false, false],
+      ["Product Bid/RAs", /^product\s+bids?\s*\/\s*ras?$/i, false, false],
+      ["Service Bid/RAs", /^service\s+bids?\s*\/\s*ras?$/i, false, false],
+      ["Bid To RAs", /^bid\s+to\s+ras?$/i, false, false],
+      ["Product Custom Bid/RAs", /^product\s+custom\s+bids?\s*\/\s*ras?$/i, false, false],
+      ["BOQ Bids", /^boq\s+bids?$/i, false, false],
+      ["Rate Contract Bids", /^rate\s+contract\s+bids?$/i, false, false],
+      ["Global Tender", /^global\s+tender$/i, false, false],
+      ["Financial Evaluated", /^financial\s+evaluated$/i, false, false],
+      ["Bid/RA Awarded", /^bid\s*\/\s*ra\s+awarded$/i, false, false],
+    ].map(([label, pattern, checked, required]) => ({ label, pattern, checked, required }));
+
+    // Apply the three positive filters first; GeM normally clears conflicting
+    // choices in each group automatically.
+    for (const filter of desiredFilters.filter((item) => item.checked)) {
+      let input = await waitForInput(filter.pattern);
+      if (!input) throw new Error(`Required GeM filter was not found: ${filter.label}.`);
+      if (!input.checked) {
+        await waitForGemRemoteActionSlot(4000);
+        input.click();
+        await sleep(2500);
+        input = await waitForInput(filter.pattern, 10000);
+      }
+      if (!input?.checked) throw new Error(`GeM did not enable required filter: ${filter.label}.`);
+    }
+
+    // Angular replaces this panel after a filter request, so reacquire every
+    // conflicting checkbox immediately before reading or clearing it.
+    for (const filter of desiredFilters.filter((item) => !item.checked)) {
+      let input = labelledInput(filter.pattern);
+      if (!input?.checked) continue;
+      await waitForGemRemoteActionSlot(4000);
+      input.click();
+      await sleep(2500);
+      input = await waitForInput(filter.pattern, 10000);
+      if (input?.checked) throw new Error(`GeM did not clear conflicting filter: ${filter.label}.`);
+    }
+
+    for (const filter of desiredFilters.filter((item) => item.required)) {
+      if (!labelledInput(filter.pattern)?.checked) {
+        throw new Error(`Required GeM filter changed while loading results: ${filter.label}.`);
+      }
     }
 
     const firstPageControl = [...document.querySelectorAll(
@@ -1401,13 +2140,15 @@
       text(node) === "1" || /^(?:first|page\s*1)$/i.test(node.getAttribute("aria-label") || "")
     ));
     if (firstPageControl) {
+      await waitForGemRemoteActionSlot(5000);
       firstPageControl.click();
       await sleep(1500);
     } else if (/^#page-\d+$/i.test(location.hash) && location.hash.toLowerCase() !== "#page-1") {
+      await waitForGemRemoteActionSlot(5000);
       location.hash = "page-1";
       await sleep(2000);
     }
-    return Boolean(technicalEvaluated);
+    return true;
   }
 
   async function autoStartAfterLogin() {
@@ -1454,6 +2195,7 @@
       }
       stopRequested = true;
       pauseRequested = false;
+      if (requestedType === "disqualified") sessionStorage.removeItem("acxxelDisqualifiedResume");
       sendResponse({ ok: true, stopping: syncing });
       return true;
     }
@@ -1486,7 +2228,7 @@
     sendResponse({ ok: true, started: true, cardCount });
     window.setTimeout(() => {
       const runner = message.type === "START_GEM_OPPORTUNITY_SYNC" ? scanOpportunityPages : scanAllPages;
-      runner().catch(async (error) => {
+      runner(message.type === "START_GEM_BID_SYNC" ? message.resume || null : null).catch(async (error) => {
         if (error.code === "GEM_SYNC_STOPPED") return;
         console.error("Acxxel GeM bid sync failed:", error);
         if (error.syncProgressReported) return;
@@ -1499,6 +2241,27 @@
     }, 0);
     return true;
   });
+
+  try {
+    const disqualifiedResume = JSON.parse(sessionStorage.getItem("acxxelDisqualifiedResume") || "null");
+    if (disqualifiedResume && Date.now() - Number(disqualifiedResume.savedAt || 0) < 30 * 60 * 1000) {
+      sessionStorage.removeItem("acxxelDisqualifiedResume");
+      window.setTimeout(() => {
+        scanAllPages(disqualifiedResume).catch(async (error) => {
+          console.error("Acxxel GeM disqualified scan resume failed:", error);
+          if (error.syncProgressReported) return;
+          await progress("failed", error.message || "GeM disqualified scan could not resume.", {
+            page: disqualifiedResume.page,
+            saved: disqualifiedResume.saved,
+            checked: disqualifiedResume.checked,
+            pending: disqualifiedResume.pending || [],
+          }).catch(() => {});
+        });
+      }, 3000);
+    }
+  } catch {
+    sessionStorage.removeItem("acxxelDisqualifiedResume");
+  }
 
   try {
     const resume = JSON.parse(sessionStorage.getItem("acxxelOpportunityResume") || "null");

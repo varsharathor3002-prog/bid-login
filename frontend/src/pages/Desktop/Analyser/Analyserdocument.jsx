@@ -120,7 +120,17 @@ export default function AnalyserDocument() {
 
       const formData = new FormData();
       formData.append("status", "pending");
-      formData.append("analyser_username", localStorage.getItem("analyser_username") || "Analyser");
+      const analyserUsername =
+        sessionStorage.getItem("analyser_username") ||
+        localStorage.getItem("analyser_username") ||
+        sessionStorage.getItem("username") ||
+        localStorage.getItem("username") ||
+        bidData?.analyser_username ||
+        "";
+      if (!analyserUsername || analyserUsername === "Analyser") {
+        throw new Error("Analyser name is missing. Please sign in again.");
+      }
+      formData.append("analyser_username", analyserUsername);
       formData.append("selected_analyser_docs", JSON.stringify(selectedDocIds));
       formData.append("selected_analyser_doc_labels", JSON.stringify(selectedDocLabels));
 
