@@ -196,7 +196,9 @@ def admin_review_aio_bid(r,bid_id):
 @csrf_exempt
 def delete_aio_bid(r,bid_id):
     from .bid_cleanup import delete_bid_with_related_data
-    _ensure_table();bid=AioBid.objects.filter(id=bid_id).first()
+    # Deleting cascades into the GeM job/audit tables (Django queries them even
+    # when no job exists), so they must exist first — same as delete_toner_bid.
+    _ensure_table();_ensure_gem_tables();bid=AioBid.objects.filter(id=bid_id).first()
     if not bid:return JsonResponse({"error":"AIO bid not found"},status=404)
     delete_bid_with_related_data(bid,"aio")
     return JsonResponse({"message":"AIO bid and related data deleted"})
