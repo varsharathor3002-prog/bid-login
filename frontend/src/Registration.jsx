@@ -155,16 +155,36 @@ export default function AddUser() {
 
     if (!confirmDelete) return;
 
-    try {
-
+    const requestDelete = async (confirmAssigned) => {
       const res = await fetch(
-        `${API_BASE}/delete-user/${id}/`,
+        `${API_BASE}/delete-user/${id}/${confirmAssigned ? "?confirm=1" : ""}`,
         {
           method: "DELETE",
         }
       );
+      const data = await res.json().catch(() => ({}));
+      return { res, data };
+    };
 
-      const data = await res.json();
+    try {
+
+      let { res, data } = await requestDelete(false);
+
+      // The user still has "Bid To Be Participated" bids assigned: deleting
+      // them goes ahead only if the admin confirms; Cancel deletes nothing.
+      if (res.status === 409 && data.requires_confirmation) {
+        const count = data.assigned_count;
+        const bidList = (data.bid_nos || []).join("\n");
+        const more = count > (data.bid_nos || []).length ? "\n..." : "";
+        const confirmWithBids = window.confirm(
+          `This user has ${count} bid(s) assigned:\n${bidList}${more}\n\n` +
+          "Deleting the user will also delete these assigned bids.\n" +
+          "To delete only the user, cancel and reassign the bids first.\n\n" +
+          "Press OK to delete the user and the assigned bids, or Cancel to delete nothing."
+        );
+        if (!confirmWithBids) return;
+        ({ res, data } = await requestDelete(true));
+      }
 
       if (res.ok) {
 

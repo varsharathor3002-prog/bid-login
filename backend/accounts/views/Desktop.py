@@ -83,9 +83,41 @@ def delete_user(request, id):
             user = User.objects.filter(id=id, role="user").first()
             if not user:
                 return JsonResponse({"error": "User not found"}, status=404)
+
+            from ..models import GemBidAssignment, GemBidAssignmentHistory, GemBidOpportunity
+            assigned = GemBidAssignment.objects.filter(assigned_to=user)
+            assigned_count = assigned.count()
+            # A user with "Bid To Be Participated" assignments is only deleted
+            # once the admin confirms (?confirm=1) that those bids go too; to
+            # keep the bids, the admin reassigns them first.
+            if assigned_count and request.GET.get("confirm") != "1":
+                return JsonResponse({
+                    "requires_confirmation": True,
+                    "assigned_count": assigned_count,
+                    "bid_nos": list(assigned.values_list("opportunity__bid_no", flat=True)[:10]),
+                }, status=409)
+
+            # Runs before the transaction: on MySQL, creating a missing table
+            # inside one is not allowed.
             _ensure_user_linked_tables()
-            user.delete()
-            return JsonResponse({"message": "User deleted successfully ✅"})
+            with transaction.atomic():
+                opportunity_ids = list(assigned.values_list("opportunity_id", flat=True))
+                GemBidAssignmentHistory.objects.filter(assignment__assigned_to=user).delete()
+                assigned.delete()
+                # Same soft delete as the admin's own delete action, so a later
+                # GeM scan does not bring these bids back.
+                GemBidOpportunity.objects.filter(id__in=opportunity_ids).update(is_deleted=True)
+                # History of bids already reassigned away still points at this
+                # user (PROTECT). It is write-only audit data, so drop the link.
+                GemBidAssignmentHistory.objects.filter(from_user=user).update(from_user=None)
+                GemBidAssignmentHistory.objects.filter(to_user=user).update(to_user=None)
+                GemBidAssignmentHistory.objects.filter(changed_by=user).delete()
+                user.delete()
+
+            message = "User deleted successfully ✅"
+            if assigned_count:
+                message = f"User and {assigned_count} assigned bid(s) deleted successfully ✅"
+            return JsonResponse({"message": message, "deleted_bids": assigned_count})
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=500)
     return JsonResponse({"error": "Use DELETE method"}, status=405)
