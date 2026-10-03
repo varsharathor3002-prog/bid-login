@@ -68,6 +68,14 @@ def user_list(request):
             return JsonResponse({"error": str(e)}, status=500)
     return JsonResponse({"error": "Use GET method"}, status=405)
 
+def _ensure_user_linked_tables():
+    """AIO and Toner bid / GeM job tables are created lazily at runtime, but
+    they all reference User — deleting a User makes Django query them (to
+    SET_NULL the links), which fails with error 1146 if one doesn't exist yet."""
+    from .Aio import _ensure_table as ensure_aio, _ensure_gem_tables as ensure_aio_gem
+    from .Toner import _ensure_table as ensure_toner, _ensure_gem_tables as ensure_toner_gem
+    ensure_aio(); ensure_aio_gem(); ensure_toner(); ensure_toner_gem()
+
 @csrf_exempt
 def delete_user(request, id):
     if request.method == "DELETE":
@@ -75,6 +83,7 @@ def delete_user(request, id):
             user = User.objects.filter(id=id, role="user").first()
             if not user:
                 return JsonResponse({"error": "User not found"}, status=404)
+            _ensure_user_linked_tables()
             user.delete()
             return JsonResponse({"message": "User deleted successfully ✅"})
         except Exception as e:
@@ -125,6 +134,7 @@ def delete_analyser(request, id):
             analyser = User.objects.filter(id=id, role="analyser").first()
             if not analyser:
                 return JsonResponse({"error": "Analyser not found"}, status=404)
+            _ensure_user_linked_tables()
             analyser.delete()
             return JsonResponse({"message": "Analyser deleted successfully ✅"})
         except Exception as e:
