@@ -12,7 +12,7 @@ import printerOm249 from "../../../assets/OM249.png";
 import printerOm221 from "../../../assets/OM221.png";
 import printerOm240 from "../../../assets/OM240.png";
 
-const API = "http://127.0.0.1:8000/api";
+const API = import.meta.env.VITE_API_URL;
 const FALLBACK_IMAGES = [img1, img2, img3];
 const PRINTER_MODEL_IMAGES = {
   OM052: printerOm052,
