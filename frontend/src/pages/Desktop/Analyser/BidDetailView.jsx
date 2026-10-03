@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import SpecialDocEditor from "../../../components/analyser/SpecialDocEditor";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   PROCESSORS, RAMS, HDDS, SSDS, OS_OPTIONS, DVDS, WIFIS, MONITORS,
@@ -582,6 +583,21 @@ export default function BidDetailView({ product = "desktop" }) {
           model: trimmedModelNo,
           model_no: trimmedModelNo,
           modelNo: trimmedModelNo,
+          // Same specs Find Model matches on — the backend refuses a new
+          // model number whose configuration already exists in the catalogue.
+          processor: form?.processor || "",
+          ram: form?.ram || "",
+          ssd: form?.ssd1 || form?.ssd || "",
+          ssd1: form?.ssd1 || form?.ssd || "",
+          hdd: form?.hdd || "None",
+          os: form?.os || "",
+          dvd: form?.dvd || "None",
+          wifi: form?.wifi || "None",
+          motherboard: form?.motherboard || "",
+          monitor: form?.monitor || "",
+          cabinet: form?.cabinet || "",
+          keyboard: form?.keyboard || "",
+          warranty: form?.warranty || "",
         }),
       });
 
@@ -976,13 +992,22 @@ export default function BidDetailView({ product = "desktop" }) {
           <div className="md:col-span-2 lg:col-span-3">
             <Label>Compliance Documents</Label>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              {form?.atc_special_document ? (
-                <SpecialDocView form={form} />
-              ) : (
-                <div className="p-4 rounded-lg border border-dashed border-gray-300 bg-gray-50 flex items-center justify-center text-gray-400 text-sm">
-                  No Special Document Attached
-                </div>
-              )}
+              <div className="flex flex-col gap-2">
+                {form?.atc_special_document ? (
+                  <SpecialDocView form={form} />
+                ) : (
+                  <div className="p-4 rounded-lg border border-dashed border-gray-300 bg-gray-50 flex items-center justify-center text-gray-400 text-sm">
+                    No Special Document Attached
+                  </div>
+                )}
+                <SpecialDocEditor
+                  productPath="desktop-bids"
+                  bidId={form?.id || id}
+                  hasDocument={!!form?.atc_special_document}
+                  readOnly={readOnly}
+                  onChange={(url) => setForm((prev) => ({ ...prev, atc_special_document: url ? normalizeDocUrl(url) : "" }))}
+                />
+              </div>
               <GeneralDocsViewPopup form={form} />
             </div>
           </div>

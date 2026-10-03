@@ -87,13 +87,11 @@ function App() {
         <Route path="/register" element={<Registration />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
 
-        {}
         <Route path="/user" element={<UserNavbar />}>
           <Route index element={<div>Select a product</div>} />
           <Route path="bid-to-be-participated" element={<UserAssignedBids />} />
         </Route>
 
-        {}
         <Route path="/user/desktop" element={<CreateDesktopBid />} />
         <Route path="/user/aio" element={<CreateAioBid />} />
         <Route path="/user/toner" element={<CreateTonerBid />} />

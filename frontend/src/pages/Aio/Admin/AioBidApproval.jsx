@@ -33,6 +33,7 @@ const PRICE_FIELDS = [
   "processor_price", "ram_price", "hdd_price", "ssd_price", "os_price",
   "dvd_price", "wifi_price", "screen_price", "keyboard_price", "warranty_price",
   "motherboard_price", "freightInstallation_price", "hddreturnable_price",
+  "epbg_price",
 ];
 
 const toPrice = (value) => {
@@ -959,11 +960,7 @@ export default function AioBidApproval() {
                 <PriceField label="Additional Software" name="software1" isTextArea optional form={form} handleChange={handleChange} />
                 <PriceField label="Graphics Description" name="gp" isTextArea optional form={form} handleChange={handleChange} />
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">EPBG (%)</label>
-                  <input type="text" name="epbg" value={form?.epbg || ""} onChange={handleChange}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
+                <PriceField label="EPBG (%)" name="epbg" priceName="epbg_price" form={form} handleChange={handleChange} />
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Freight & Installation</label>

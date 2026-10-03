@@ -23,6 +23,7 @@ from .Aio import (
     _fill_recipient_block, _erase_tender, _force_tender_no_date, _replace_bidder_financial_heading,
     _add_aio_page_numbers as _add_page_numbers, _fill_manufacturer_auth_body,
     _fill_service_support_escalation, _add_service_support_bid_date, _add_service_support_last_page_bid_date,
+    _remove_service_support_last_page_signature,
     _format_aio_service_center_heading as _format_service_center_heading,
     _add_aio_service_support_table_note as _add_service_support_table_note,
     _fill_service_support_availability, _format_model_number, _normalize_warranty_text,
@@ -358,6 +359,9 @@ def save_toner_model_number(r,bid_id):
     d=_data(r)
     model_number=str(d.get("model_number") or d.get("model") or d.get("model_no") or d.get("modelNo") or "").strip().upper()
     if not model_number:return JsonResponse({"error":"Model number required"},status=400)
+    from .model_duplicates import existing_model_for_config,duplicate_model_response
+    existing=existing_model_for_config(match_toner_catalogue_models,r,bid_id,model_number)
+    if existing:return duplicate_model_response(existing)
     b.model_no="";b.model=model_number;b.save()
     # Same to same as AIO's save_aio_model_number: auto-create a catalogue
     # entry tagged "_source":"toner_bid" if this model isn't already one, so
@@ -821,7 +825,9 @@ def generate_toner_documents(r,bid_id):
                             if re.search(r"TO\s+WHOM.*MAY\s+CONCERN",n):
                                 x=fitz.Rect(line["bbox"]);p.add_redact_annot(fitz.Rect(x.x0-4,x.y0-3,p.rect.width-36,x.y1+3),fill=(1,1,1));p.apply_redactions();y=max(92,x.y0-24);p.insert_textbox(fitz.Rect(62,y,p.rect.width-62,y+110),"\n".join(v for v in ["To,",b.dept_name,b.organization,addr] if v),fontsize=11,fontname="hebo",lineheight=1.15);break
                     if pidx==0:_add_service_support_bid_date(p,fitz,b.bid_no,date)
-                    if pidx==len(d)-1:_add_service_support_last_page_bid_date(p,fitz,b.bid_no,date,b.dept_name,b.organization,addr)
+                    if pidx==len(d)-1:
+                        _add_service_support_last_page_bid_date(p,fitz,b.bid_no,date,b.dept_name,b.organization,addr)
+                        _remove_service_support_last_page_signature(p,fitz)
                 elif typ=="manufacturer_auth" and pidx==2:
                     # Template page 4 = the official Trade Mark Certificate, a legal
                     # source document — must stay byte-for-byte visually unchanged.

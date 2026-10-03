@@ -26,7 +26,7 @@ class AioBid(models.Model):
     dvd=models.CharField(max_length=50,blank=True,default=""); dvd_price=models.DecimalField(max_digits=12,decimal_places=2,default=1000); warranty=models.CharField(max_length=50,blank=True,default=""); warranty_price=models.DecimalField(max_digits=12,decimal_places=2,default=1000)
     pro_descp=models.TextField(blank=True,default=""); software1=models.TextField(blank=True,default=""); gp=models.TextField(blank=True,default=""); motherboard_descp=models.TextField(blank=True,default="")
     local_content=models.CharField(max_length=20,blank=True,default="")
-    freightInstallation=models.CharField(max_length=50,default="Yes"); freightInstallation_price=models.DecimalField(max_digits=12,decimal_places=2,default=1000); hddreturnable=models.CharField(max_length=10,default="Yes"); hddreturnable_price=models.DecimalField(max_digits=12,decimal_places=2,default=1000); epbg=models.DecimalField(max_digits=7,decimal_places=2,default=0)
+    freightInstallation=models.CharField(max_length=50,default="Yes"); freightInstallation_price=models.DecimalField(max_digits=12,decimal_places=2,default=1000); hddreturnable=models.CharField(max_length=10,default="Yes"); hddreturnable_price=models.DecimalField(max_digits=12,decimal_places=2,default=1000); epbg=models.DecimalField(max_digits=7,decimal_places=2,default=0); epbg_price=models.DecimalField(max_digits=12,decimal_places=2,default=0)
     total_price=models.DecimalField(max_digits=14,decimal_places=2,default=0)
     upload_document=models.FileField(upload_to="aio_bid_documents/",null=True,blank=True); atc_special_document=models.FileField(upload_to="aio_bid_documents/special/",null=True,blank=True)
     selected_general_docs=models.TextField(blank=True,default="[]"); verified_fields=models.TextField(blank=True,default="[]"); status=models.CharField(max_length=30,default="draft")
@@ -67,7 +67,7 @@ class AioGemAuditLog(models.Model):
     class Meta: app_label="accounts"; db_table="accounts_aiogemauditlog"; ordering=["-created_at"]
     def __str__(self):return f"{self.job_id}: {self.event}"
 
-FIELDS=["bid_no","dept_name","organization","model_no","model","qty","date","atc","address","pincode","processor","processor_price","ram","ram_price","hdd","hdd_price","ssd","ssd_price","os","os_price","motherboard","motherboard_price","screen_size","screen_price","wifi","wifi_price","keyboard","keyboard_price","dvd","dvd_price","warranty","warranty_price","pro_descp","software1","gp","motherboard_descp","freightInstallation","freightInstallation_price","hddreturnable","hddreturnable_price","epbg","local_content"]
+FIELDS=["bid_no","dept_name","organization","model_no","model","qty","date","atc","address","pincode","processor","processor_price","ram","ram_price","hdd","hdd_price","ssd","ssd_price","os","os_price","motherboard","motherboard_price","screen_size","screen_price","wifi","wifi_price","keyboard","keyboard_price","dvd","dvd_price","warranty","warranty_price","pro_descp","software1","gp","motherboard_descp","freightInstallation","freightInstallation_price","hddreturnable","hddreturnable_price","epbg","epbg_price","local_content"]
 PRICES={x for x in FIELDS if x.endswith("_price")}|{"epbg"}
 def _ensure_model_table(model):
     table=model._meta.db_table
@@ -467,6 +467,9 @@ def save_aio_model_number(r,bid_id):
     d=_data(r)
     model_number=str(d.get("model_number") or d.get("model") or d.get("model_no") or d.get("modelNo") or "").strip().upper()
     if not model_number:return JsonResponse({"error":"Model number required"},status=400)
+    from .model_duplicates import existing_model_for_config,duplicate_model_response
+    existing=existing_model_for_config(match_aio_catalogue_models,r,bid_id,model_number)
+    if existing:return duplicate_model_response(existing)
     b.model_no="";b.model=model_number;b.save()
     # Same to same as Desktop's save_model_number: if this model isn't already
     # a catalogue entry, auto-create one tagged "_source": "aio_bid" so it
@@ -1344,7 +1347,7 @@ def _fill_service_support_escalation(page,fitz):
         ("Level 1","Toll free number","1800-313-9020",29,11),
         ("Level 2","Technical Support","9918200554",29,11),
         ("Level 3","Service Head","Madhuri Pal - 9519598884",29,11),
-        ("Level 4","Director","Devank Rastogi -\ndevank.devlok@gmail.com,\ndevesh.rastogi@gmail.com",56,9),
+        ("Level 4","Director","Devank Rastogi -\ndevank.@acxxel.com,\ndevesh.rastogi@acxxel.com,\ncorporate@acxxel.com",62,9),
     ]
     gap=3;y=table_top
     for level,label,value,row_height,value_fontsize in rows:
@@ -1357,7 +1360,9 @@ def _fill_service_support_escalation(page,fitz):
         page.insert_textbox(fitz.Rect(col_bounds[2]+6,value_y,col_bounds[3]-6,value_y+value_box_h+4),value,fontsize=value_fontsize,fontname="hebo",align=1,lineheight=1.2,color=(0,0,0))
         y+=row_height+gap
 
-    y+=15
+    y+=18
+    page.insert_text((x0,y),"Service Support Details on page no. 2,3,4,5",fontsize=11,fontname="hebo",color=(0,0,0))
+    y+=22
     page.insert_text((x0,y),"Auth. Signatory",fontsize=11,fontname="hebo",color=(0,0,0));y+=13.4
     page.insert_text((x0,y),"For Laps N Tabs Technology Pvt. Ltd.",fontsize=11,fontname="hebo",color=(0,0,0))
     sig_y=y+9
@@ -1741,6 +1746,23 @@ def _fill_service_support_availability(page,fitz):
     page.insert_text((x0,y),"Designation:- Director",fontsize=sig_fontsize,fontname="ssreg",color=color);y+=13.4
     page.insert_text((x0,y),"Email:- lapsntabs123@gmail.com",fontsize=sig_fontsize,fontname="ssreg",color=color);y+=13.4
     page.insert_text((x0,y),"Contact No.:- 9918200166",fontsize=sig_fontsize,fontname="ssreg",color=color)
+
+def _remove_service_support_last_page_signature(page,fitz):
+    # The Service Support cert's last page carries no signature block — erase
+    # everything (text + stamp image) between its closing "...existing service
+    # center." paragraph and the page-number footer. That paragraph only
+    # appears on this page, so any other page passed in is left untouched.
+    anchor=None
+    for block in page.get_text("dict").get("blocks",[]):
+        if block.get("type")!=0:continue
+        for line in block.get("lines",[]):
+            t=" ".join(s.get("text","") for s in line.get("spans",[]))
+            if re.search(r"existing service cent",t,re.I):
+                r=fitz.Rect(line["bbox"])
+                if anchor is None or r.y1>anchor.y1:anchor=r
+    if anchor is None:return
+    page.add_redact_annot(fitz.Rect(0,anchor.y1+4,page.rect.width,page.rect.height-30),fill=(1,1,1))
+    page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_REMOVE)
 
 # ---- Warranty + Make in India certificate fills. Same documents.pdf template
 # and redaction approach as Desktop's generate_certificates, adapted to say
@@ -2278,8 +2300,8 @@ def generate_aio_documents(r,bid_id):
                     # lands, not at a position computed before that push happened.
                     _fill_service_support_escalation(p,fitz)
                     if pidx==len(d)-1:
-                        moved_sig=_add_service_support_last_page_bid_date(p,fitz,b.bid_no,date,b.dept_name,b.organization,addr)
-                        _add_signature_gap(p,fitz,known_sig=moved_sig)
+                        _add_service_support_last_page_bid_date(p,fitz,b.bid_no,date,b.dept_name,b.organization,addr)
+                        _remove_service_support_last_page_signature(p,fitz)
                 elif typ=="manufacturer_auth" and pidx==2:
                     # Template page 4 = the official Trade Mark Certificate, a legal
                     # source document — must stay byte-for-byte visually unchanged

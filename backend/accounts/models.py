@@ -159,6 +159,7 @@ class DesktopBid(models.Model):
 
     date = models.DateField()
     epbg = models.FloatField(default=0)
+    epbg_price = models.FloatField(default=0)
     local_content = models.CharField(max_length=20, blank=True, null=True)
 
     freightInstallation = models.CharField(max_length=50, default="Yes")
@@ -170,6 +171,7 @@ class DesktopBid(models.Model):
     total_price = models.FloatField(default=0)
 
     optional_ports = models.TextField(blank=True, null=True)
+    optional_ports_price = models.FloatField(default=0)
 
     model_number = models.CharField(max_length=255, blank=True, null=True)
 
@@ -562,6 +564,7 @@ class WorkstationBid(models.Model):
 
     date = models.DateField()
     epbg = models.FloatField(default=0)
+    epbg_price = models.FloatField(default=0)
 
     total_price = models.FloatField(default=0)
     add_amount = models.FloatField(default=0, help_text="Margin/Profit added")
@@ -575,6 +578,7 @@ class WorkstationBid(models.Model):
 
 
     optional_ports = models.TextField(blank=True, null=True)
+    optional_ports_price = models.FloatField(default=0)
     model_number = models.CharField(max_length=255, blank=True, null=True)
 
     analyser_note = models.TextField(blank=True, null=True)

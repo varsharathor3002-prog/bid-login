@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
+import SpecialDocEditor from "../../../components/analyser/SpecialDocEditor";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   INTEL_PROCESSORS, INTEL_XEON_PROCESSORS, AMD_THREADRIPPER_PROCESSORS,
   INTEL_MOTHERBOARDS, INTEL_XEON_MOTHERBOARDS, AMD_MOTHERBOARDS,
-  RAMS, REGISTERED_RAMS, SSDS, HDDS, GRAPHICS_CARDS, CABINETS, KEYBOARDS,
+  RAMS, REGISTERED_RAMS, SSD1_OPTIONS, HDDS, GRAPHICS_CARDS, CABINETS, KEYBOARDS,
   POWER_SUPPLIES, OS_OPTIONS, MONITORS, WARRANTIES, DVDS, getPriceFromLocalData,
-  getFilteredRams, getFilteredIntelMotherboards, getFilteredAmdMotherboards,
+  getFilteredRams, getFilteredIntelMotherboards, getFilteredAmdMotherboards, optionLabel,
 } from "../User/WorkstationConfig";
 
 const API_BASE = import.meta.env.VITE_API_URL;
@@ -52,8 +53,8 @@ const optionsFor = (name, form) => ({
   processor: PROCESSORS,
   ram: getFilteredRams(form?.processor),
   hdd: HDDS,
-  ssd1: SSDS,
-  ssd2: SSDS,
+  ssd1: SSD1_OPTIONS,
+  ssd2: SSD1_OPTIONS,
   graphics: GRAPHICS_CARDS,
   motherboard: [...getFilteredIntelMotherboards(form?.processor), ...getFilteredAmdMotherboards(form?.processor)],
   os: OS_OPTIONS,
@@ -725,13 +726,22 @@ export default function WorkstationBidDetailView() {
         <div className="md:col-span-2 lg:col-span-3">
           <label className="block text-sm font-medium text-gray-700 mb-2">Compliance Documents</label>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {form?.atc_special_document ? (
-              <SpecialDocView form={form} />
-            ) : (
-              <div className="p-4 rounded-lg border border-dashed border-gray-300 bg-gray-50 flex items-center justify-center text-gray-400 text-sm">
-                No Special Document Attached
-              </div>
-            )}
+            <div className="flex flex-col gap-2">
+              {form?.atc_special_document ? (
+                <SpecialDocView form={form} />
+              ) : (
+                <div className="p-4 rounded-lg border border-dashed border-gray-300 bg-gray-50 flex items-center justify-center text-gray-400 text-sm">
+                  No Special Document Attached
+                </div>
+              )}
+              <SpecialDocEditor
+                productPath="workstation-bids"
+                bidId={form?.id || id}
+                hasDocument={!!form?.atc_special_document}
+                readOnly={readOnly}
+                onChange={(url) => setForm((prev) => ({ ...prev, atc_special_document: url ? url : "" }))}
+              />
+            </div>
             <GeneralDocsViewPopup form={form} />
           </div>
         </div>
@@ -753,7 +763,7 @@ export default function WorkstationBidDetailView() {
                   >
                     <option value="">Select {label}</option>
                     {hasSavedCustomValue && <option value={form[name]}>{form[name]}</option>}
-                    {options.map((option) => <option key={option.name} value={option.name}>{option.name}</option>)}
+                    {options.map((option, i) => <option key={`${option.name}-${i}`} value={option.name}>{optionLabel(option)}</option>)}
                     {!REQUIRED_FIELDS.includes(name) && <option value="None">None</option>}
                   </select>
                   <input

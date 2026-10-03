@@ -709,6 +709,9 @@ def _post_process_printer_pdf(doc_type, output_path, bid=None):
                     page, fitz, bid.bid_no if bid is not None else "", service_date,
                     bid.dept_name if bid is not None else "", bid.organization if bid is not None else "", printer_address,
                 )
+                # Only acts on the cert's last page (keyed off its closing paragraph).
+                from .Aio import _remove_service_support_last_page_signature
+                _remove_service_support_last_page_signature(page, fitz)
             elif doc_type == "make_in_india" and bid is not None:
                 _rewrite_printer_make_in_india(page, bid)
             elif doc_type in {"approved_atc_documents", "approved_all_documents"}:
@@ -751,6 +754,9 @@ def _post_process_printer_pdf(doc_type, output_path, bid=None):
                     page, fitz, bid.bid_no if bid is not None else "", service_date,
                     bid.dept_name if bid is not None else "", bid.organization if bid is not None else "", printer_address,
                 )
+                # Only acts on the cert's last page (keyed off its closing paragraph).
+                from .Aio import _remove_service_support_last_page_signature
+                _remove_service_support_last_page_signature(page, fitz)
                 _rewrite_printer_preloaded_os_paragraph(page)
                 if bid is not None:
                     _rewrite_printer_make_in_india(page, bid)

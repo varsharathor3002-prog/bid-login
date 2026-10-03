@@ -1,6 +1,12 @@
 from django.urls import path
 from .views.GemFinancialRanking import financial_rankings, delete_financial_ranking
 from . import views
+from .views.special_document import (
+    desktop_special_document,
+    workstation_special_document,
+    aio_special_document,
+    toner_special_document,
+)
 from .views.Workstation import (
     create_workstation_bid,
     update_workstation_bid,
@@ -168,6 +174,7 @@ urlpatterns = [
 
 
     path("desktop-bids/<int:bid_id>/generate-docs/", views.generate_certificates, name="generate-certificates"),
+    path("desktop-bids/<int:bid_id>/special-document/", desktop_special_document, name="desktop_special_document"),
     path("desktop-bids/<int:bid_id>/update-docs/", views.update_desktop_docs, name="update_desktop_docs"),
 
 
@@ -193,6 +200,7 @@ urlpatterns = [
     path("aio-catalogue/", list_aio_catalogue_products, name="list_aio_catalogue_products"),
     path("aio-bids/<int:bid_id>/save-model-number/", save_aio_model_number, name="save_aio_model_number"),
     path("aio-bids/<int:bid_id>/generate-docs/", generate_aio_documents, name="generate_aio_documents"),
+    path("aio-bids/<int:bid_id>/special-document/", aio_special_document, name="aio_special_document"),
     path("aio-bids/<int:bid_id>/update-docs/", update_aio_docs, name="update_aio_docs"),
     path("aio-bids/<int:bid_id>/gem-jobs/", create_aio_gem_upload_job, name="create_aio_gem_upload_job"),
     path("aio-bids/<int:bid_id>/gem-status/", update_aio_gem_status, name="update_aio_gem_status"),
@@ -216,6 +224,7 @@ urlpatterns = [
     path("toner-catalogue/", list_toner_catalogue_products, name="list_toner_catalogue_products"),
     path("toner-bids/<int:bid_id>/save-model-number/", save_toner_model_number, name="save_toner_model_number"),
     path("toner-bids/<int:bid_id>/generate-docs/", generate_toner_documents, name="generate_toner_documents"),
+    path("toner-bids/<int:bid_id>/special-document/", toner_special_document, name="toner_special_document"),
     path("toner-bids/<int:bid_id>/update-docs/", update_toner_docs, name="update_toner_docs"),
     path("toner-bids/<int:bid_id>/gem-jobs/", create_toner_gem_upload_job, name="create_toner_gem_upload_job"),
     path("toner-bids/<int:bid_id>/gem-status/", update_toner_gem_status, name="update_toner_gem_status"),
@@ -242,6 +251,7 @@ urlpatterns = [
     path("workstation-bids/<int:bid_id>/review/", review_workstation_bid, name="review_workstation_bid"),
     path("workstation-bids/<int:bid_id>/admin-review/", admin_review_workstation_bid, name="admin_review_workstation_bid"),
     path("workstation-bids/<int:bid_id>/generate-docs/", generate_workstation_certificates, name="generate_workstation_certificates"),
+    path("workstation-bids/<int:bid_id>/special-document/", workstation_special_document, name="workstation_special_document"),
     path("workstation-bids/<int:bid_id>/update-docs/", update_workstation_docs, name="update_workstation_docs"),
     path("workstation-catalogue/", list_workstation_catalogue_products, name="list_workstation_catalogue_products"),
 

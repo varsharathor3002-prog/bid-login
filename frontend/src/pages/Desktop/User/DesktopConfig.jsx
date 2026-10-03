@@ -28,7 +28,7 @@ export const RAMS = [
   { name: "8GB DDR4 3200", price: 5000 },
   { name: "16GB DDR4 3200", price: 9000 },
   { name: "32GB DDR4 3200", price: 18000 },
-  { name: "32GB DDR4 3200 2", price: 36000 },
+  { name: "32GB DDR4 3200 x 2", price: 36000 },
   { name: "8GB DDR5 4800", price: 8000 },
   { name: "16GB DDR5 4800", price: 13200 },
   { name: "32GB DDR5 4800", price: 26000 },

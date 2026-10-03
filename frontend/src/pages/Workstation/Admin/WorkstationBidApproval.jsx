@@ -3,9 +3,9 @@ import { FaTrash } from "react-icons/fa";
 import {
   INTEL_PROCESSORS, INTEL_XEON_PROCESSORS, AMD_THREADRIPPER_PROCESSORS,
   INTEL_MOTHERBOARDS, INTEL_XEON_MOTHERBOARDS, AMD_MOTHERBOARDS,
-  SSDS, HDDS, GRAPHICS_CARDS, CABINETS, KEYBOARDS, POWER_SUPPLIES,
+  SSD1_OPTIONS, HDDS, GRAPHICS_CARDS, CABINETS, KEYBOARDS, POWER_SUPPLIES,
   OS_OPTIONS, MONITORS, WARRANTIES, getPriceFromLocalData, getFilteredRams,
-  getFilteredIntelMotherboards, getFilteredAmdMotherboards,
+  getFilteredIntelMotherboards, getFilteredAmdMotherboards, optionLabel,
 } from "../User/WorkstationConfig";
 
 const API_BASE = import.meta.env.VITE_API_URL;
@@ -22,12 +22,13 @@ const PRICE_FIELDS = [
   "ram_price", "ssd1_price", "ssd2_price", "hdd_price", "graphics_price", "cabinet_price",
   "keyboard_price", "power_supply_price", "monitor_price", "os_price", "warranty_price",
   "freightInstallation_price", "hddreturnable_price", "extra_requirements_price",
+  "epbg_price", "optional_ports_price",
 ];
 const toPrice = (value) => Number(String(value ?? "").replace(/,/g, "").trim()) || 0;
 const calculateTotalPrice = (values) => PRICE_FIELDS.reduce((sum, name) => sum + toPrice(values?.[name]), 0);
 const PROCESSORS = [...INTEL_PROCESSORS, ...INTEL_XEON_PROCESSORS, ...AMD_THREADRIPPER_PROCESSORS];
 const optionsFor = (name, form) => ({
-  processor: PROCESSORS, ram: getFilteredRams(form?.processor), hdd: HDDS, ssd1: SSDS, ssd2: SSDS,
+  processor: PROCESSORS, ram: getFilteredRams(form?.processor), hdd: HDDS, ssd1: SSD1_OPTIONS, ssd2: SSD1_OPTIONS,
   graphics: GRAPHICS_CARDS,
   motherboard: [...getFilteredIntelMotherboards(form?.processor), ...getFilteredAmdMotherboards(form?.processor)],
   os: OS_OPTIONS, monitor: MONITORS, cabinet: CABINETS, keyboard: KEYBOARDS,
@@ -74,7 +75,7 @@ const PriceField = ({ label, name, priceName, form, handleChange, options = [], 
           className="flex-1 min-w-0 border border-gray-300 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white">
           <option value="">Select {label}</option>
           {form?.[name] && !options.some((option) => option.name === form[name]) && <option value={form[name]}>{form[name]}</option>}
-          {options.map((option) => <option key={option.name} value={option.name}>{option.name}</option>)}
+          {options.map((option, i) => <option key={`${option.name}-${i}`} value={option.name}>{optionLabel(option)}</option>)}
         </select>
       ) : (
         <input
@@ -860,16 +861,7 @@ export default function WorkstationBidApproval() {
                 <PriceField key={name} label={label} name={name} priceName={`${name}_price`} options={optionsFor(name, form)} form={form} handleChange={handleChange} />
               ))}
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">EPBG (%)</label>
-                <input
-                  type="text"
-                  name="epbg"
-                  value={form.epbg || ""}
-                  onChange={handleChange}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
+              <PriceField label="EPBG (%)" name="epbg" priceName="epbg_price" form={form} handleChange={handleChange} />
 
               <PriceField label="Processor Description" name="pro_descp" priceName="pro_descp_price" isTextArea optional form={form} handleChange={handleChange} />
               <PriceField label="Motherboard Description" name="motherboard_descp" priceName="motherboard_descp_price" isTextArea optional form={form} handleChange={handleChange} />
@@ -919,13 +911,17 @@ export default function WorkstationBidApproval() {
                 {TEXT_FIELDS.filter(([name]) => name === "optional_ports").map(([name, label]) => (
                   <div key={name}>
                     <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-                    <textarea
-                      name={name}
-                      value={form[name] || ""}
-                      onChange={handleChange}
-                      rows={2}
-                      className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm resize-none outline-none focus:ring-2 focus:ring-blue-500"
-                    />
+                    <div className="flex gap-3">
+                      <textarea
+                        name={name}
+                        value={form[name] || ""}
+                        onChange={handleChange}
+                        rows={2}
+                        className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm resize-none outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <input type="text" name="optional_ports_price" value={form.optional_ports_price ?? ""} onChange={handleChange} placeholder="Price"
+                        className="w-28 border border-blue-300 rounded-md px-2 py-2 text-sm text-center outline-none focus:ring-2 focus:ring-blue-500" />
+                    </div>
                   </div>
                 ))}
               </div>

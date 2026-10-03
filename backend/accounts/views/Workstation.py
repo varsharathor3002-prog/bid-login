@@ -105,7 +105,7 @@ def _ws_storage_gb(value):
     # dropdown's own "1024 GB (1TB) Sata SSD" label says so) — but the
     # shared Desktop._storage_to_gb helper (used by _values_overlap_score's
     # storage-equality bonus) treats "1 TB" as a decimal 1000, so a bid built
-    # from the "M.2 SSD NVME 1024GB" option (no "TB" in the text at all)
+    # from the "1024 GB NVME" option (no "TB" in the text at all)
     # would never register as equal to the catalogue's "1TB M.2 SSD" (1024
     # != 1000) and silently drop that field out of a Find Model match.
     text = re.sub(r"[^a-z0-9. ]+", " ", str(value or "").lower())
@@ -353,6 +353,7 @@ def _workstation_bid_data(bid, request, status_label=None):
         "power_supply_price", "monitor_price", "os_price", "wifi_price",
         "dvd_price", "warranty_price", "freightInstallation_price",
         "hdd_non_return_price", "extra_requirements_price",
+        "epbg_price", "optional_ports_price",
     )
     calculated_price = sum(float(getattr(bid, field, 0) or 0) for field in price_fields)
     approved_price = bid.final_amount or bid.total_price or calculated_price
@@ -430,6 +431,8 @@ def _workstation_bid_data(bid, request, status_label=None):
         "extra_requirements": bid.extra_requirements or "",
         "extra_requirements_price": bid.extra_requirements_price,
         "optional_ports": bid.optional_ports or "",
+        "optional_ports_price": bid.optional_ports_price,
+        "epbg_price": bid.epbg_price,
         "model_number": bid.model_number or "",
         "is_new_product": catalogue_specs.get("_source") == "workstation_bid",
         "analyser_note": bid.analyser_note or "",
@@ -498,6 +501,8 @@ def _apply_workstation_payload(bid, data):
     bid.extra_requirements = data.get("extra_requirements", bid.extra_requirements)
     bid.extra_requirements_price = safe_float(data.get("extra_requirements_price"), bid.extra_requirements_price)
     bid.optional_ports = data.get("optional_ports", bid.optional_ports) or ""
+    bid.optional_ports_price = safe_float(data.get("optional_ports_price"), bid.optional_ports_price)
+    bid.epbg_price = safe_float(data.get("epbg_price"), bid.epbg_price)
     bid.analyser_note = data.get("analyser_note") or data.get("remark") or bid.analyser_note
 
 
@@ -512,6 +517,10 @@ def save_workstation_model_number(request, bid_id):
             return JsonResponse({"error": "Model number required"}, status=400)
 
         model_number = model_number.strip().upper()
+        from .model_duplicates import existing_model_for_config, duplicate_model_response
+        existing = existing_model_for_config(match_workstation_catalogue_models, request, bid_id, model_number)
+        if existing:
+            return duplicate_model_response(existing)
         # Create the catalogue entry from the analyser's current selections,
         # not from a potentially stale copy of the bid.
         _apply_workstation_payload(bid, data)
@@ -877,6 +886,13 @@ def review_workstation_bid(request, bid_id):
     try:
         bid = WorkstationBid.objects.get(id=bid_id)
         data = json.loads(request.body)
+        from .model_duplicates import guard_new_model
+        blocked = guard_new_model(
+            match_workstation_catalogue_models, request, bid_id,
+            data.get("model_number") or data.get("model"), bid.model_number,
+        )
+        if blocked:
+            return blocked
         _apply_workstation_payload(bid, data)
         analyser_username = (data.get("analyser_username") or data.get("username") or "").strip()
         if analyser_username:
@@ -902,6 +918,13 @@ def admin_review_workstation_bid(request, bid_id):
         action = data.get("status", "")
         if action not in ("approved", "re-analyze"):
             return JsonResponse({"error": "Invalid status."}, status=400)
+        from .model_duplicates import guard_new_model
+        blocked = guard_new_model(
+            match_workstation_catalogue_models, request, bid_id,
+            data.get("model_number") or data.get("model"), bid.model_number,
+        )
+        if blocked:
+            return blocked
         _apply_workstation_payload(bid, data)
         price_fields = (
             "processor_price", "pro_descp_price", "motherboard_price",
@@ -910,6 +933,7 @@ def admin_review_workstation_bid(request, bid_id):
             "power_supply_price", "monitor_price", "os_price", "wifi_price",
             "dvd_price", "warranty_price", "freightInstallation_price",
             "hdd_non_return_price", "extra_requirements_price",
+        "epbg_price", "optional_ports_price",
         )
         calculated_price = sum(float(getattr(bid, field, 0) or 0) for field in price_fields)
         requested_total = safe_float(data.get("total_price"), 0)
@@ -3074,6 +3098,8 @@ def generate_workstation_certificates(request, bid_id):
                         page, fitz, bid_no, bid_date_formatted,
                         dept_name, organization, full_address,
                     )
+                    from .Aio import _remove_service_support_last_page_signature
+                    _remove_service_support_last_page_signature(page, fitz)
                 remove_urls_and_config_links(page)
                 lowercase_acxxel(page, min_y=230)
                 continue
@@ -3536,6 +3562,7 @@ def _workstation_gem_payload(bid, request, account):
         "power_supply_price", "monitor_price", "os_price", "wifi_price",
         "dvd_price", "warranty_price", "freightInstallation_price",
         "hdd_non_return_price", "extra_requirements_price",
+        "epbg_price", "optional_ports_price",
     )
     calculated_price = sum(float(getattr(bid, field, 0) or 0) for field in price_fields)
     approved_price = bid.final_amount or bid.total_price or calculated_price

@@ -3299,6 +3299,8 @@ def generate_certificates(request, bid_id):
                         page, fitz, bid_no, bid_date_formatted,
                         dept_name, organization, full_address,
                     )
+                    from .Aio import _remove_service_support_last_page_signature
+                    _remove_service_support_last_page_signature(page, fitz)
                 page_text_raw = page.get_text("text")
 
             if doc_type in {"manufacturer_auth", "service_support"}:
@@ -4739,6 +4741,7 @@ def _bid_data(bid, request, status_label=None):
         "motherboard_price": bid.motherboard_price or 0, "motherboard_descp": bid.motherboard_descp or "",
         "motherboard_descp_price": bid.motherboard_descp_price or 0, "software1": bid.software1 or "",
         "software1_price": bid.software1_price or 0, "gp": bid.gp or "", "gp_price": bid.gp_price or 0,
+        "epbg_price": bid.epbg_price or 0, "optional_ports_price": bid.optional_ports_price or 0,
         "epbg": bid.epbg or 0, "freightInstallation": bid.freightInstallation or "",
         "local_content": bid.local_content or "",
         "freightInstallation_price": bid.freightInstallation_price or 0, "freight_price": bid.freightInstallation_price or 0,
@@ -4876,6 +4879,10 @@ def update_desktop_bid(request, bid_id):
         bid = DesktopBid.objects.get(id=bid_id)
         data = json.loads(request.body)
         model_number = _get_model_number_from_data(data)
+        if model_number and model_number.strip().upper() != str(bid.model_number or "").strip().upper():
+            blocked = _desktop_duplicate_model_block(data, bid, model_number)
+            if blocked:
+                return blocked
         if model_number:
             bid.model_number = model_number
 
@@ -4926,6 +4933,8 @@ def update_desktop_bid(request, bid_id):
         bid.software1_price = safe_float(data.get("software1_price"), bid.software1_price)
         bid.gp = data.get("gp", bid.gp)
         bid.gp_price = safe_float(data.get("gp_price"), bid.gp_price)
+        bid.epbg_price = safe_float(data.get("epbg_price"), bid.epbg_price)
+        bid.optional_ports_price = safe_float(data.get("optional_ports_price"), bid.optional_ports_price)
 
         if data.get("date"):
             bid.date = data.get("date")
@@ -4982,6 +4991,13 @@ def save_model_number(request, bid_id):
                 model_no__iexact=model_number
             ).first()
             catalogue_created = False
+
+            # A new (manually entered) model number may not duplicate a
+            # configuration the catalogue already has.
+            if catalogue_product is None:
+                blocked = _desktop_duplicate_model_block(data, bid, model_number)
+                if blocked:
+                    return blocked
 
             storage_parts = [
                 value
@@ -5050,7 +5066,15 @@ def save_model_number(request, bid_id):
                 "Expansion Slots (PCIe x 4)": feature_value("pcie_x4"),
                 "Expansion Slots (PCIe x 16)": feature_value("pcie_x16"),
                 "Expansion Slots (M Dot 2) for SSD": feature_value("m2_ssd"),
-                "Expansion Slots (M Dot 2) for WiFi": feature_value("m2_wifi"),
+                # The bid's own WiFi card when it has one — Find Model matches
+                # the bid's wifi against this key, so leaving it as just the
+                # motherboard's slot count meant a model saved from a bid could
+                # never be found again for that same configuration.
+                "Expansion Slots (M Dot 2) for WiFi": (
+                    bid.wifi
+                    if not _match_is_blank(bid.wifi or "") and not _is_zero_like(bid.wifi or "")
+                    else feature_value("m2_wifi")
+                ),
                 "Trusted Platform Module": "Yes" if motherboard_features.get("tpm") else "",
                 "Number of USB Type A Port (Version 2 Point 0)": feature_value("usb2"),
                 "Number of USB Type A Port (Version 3 point 2 Gen 1)": feature_value("usb3"),
@@ -5284,6 +5308,10 @@ def review_desktop_bid(request, bid_id):
             bid.qty = int(data.get("qty"))
 
         model_number = _get_model_number_from_data(data)
+        if model_number and model_number.strip().upper() != str(bid.model_number or "").strip().upper():
+            blocked = _desktop_duplicate_model_block(data, bid, model_number)
+            if blocked:
+                return blocked
         if model_number:
             bid.model_number = model_number
 
@@ -5337,6 +5365,8 @@ def review_desktop_bid(request, bid_id):
         bid.software1_price = safe_float(data.get("software1_price"), bid.software1_price)
         bid.gp = data.get("gp", bid.gp)
         bid.gp_price = safe_float(data.get("gp_price"), bid.gp_price)
+        bid.epbg_price = safe_float(data.get("epbg_price"), bid.epbg_price)
+        bid.optional_ports_price = safe_float(data.get("optional_ports_price"), bid.optional_ports_price)
 
         if data.get("date"):
             bid.date = data.get("date")
@@ -5497,6 +5527,10 @@ def admin_review_desktop_bid(request, bid_id):
             bid.qty = int(data.get("qty"))
 
         model_number = _get_model_number_from_data(data)
+        if model_number and model_number.strip().upper() != str(bid.model_number or "").strip().upper():
+            blocked = _desktop_duplicate_model_block(data, bid, model_number)
+            if blocked:
+                return blocked
         if model_number:
             bid.model_number = model_number
 
@@ -5534,6 +5568,8 @@ def admin_review_desktop_bid(request, bid_id):
         bid.software1_price = safe_float(data.get("software1_price"), bid.software1_price)
         bid.gp = data.get("gp", bid.gp)
         bid.gp_price = safe_float(data.get("gp_price"), bid.gp_price)
+        bid.epbg_price = safe_float(data.get("epbg_price"), bid.epbg_price)
+        bid.optional_ports_price = safe_float(data.get("optional_ports_price"), bid.optional_ports_price)
 
         if data.get("date"):
             bid.date = data.get("date")
@@ -6458,17 +6494,29 @@ def _value_from_body_or_bid(body, bid, *keys):
                 return str(val).strip()
     return ""
 
-@csrf_exempt
-@require_http_methods(["POST"])
-def match_catalogue_models(request, bid_id):
-    try:
-        bid = DesktopBid.objects.get(id=bid_id)
-    except DesktopBid.DoesNotExist:
-        return JsonResponse({"error": "Bid not found"}, status=404)
+def _desktop_duplicate_model_block(data, bid, model_number):
+    """Error response when a new model number would duplicate a Desktop
+    configuration Find Model already matches (same rule as Find Model, but
+    only Desktop catalogue entries count), else None."""
+    model_number = str(model_number or "").strip().upper()
+    if not model_number or CatalogueProduct.objects.filter(model_no__iexact=model_number).exists():
+        return None
+    body = data if isinstance(data, dict) else {}
+    existing = next(
+        (
+            r for r in _catalogue_match_results(_desktop_bid_specs(body, bid))
+            if r["is_perfect"] and r["model_no"].upper() != model_number
+            and str(r.get("category") or "").lower() == "desktop"
+        ),
+        None,
+    )
+    if not existing:
+        return None
+    from .model_duplicates import duplicate_model_response
+    return duplicate_model_response(existing["model_no"])
 
-    body = _body_json(request)
-
-    bid_specs = {
+def _desktop_bid_specs(body, bid):
+    return {
         "processor": _value_from_body_or_bid(body, bid, "processor"),
         "ram": _value_from_body_or_bid(body, bid, "ram"),
         "hdd": _value_from_body_or_bid(body, bid, "hdd"),
@@ -6483,9 +6531,11 @@ def match_catalogue_models(request, bid_id):
         "warranty": _value_from_body_or_bid(body, bid, "warranty"),
     }
 
+def _catalogue_match_results(bid_specs):
+    """Score every catalogue product against bid_specs — the catalogue half of
+    match_catalogue_models ("Find model"), shared with save_model_number so a
+    manually entered model can't duplicate a configuration Find would match."""
     results = []
-    debug_all = []
-
     for product in CatalogueProduct.objects.all():
         matched_count = 0
         checked_count = 0
@@ -6535,7 +6585,22 @@ def match_catalogue_models(request, bid_id):
             "debug_details": details,
         }
         results.append(result)
-        debug_all.append(result)
+    return results
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def match_catalogue_models(request, bid_id):
+    try:
+        bid = DesktopBid.objects.get(id=bid_id)
+    except DesktopBid.DoesNotExist:
+        return JsonResponse({"error": "Bid not found"}, status=404)
+
+    body = _body_json(request)
+
+    bid_specs = _desktop_bid_specs(body, bid)
+
+    results = _catalogue_match_results(bid_specs)
+    debug_all = list(results)
 
     other_bids_qs = (
         DesktopBid.objects.exclude(id=bid.id)

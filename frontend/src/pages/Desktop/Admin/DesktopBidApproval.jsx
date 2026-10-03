@@ -29,6 +29,7 @@ const PRICE_FIELDS = [
   "keyboard_price", "warranty_price", "motherboard_price", "pro_descp_price",
   "motherboard_descp_price", "software1_price", "gp_price",
   "freightInstallation_price", "hddreturnable_price",
+  "epbg_price", "optional_ports_price",
 ];
 
 const toPrice = (value) => {
@@ -1011,11 +1012,7 @@ export default function DesktopBidApproval() {
                 <PriceField label="Additional Software" name="software1" priceName="software1_price" isTextArea optional form={form} handleChange={handleChange} />
                 <PriceField label="Graphics Description" name="gp" priceName="gp_price" isTextArea optional form={form} handleChange={handleChange} />
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">EPBG (%)</label>
-                  <input type="text" name="epbg" value={form?.epbg || ""} onChange={handleChange}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
+                <PriceField label="EPBG (%)" name="epbg" priceName="epbg_price" form={form} handleChange={handleChange} />
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Freight & Installation</label>
@@ -1101,9 +1098,13 @@ export default function DesktopBidApproval() {
                     Optional Ports
                     <span className="text-blue-500 text-[11px] font-normal ml-1">(Optional)</span>
                   </label>
-                  <textarea name="optional_ports" value={form?.optional_ports || ""} onChange={handleChange}
-                    rows={2} placeholder="e.g. Serial Port, Display Port, USB Type-C"
-                    className="w-full border border-blue-200 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-blue-50/30 resize-none" />
+                  <div className="flex gap-2">
+                    <textarea name="optional_ports" value={form?.optional_ports || ""} onChange={handleChange}
+                      rows={2} placeholder="e.g. Serial Port, Display Port, USB Type-C"
+                      className="flex-1 border border-blue-200 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-blue-50/30 resize-none" />
+                    <input type="text" name="optional_ports_price" value={form?.optional_ports_price ?? ""} onChange={handleChange} placeholder="Price"
+                      className="w-28 border border-blue-300 rounded-md px-2 py-2 text-sm text-center outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
                 </div>
 
                 {selected.status !== "approved" && (

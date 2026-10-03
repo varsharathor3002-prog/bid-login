@@ -7,3 +7,7 @@ venv/
 backend/.gem_encryption_key
 backend/media/gem_captcha/
 backend/media/gem_job_artifacts/
+.tmp/
+*.zip
+settings_*backup*
+backend/db.sqlite3
