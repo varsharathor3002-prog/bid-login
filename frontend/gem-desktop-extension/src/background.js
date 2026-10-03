@@ -817,7 +817,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === "MARK_GEM_CORRIGENDUM") {
       const result = await api("/gem/bid-opportunities/", {
         method: "POST",
-        body: JSON.stringify({ action: "mark_corrigendum", bid_nos: message.bidNos || [] }),
+        body: JSON.stringify({ action: "mark_corrigendum", bid_nos: message.bidNos || [], bids: message.bids || [] }),
       });
       return { ok: true, updated: result.updated || 0 };
     }

@@ -312,6 +312,16 @@
     return dateFrom(value || "");
   }
 
+  // Current End Date shown on the seller-list card. A corrigendum that extends
+  // a bid changes this, while the bid PDF keeps the original date.
+  function opportunityCardEndDate(card) {
+    const raw = text(card);
+    const value = raw.match(
+      /\b(?:Bid(?:\s*\/\s*RA)?\s+)?End\s+Date(?:\/Time)?\s*:?\s*(\d{2,4}[-/]\d{2}[-/]\d{2,4}(?:\s+\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?)?)/i
+    )?.[1];
+    return dateFrom(value || "");
+  }
+
   function productType(raw, itemName) {
     const value = `${itemName || ""} ${raw || ""}`.toLowerCase();
     if (/multifunction|printer|printing|laserjet|inkjet|mfp\b/.test(value)) return "printer";
@@ -1521,7 +1531,15 @@
     }
     if (!response.detailText) return { reject: "detail" };
     const opportunity = opportunityFromText(bidNo, response.detailText, cardStartDate, opportunityCardQuantity(card));
-    if (opportunity?.eligible) opportunity.pdf_url = url;
+    if (opportunity?.eligible) {
+      opportunity.pdf_url = url;
+      // Prefer the card's End Date: after a corrigendum it is the current one.
+      const cardEndDate = opportunityCardEndDate(card);
+      if (cardEndDate) {
+        if (Date.parse(cardEndDate) <= Date.now()) return { reject: "expired" };
+        opportunity.end_date = cardEndDate;
+      }
+    }
     return opportunity;
   }
 
@@ -1666,7 +1684,18 @@
         const result = await corrigendumFor(bidNo, card);
         summary.checked += 1;
         if (result.has_corrigendum) {
-          await runtimeMessage({ type: "MARK_GEM_CORRIGENDUM", bidNos: [bidNo] });
+          // Send the card's current dates too: a corrigendum usually moves
+          // the End Date, and the dashboard must show the new one.
+          const liveCard = currentCards().find((item) => item.bidNo === bidNo)?.card || card;
+          await runtimeMessage({
+            type: "MARK_GEM_CORRIGENDUM",
+            bidNos: [bidNo],
+            bids: [{
+              bid_no: bidNo,
+              bid_date: opportunityCardStartDate(liveCard),
+              end_date: opportunityCardEndDate(liveCard),
+            }],
+          });
           summary.found += 1;
         }
       }
