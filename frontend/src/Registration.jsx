@@ -174,13 +174,18 @@ export default function AddUser() {
       // them goes ahead only if the admin confirms; Cancel deletes nothing.
       if (res.status === 409 && data.requires_confirmation) {
         const count = data.assigned_count;
-        const bidList = (data.bid_nos || []).join("\n");
-        const more = count > (data.bid_nos || []).length ? "\n..." : "";
+        const shown = data.bid_nos || [];
+        const bidList = shown.map((bidNo) => `  • ${bidNo}`).join("\n");
+        const more = count > shown.length ? `\n  • ...and ${count - shown.length} more` : "";
+        const bidWord = count === 1 ? "bid" : "bids";
         const confirmWithBids = window.confirm(
-          `This user has ${count} bid(s) assigned:\n${bidList}${more}\n\n` +
-          "Deleting the user will also delete these assigned bids.\n" +
-          "To delete only the user, cancel and reassign the bids first.\n\n" +
-          "Press OK to delete the user and the assigned bids, or Cancel to delete nothing."
+          `⚠️ WARNING: This user has ${count} ${bidWord} assigned to them:\n` +
+          `${bidList}${more}\n\n` +
+          `If you continue, the user AND these ${count} assigned ${bidWord} will be permanently deleted.\n\n` +
+          `Want to keep the ${bidWord}? Click Cancel, reassign them to another user ` +
+          `from "Bid To Be Participated", then delete this user.\n\n` +
+          `OK  →  Delete the user and the ${bidWord}\n` +
+          "Cancel  →  Delete nothing"
         );
         if (!confirmWithBids) return;
         ({ res, data } = await requestDelete(true));

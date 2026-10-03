@@ -116,7 +116,8 @@ def delete_user(request, id):
 
             message = "User deleted successfully ✅"
             if assigned_count:
-                message = f"User and {assigned_count} assigned bid(s) deleted successfully ✅"
+                bid_word = "bid" if assigned_count == 1 else "bids"
+                message = f"User and {assigned_count} assigned {bid_word} deleted successfully ✅"
             return JsonResponse({"message": message, "deleted_bids": assigned_count})
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=500)
