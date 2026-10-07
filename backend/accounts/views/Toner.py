@@ -196,7 +196,9 @@ def list_toner_bids(r):
     if role=="admin":
         db_status={"pending":["analyzed"],"re-analyze":["rejected","re-analyze"],"approved":["approved"]}.get(s,["analyzed"])
         q=q.filter(status__in=db_status)
-    elif s=="pending":q=q.filter(status__in=["submitted","complete"])
+    # Like Desktop: a bid reaches the analyser only once the user has
+    # submitted its documents (status "complete"), not after the config step.
+    elif s=="pending":q=q.filter(status="complete")
     elif s=="approved":q=q.filter(status="approved")
     elif s=="re-analyze":q=q.filter(status__in=["rejected","re-analyze"])
     elif role=="analyser":q=q.exclude(status="draft")
