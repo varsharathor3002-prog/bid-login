@@ -715,6 +715,8 @@ function gemOptionValue(label, value) {
     return text.replace(/\bWindows\b/i, "Window");
   }
   if (/type of storage installed/i.test(label)) {
+    // Already one of GeM's own options (see gemStorage).
+    if (/^(?:nvme-ssd|hdd @)/i.test(text)) return text;
     const hasHdd = /\bhdd\b/.test(lower) && !/\bnone\b/.test(lower);
     const hasSsd = /ssd|nvme|sata|\btb\b|\bgb\b/.test(lower);
     if (hasSsd && hasHdd) return "NVMe-SSD Plus HDD@5400 RPM";
@@ -759,8 +761,93 @@ function gemOptionValue(label, value) {
   return text;
 }
 
+// Largest single drive in GB: "1 TB" -> 1000, "128 GB NVMe + 512 GB NVMe" -> 512.
+// GeM lists HDD sizes in decimal (500 / 1000 / 2000), like the bid does.
+function largestDriveGb(...texts) {
+  let largest = 0;
+  for (const text of texts) {
+    for (const [, amount, unit] of String(text || "").matchAll(/(\d+(?:\.\d+)?)\s*(tb|gb)?(?!\s*rpm|\d)/gi)) {
+      const gb = Number(amount) * (/tb/i.test(unit || "") ? 1000 : 1);
+      if (gb > largest) largest = gb;
+    }
+  }
+  return Math.round(largest);
+}
+
+// GeM's Entry and Mid Level Desktop storage options, decided from the bid's
+// actual drives (not from the words in the storage text):
+//   SSD only  -> NVMe-SSD                    + HDD "0 as SSD only Installed"
+//   SSD + HDD -> NVMe-SSD Plus HDD@7200 RPM  + HDD size
+//   HDD only  -> HDD @7200RPM                + SSD "0 as HDD Only Installed"
+// 7200 RPM is what acxxel's GeM listings use; 5400 only when the bid says so.
+// GeM takes one SSD size, so the largest SSD of the bid is used.
+function gemStorage(spec) {
+  const storageText = String(spec("Type of Storage Installed with the System") || "");
+  const hddText = String(spec("HDD") || "");
+  const hddGb = largestDriveGb(spec("HDD - Storage Capacity (in GB)"), hddText);
+  const ssdGb = largestDriveGb(spec("SSD"), spec("SSD - Storage Capacity (in GB)"));
+  const hasHdd = hddGb > 0;
+  const hasSsd = ssdGb > 0 || (!hasHdd && /ssd|nvme/i.test(storageText));
+  const rpm = /5400/.test(`${hddText} ${storageText}`) ? "5400" : "7200";
+  let type = "";
+  if (hasSsd && hasHdd) type = `NVMe-SSD Plus HDD@${rpm} RPM`;
+  else if (hasSsd) type = "NVMe-SSD";
+  else if (hasHdd) type = `HDD @${rpm}RPM`;
+  return {
+    type,
+    ssd: hasSsd ? (ssdGb ? String(ssdGb) : spec("SSD - Storage Capacity (in GB)")) : hasHdd ? "0 as HDD Only Installed" : "",
+    hdd: hasHdd ? String(hddGb) : hasSsd ? "0 as SSD only Installed" : "",
+  };
+}
+
+// AIO / Toner jobs: the backend sends the GeM form label by label
+// (payload.gem_fields, already in GeM's own option wording), plus the same
+// seller declarations the Desktop form uses. Price fields stay manual.
+function genericApprovedFields(job) {
+  const payload = job.payload || {};
+  const productName = [
+    String(payload.brand || "ACXXEL").trim().toUpperCase(),
+    String(payload.category?.label || "").trim().toUpperCase(),
+    String(payload.model_number || "").trim().toUpperCase(),
+  ].filter(Boolean).join(" ");
+  return [
+    ["Brand", payload.brand, "select[name='brand']"],
+    ["Product Category", payload.category?.label, ""],
+    ["Model Number", payload.model_number, ""],
+    ["Product Name", productName, ""],
+    ...payload.gem_fields.map(([label, value]) => [label, value, ""]),
+    ["Country Of Origin", "INDIA", ""],
+    [
+      "Local Content (%)",
+      String(payload.local_content || "").replace(/%/g, "").trim(),
+      "input[name='origin_country_percentage']",
+    ],
+    ["Make In India Declaration", "true", ""],
+    ["This product is being manufactured by us as PPP-MSE OEM", "yes", ""],
+    ["PPP-MSE Declaration", "true", ""],
+    [
+      "This product is being manufactured by us as Startup",
+      "DPIIT Registered Startup",
+      "",
+    ],
+    ["Startup Declaration", "true", ""],
+    ["PPP-MSE OEM Manufacturer", "true", ""],
+    ["Offering State: Uttar Pradesh", "true", ""],
+    ["Harmonized System of Nomenclature (HSN) Number", payload.hsn, "input[name='hsn']"],
+    ["Terms Of Delivery", "Free Delivery At Consignee Premises", ""],
+    ["Current stock /Maximum Quantity(To Be Delivered In 15 Days)", "99", ""],
+    ["Minimum Quantity Per Consignee", "30", ""],
+    ["Lead Time for Direct Purchase", "10", ""],
+  ];
+}
+
+function isDesktopJob() {
+  return !activeJob?.kind || activeJob.kind === "desktop";
+}
+
 function approvedFields(job) {
   const payload = job.payload || {};
+  if (Array.isArray(payload.gem_fields)) return genericApprovedFields(job);
   const specs = payload.specifications || {};
   const selectedCabinet = controlCurrentValue(fieldByLabel("Cabinet Form Factor"));
   const selectedGraphicsType = controlCurrentValue(fieldByLabel("Graphics Type"));
@@ -793,6 +880,7 @@ function approvedFields(job) {
     }
     return "";
   };
+  const storage = gemStorage(spec);
   const fields = [
     ["Brand", payload.brand, "select[name='brand']"],
     ["Product Category", payload.category?.label, ""],
@@ -810,9 +898,9 @@ function approvedFields(job) {
       "RAM Size (Memory Card/Module) (in GB) (Capacity to be installed in the System)",
       "RAM"
     ), ""],
-    ["Type of Storage Installed with the System", spec("Type of Storage Installed with the System"), ""],
-    ["SSD - Storage Capacity (in GB)", spec("SSD - Storage Capacity (in GB)", "SSD"), ""],
-    ["HDD - Storage Capacity (in GB)", spec("HDD - Storage Capacity (in GB)", "HDD"), ""],
+    ["Type of Storage Installed with the System", storage.type, ""],
+    ["SSD - Storage Capacity (in GB)", storage.ssd, ""],
+    ["HDD - Storage Capacity (in GB)", storage.hdd, ""],
     ["Availibility of Monitor", spec("Availibility of Monitor"), ""],
     ["Screen Size (in CMs)", spec("Screen Size (in CMs)", "Monitor"), ""],
     ["On Site OEM Warranty (in Year)", spec("On Site OEM Warranty (in Year)", "On Site OEM Warranty"), ""],
@@ -933,7 +1021,7 @@ function approvedFields(job) {
 }
 
 async function attachMrpDocument() {
-  if (mrpDocumentRequested || mrpDocumentUploaded || !activeJob) return;
+  if (mrpDocumentRequested || mrpDocumentUploaded || !activeJob || !isDesktopJob()) return;
   if (!/upload mrp documents/i.test(document.body.innerText)) return;
   const typeControl = fieldByLabel("Upload MRP Documents");
   if (!controlHasValue(typeControl, "MRP Declaration on OEM Letterhead")) return;
@@ -989,7 +1077,7 @@ async function attachMrpDocument() {
 }
 
 async function attachBisDocument() {
-  if (bisDocumentRequested || bisDocumentUploaded || !activeJob) return;
+  if (bisDocumentRequested || bisDocumentUploaded || !activeJob || !isDesktopJob()) return;
   if (!/upload documents/i.test(document.body.innerText)) return;
   const typeControl = fieldByLabel("Upload Documents");
   if (!controlHasValue(typeControl, "BIS Certificate")) return;
@@ -1241,7 +1329,7 @@ function fileFromEncodedDocument(documentData) {
 }
 
 async function attachProductImages() {
-  if (productImagesRequested || productImagesUploaded || !activeJob) return;
+  if (productImagesRequested || productImagesUploaded || !activeJob || !isDesktopJob()) return;
   for (const [slot, , imageNumber] of PRODUCT_IMAGE_SLOTS) {
     if (productImageAlreadyUploaded(imageNumber)) {
       productImageSlotsUploaded.add(slot);
@@ -1481,6 +1569,7 @@ async function fillCurrentStep() {
       sendRuntimeMessage({
         type: "REPORT_JOB",
         jobId: activeJob.id,
+        kind: activeJob.kind,
         report: {
           status: "filled",
           progress: manual.length
@@ -1517,6 +1606,7 @@ function activate(job) {
   if (
     !activeJob
     || activeJob.id !== job.id
+    || activeJob.kind !== job.kind
     || activePayloadSignature !== payloadSignature
   ) {
     completedFields = new Set();

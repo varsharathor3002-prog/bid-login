@@ -10,6 +10,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from django.test import RequestFactory
 from ..models import User, WorkstationBid, CatalogueProduct
+from ..auth_identity import request_user, actor_name
 from .bid_cleanup import delete_bid_with_related_data
 
 from .Desktop import (
@@ -158,7 +159,8 @@ def _workstation_catalogue_match_value(bid_value, catalogue_value, field_name=""
 def create_workstation_bid(request):
     try:
         data = request.POST
-        user_id  = data.get("user_id")
+        token_user = request_user(request)
+        user_id  = token_user.id if token_user and token_user.role == "user" else data.get("user_id")
         username = data.get("username", "")
 
         print(f"🔍 Received user_id: {user_id}, username: {username}")
@@ -328,6 +330,7 @@ def update_workstation_bid(request, bid_id):
 
         # ── Financials ─────────────────────────────────────────
         bid.date = data.get("date") or None
+        bid.start_date = data.get("start_date") or None
         bid.epbg = float(data.get("epbg", 0) or 0)
 
         bid.status = "configured"
@@ -421,6 +424,7 @@ def _workstation_bid_data(bid, request, status_label=None):
         "software1": bid.additional_software or "",
         "additional_software": bid.additional_software or "",
         "date": bid.date.isoformat() if bid.date else "",
+        "start_date": bid.start_date.isoformat() if bid.start_date else "",
         "epbg": bid.epbg,
         "freightInstallation": bid.freightInstallation or "Yes",
         "freightInstallation_price": bid.freightInstallation_price,
@@ -493,6 +497,8 @@ def _apply_workstation_payload(bid, data):
     bid.additional_software = data.get("additional_software") or data.get("software1") or bid.additional_software
     if data.get("date"):
         bid.date = data.get("date")
+    if "start_date" in data:
+        bid.start_date = data.get("start_date") or None
     bid.epbg = safe_float(data.get("epbg"), bid.epbg)
     bid.freightInstallation = data.get("freightInstallation", bid.freightInstallation)
     bid.freightInstallation_price = safe_float(data.get("freightInstallation_price"), bid.freightInstallation_price)
@@ -894,7 +900,7 @@ def review_workstation_bid(request, bid_id):
         if blocked:
             return blocked
         _apply_workstation_payload(bid, data)
-        analyser_username = (data.get("analyser_username") or data.get("username") or "").strip()
+        analyser_username = actor_name(request, data.get("analyser_username") or data.get("username") or "")
         if analyser_username:
             bid.analyser_username = analyser_username
         bid.status = "complete"
@@ -943,7 +949,7 @@ def admin_review_workstation_bid(request, bid_id):
         bid.final_amount = bid.total_price
         bid.review_status = action
         bid.admin_note = data.get("admin_note", "").strip()
-        bid.admin_username = data.get("admin_username", "").strip()
+        bid.admin_username = actor_name(request, data.get("admin_username", ""))
         bid.save()
         return JsonResponse({"success": True, "bid_id": bid.id, "review_status": bid.review_status})
     except WorkstationBid.DoesNotExist:
@@ -960,7 +966,7 @@ def update_workstation_docs(request, bid_id):
         if "atc_special_document" in request.FILES:
             uploaded_file = request.FILES["atc_special_document"]
             bid.atc_special_document = uploaded_file
-        analyser_username = request.POST.get("analyser_username", "").strip()
+        analyser_username = actor_name(request, request.POST.get("analyser_username", ""))
         selected_general_docs = _parse_json_list(request.POST.get("selected_general_docs", ""))
         selected_general_labels = _parse_json_list(request.POST.get("selected_general_doc_labels", ""))
         selected_analyser_docs = _parse_json_list(request.POST.get("selected_analyser_docs", ""))
@@ -1108,7 +1114,7 @@ def generate_workstation_certificates(request, bid_id):
             page.add_redact_annot(fitz.Rect(65, 96, 535, 235), fill=(1, 1, 1))
             page.apply_redactions(images=0, graphics=0)
 
-            bid_date = str(bid.date or "")
+            bid_date = str(bid.start_date or bid.date or "")
             if re.fullmatch(r"\d{4}-\d{2}-\d{2}", bid_date):
                 year, month, day = bid_date.split("-")
                 bid_date = f"{day}-{month}-{year}"
@@ -1411,11 +1417,11 @@ def generate_workstation_certificates(request, bid_id):
                         text = " ".join(s.get("text", "") for s in line.get("spans", [])).strip()
                         if line["bbox"][1] > pg.rect.height - 60 and re.fullmatch(r"(?:Page\s*)?\d+", text, re.IGNORECASE):
                             pg.add_redact_annot(fitz.Rect(line["bbox"]) + (-3, -2, 3, 2), fill=(1, 1, 1))
-                pg.apply_redactions()
+                pg.apply_redactions(images=0, graphics=0)
                 pg.insert_textbox(fitz.Rect(pg.rect.width - 60, pg.rect.height - 28, pg.rect.width - 18, pg.rect.height - 8), str(pidx), fontsize=9, fontname="hebo", align=2)
 
             filename = f"workstation_{bid.id}_approved_all_documents.pdf"
-            bundle.save(os.path.join(out_dir, filename))
+            bundle.save(os.path.join(out_dir, filename), garbage=3, deflate=True)
             bundle.close()
             return JsonResponse({"success": True, "pdf_url": request.build_absolute_uri(f"/media/generated_docs/{filename}")+f"?v={int(time.time())}"})
 
@@ -1467,11 +1473,12 @@ def generate_workstation_certificates(request, bid_id):
             local_content = f"{local_content}%"
 
         bid_date_formatted = ""
-        if bid.date and str(bid.date) != "2000-01-01":
+        doc_date = bid.start_date or bid.date
+        if doc_date and str(doc_date) != "2000-01-01":
             try:
-                bid_date_formatted = datetime.strptime(str(bid.date), "%Y-%m-%d").strftime("%d-%m-%Y")
+                bid_date_formatted = datetime.strptime(str(doc_date), "%Y-%m-%d").strftime("%d-%m-%Y")
             except Exception:
-                bid_date_formatted = str(bid.date)
+                bid_date_formatted = str(doc_date)
         elif bid.created_at:
             try:
                 bid_date_formatted = bid.created_at.strftime("%d-%m-%Y")

@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import GemUploadButton from "../../../components/analyser/GemUploadButton";
+import { startGemUpload } from "../../../utils/gemUpload";
 import { useNavigate } from "react-router-dom";
 
 const API_BASE = import.meta.env.VITE_API_URL;
@@ -21,6 +23,17 @@ export default function TonerAnalyserDashboard({ product = "toner" }) {
     const [selectedIds, setSelectedIds] = useState(new Set());
     const [bulkDeleting, setBulkDeleting] = useState(false);
     const [deletingId, setDeletingId] = useState(null);
+    const [gemStartingId, setGemStartingId] = useState(null);
+    const [gemMessage, setGemMessage] = useState(null);
+
+    // Transfer to GeM: queue the upload job and let the extension auto-fill GeM.
+    const uploadToGem = async (bidId) => {
+        setGemStartingId(bidId);
+        setGemMessage(null);
+        setGemMessage(await startGemUpload(product, bidId));
+        setGemStartingId(null);
+    };
+
 
     const navigate = useNavigate();
 
@@ -270,6 +283,12 @@ export default function TonerAnalyserDashboard({ product = "toner" }) {
 
             </div>
 
+            {gemMessage && (
+                <div className={`mx-6 mt-4 border text-sm px-4 py-3 rounded-lg ${gemMessage.ok ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-red-50 border-red-200 text-red-700"}`}>
+                    {gemMessage.message}
+                </div>
+            )}
+
             {error && (
                 <div className="mx-6 mt-4 bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">
                     ⚠️ {error}
@@ -486,25 +505,16 @@ export default function TonerAnalyserDashboard({ product = "toner" }) {
                                     <td className="px-5 py-4 border-b border-gray-100">
 
                                         {bid.status === "approved" ? (
-                                                <button
-                                                    onClick={() => activeTab === "gem-transfer"
-                                                        ? window.open("https://sso.gem.gov.in/ARXSSO/oauth/doLogin", "_blank", "noopener,noreferrer")
-                                                        : navigate(
-                                                            `/analyser-dashboard/${product}/bid/${bid.id}`,
-                                                            {
-                                                                state: {
-                                                                    bid,
-                                                                    readOnly: true,
-                                                                },
-                                                            }
-                                                        )
-                                                    }
-                                                    className={activeTab === "gem-transfer"
-                                                        ? "bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-3 py-2 rounded-md text-[11px] transition whitespace-nowrap"
-                                                        : "bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded text-[11px] font-bold uppercase tracking-widest shadow-sm transition-all whitespace-nowrap"}
-                                                >
-                                                    {activeTab === "gem-transfer" ? "Upload to GeM Portal" : "View"}
-                                                </button>
+                                                activeTab === "gem-transfer" ? (
+                                                    <GemUploadButton onClick={() => uploadToGem(bid.id)} loading={gemStartingId === bid.id} />
+                                                ) : (
+                                                    <button
+                                                        onClick={() => navigate(`/analyser-dashboard/${product}/bid/${bid.id}`, {state: {bid, readOnly: true}})}
+                                                        className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded text-[11px] font-bold uppercase tracking-widest shadow-sm transition-all whitespace-nowrap"
+                                                    >
+                                                        View
+                                                    </button>
+                                                )
 
                                         ) : (
 

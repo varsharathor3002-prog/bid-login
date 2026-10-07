@@ -30,6 +30,7 @@ const MULTIFUNCTION_FIELDS = [
 ];
 
 const OTHER_FIELDS = [
+  { key: "start_date", label: "Bid Start Date" },
   { key: "date", label: "Bid End Date" },
   { key: "epbg", label: "EPBG (%)" },
 ];

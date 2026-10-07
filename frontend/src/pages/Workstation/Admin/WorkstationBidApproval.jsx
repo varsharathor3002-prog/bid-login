@@ -7,6 +7,7 @@ import {
   OS_OPTIONS, MONITORS, WARRANTIES, getPriceFromLocalData, getFilteredRams,
   getFilteredIntelMotherboards, getFilteredAmdMotherboards, optionLabel,
 } from "../User/WorkstationConfig";
+import { priceInputValue } from "../../../utils/price";
 
 const API_BASE = import.meta.env.VITE_API_URL;
 const TABS = [
@@ -37,7 +38,7 @@ const optionsFor = (name, form) => ({
 
 const FIELDS = [
   ["bid_no", "Bid Number"], ["model_number", "Model Number"], ["dept_name", "Department"],
-  ["organization", "Organization"], ["qty", "Quantity"], ["pincode", "Buyer Pincode"], ["date", "Bid End Date", "date"],
+  ["organization", "Organization"], ["qty", "Quantity"], ["pincode", "Buyer Pincode"], ["start_date", "Bid Start Date", "date"], ["date", "Bid End Date", "date"],
   ["processor", "Processor"], ["processor_price", "Processor Price"], ["ram", "RAM"], ["ram_price", "RAM Price"],
   ["hdd", "HDD"], ["hdd_price", "HDD Price"], ["ssd1", "SSD 1"], ["ssd1_price", "SSD 1 Price"],
   ["ssd2", "SSD 2"], ["ssd2_price", "SSD 2 Price"], ["graphics", "Graphics Card"], ["graphics_price", "Graphics Price"],
@@ -91,7 +92,7 @@ const PriceField = ({ label, name, priceName, form, handleChange, options = [], 
         <input
           type="text"
           name={priceName}
-          value={form?.[priceName] || ""}
+          value={priceInputValue(form?.[priceName] || "")}
           onChange={handleChange}
           autoComplete="off"
           placeholder="Price"
@@ -803,6 +804,16 @@ export default function WorkstationBidApproval() {
               ))}
 
               <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Bid Start Date</label>
+                <input
+                  type="date"
+                  name="start_date"
+                  value={form.start_date || ""}
+                  onChange={handleChange}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Bid End Date</label>
                 <input
                   type="date"
@@ -873,7 +884,7 @@ export default function WorkstationBidApproval() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Freight & Installation</label>
                 <div className="flex gap-2">
                   <input type="text" value={form.freightInstallation || "Yes"} readOnly className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm bg-gray-50" />
-                  <input type="text" name="freightInstallation_price" value={form.freightInstallation_price || ""} onChange={handleChange} disabled={(form.freightInstallation || "Yes") === "No"} placeholder="Price" className="w-28 border border-blue-300 rounded-md px-2 py-2 text-sm text-center outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400" />
+                  <input type="text" name="freightInstallation_price" value={priceInputValue(form.freightInstallation_price || "")} onChange={handleChange} disabled={(form.freightInstallation || "Yes") === "No"} placeholder="Price" className="w-28 border border-blue-300 rounded-md px-2 py-2 text-sm text-center outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400" />
                 </div>
               </div>
               <div>
@@ -882,7 +893,7 @@ export default function WorkstationBidApproval() {
                   <select name="hddreturnable" value={form.hddreturnable || "No"} onChange={handleChange} className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm">
                     <option value="Yes">Yes</option><option value="None">None</option>
                   </select>
-                  <input type="number" min="0" step="0.01" required={form.hddreturnable === "Yes"} name="hddreturnable_price" value={form.hddreturnable_price ?? ""} onChange={handleChange} placeholder="Price" className="w-28 border border-blue-300 rounded-md px-2 py-2 text-sm text-center outline-none focus:ring-2 focus:ring-blue-500" />
+                  <input type="number" min="0" step="0.01" required={form.hddreturnable === "Yes"} name="hddreturnable_price" value={priceInputValue(form.hddreturnable_price ?? "")} onChange={handleChange} placeholder="Price" className="w-28 border border-blue-300 rounded-md px-2 py-2 text-sm text-center outline-none focus:ring-2 focus:ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
                 </div>
               </div>
 
@@ -901,7 +912,7 @@ export default function WorkstationBidApproval() {
                     <label className="block text-sm font-semibold text-emerald-900">Bid Approved Price <span className="text-red-600">*</span></label>
                     <div className="flex items-center gap-2">
                       <span className="font-semibold text-emerald-800">₹</span>
-                      <input type="number" min="0" step="0.01" required name="total_price" value={form.total_price ?? ""} onChange={handleChange} readOnly={selected.status === "approved" || selected.review_status === "approved"} disabled={selected.status === "approved" || selected.review_status === "approved"} placeholder="Enter approved price" className="w-48 rounded-md border border-emerald-300 bg-white px-3 py-2 text-right text-lg font-semibold text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-700 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+                      <input type="number" min="0" step="0.01" required name="total_price" value={priceInputValue(form.total_price ?? "")} onChange={handleChange} readOnly={selected.status === "approved" || selected.review_status === "approved"} disabled={selected.status === "approved" || selected.review_status === "approved"} placeholder="Enter approved price" className="w-48 rounded-md border border-emerald-300 bg-white px-3 py-2 text-right text-lg font-semibold text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-700 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
                     </div>
                   </div>
                 </div>
@@ -919,7 +930,7 @@ export default function WorkstationBidApproval() {
                         rows={2}
                         className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm resize-none outline-none focus:ring-2 focus:ring-blue-500"
                       />
-                      <input type="text" name="optional_ports_price" value={form.optional_ports_price ?? ""} onChange={handleChange} placeholder="Price"
+                      <input type="text" name="optional_ports_price" value={priceInputValue(form.optional_ports_price ?? "")} onChange={handleChange} placeholder="Price"
                         className="w-28 border border-blue-300 rounded-md px-2 py-2 text-sm text-center outline-none focus:ring-2 focus:ring-blue-500" />
                     </div>
                   </div>

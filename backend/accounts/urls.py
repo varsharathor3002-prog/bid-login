@@ -1,6 +1,8 @@
 from django.urls import path
 from .views.GemFinancialRanking import financial_rankings, delete_financial_ranking
+from .views.GemProductSpecs import import_gem_product_specs, replace_from_gem_market, save_gem_category_excel
 from . import views
+from .views.generated_download import download_generated_pdf
 from .views.special_document import (
     desktop_special_document,
     workstation_special_document,
@@ -116,6 +118,9 @@ urlpatterns = [
     path("catalogue/", views.list_catalogue_products, name="list_catalogue_products"),
     path("catalogue/create/", views.create_catalogue_product, name="create_catalogue_product"),
     path("catalogue/extract-pdf/", views.extract_catalogue_pdf, name="extract_catalogue_pdf"),
+    path("catalogue/import-gem-specs/", import_gem_product_specs, name="import_gem_product_specs"),
+    path("catalogue/replace-from-gem-market/", replace_from_gem_market, name="replace_from_gem_market"),
+    path("catalogue/gem-category-excel/", save_gem_category_excel, name="save_gem_category_excel"),
     path("catalogue/delete-all/", views.delete_all_catalogue_products, name="delete_all_catalogue_products"),
     path("catalogue/<int:product_id>/", views.get_catalogue_product, name="get_catalogue_product"),
     path("catalogue/<int:product_id>/update/", views.update_catalogue_product, name="update_catalogue_product"),
@@ -284,4 +289,5 @@ urlpatterns = [
     path("admin/printer-bids/monthly-performance/", product_dashboard.admin_printer_monthly_performance),
     path("admin/printer-bids/daily-activity/", product_dashboard.admin_printer_daily_activity),
     path("admin/printer-bids/stats/", product_dashboard.admin_printer_stats),
+    path("generated-docs/download/", download_generated_pdf, name="download_generated_pdf"),
 ]

@@ -271,8 +271,20 @@ async function recoverAcxxelSession() {
   return false;
 }
 
+// Desktop, Workstation and Printer jobs share one queue; AIO and Toner jobs
+// have their own (with their own job ids), so a job is always id + kind.
+const JOB_APIS = {
+  desktop: "/gem/extension/jobs",
+  aio: "/gem/extension/aio-jobs",
+  toner: "/gem/extension/toner-jobs",
+};
+
+function jobKind(product) {
+  return JOB_APIS[product] ? product : "desktop";
+}
+
 async function clearActiveJobEverywhere() {
-  await chrome.storage.local.remove("activeJobId");
+  await chrome.storage.local.remove(["activeJobId", "activeJobKind"]);
   const gemTabs = await chrome.tabs.query({ url: "https://*.gem.gov.in/*" });
   await Promise.all(gemTabs.map((tab) => (
     chrome.tabs.sendMessage(tab.id, { type: "DEACTIVATE_JOB" }).catch(() => {})
@@ -460,12 +472,14 @@ async function waitForSellerBidList(watchIds, onWait, allowBidplusRedirect, clic
     + "Open Bids > Seller Bid List from the GeM dashboard once, then click Scan Disqualified Bid.");
 }
 
-async function startJob(jobId) {
-  const job = await api(`/gem/extension/jobs/${jobId}/claim/`, {
+async function startJob(jobId, product) {
+  const kind = jobKind(product);
+  const job = await api(`${JOB_APIS[kind]}/${jobId}/claim/`, {
     method: "POST",
     body: "{}",
   });
-  await chrome.storage.local.set({ activeJobId: job.id });
+  job.kind = kind;
+  await chrome.storage.local.set({ activeJobId: job.id, activeJobKind: kind });
   const existingGemTabs = await chrome.tabs.query({ url: "https://*.gem.gov.in/*" });
   const trackedIds = await autoSyncTabIds();
   const userGemTabs = existingGemTabs.filter((tab) => !trackedIds.includes(tab.id));
@@ -477,7 +491,7 @@ async function startJob(jobId) {
         active: true,
       });
   chrome.tabs.sendMessage(gemTab.id, { type: "ACTIVATE_JOB", job }).catch(() => {});
-  await api(`/gem/extension/jobs/${jobId}/report/`, {
+  await api(`${JOB_APIS[kind]}/${jobId}/report/`, {
     method: "POST",
     body: JSON.stringify({
       status: "ready_for_fill",
@@ -536,20 +550,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return { ok: true, connected: Boolean(saved.token), gemBidSync: sync.gemBidSync || null, gemOpportunitySync: sync.gemOpportunitySync || null };
     }
     if (message.type === "GET_ACTIVE_JOB") {
-      const saved = await chrome.storage.local.get("activeJobId");
+      const saved = await chrome.storage.local.get(["activeJobId", "activeJobKind"]);
       if (!saved.activeJobId) return { ok: true, job: null };
-      const jobs = await api("/gem/extension/jobs/");
+      const kind = jobKind(saved.activeJobKind);
+      const jobs = await api(`${JOB_APIS[kind]}/`);
       const job = jobs.find((item) => item.id === saved.activeJobId) || null;
+      if (job) job.kind = kind;
       if (!job || !["queued", "ready_for_fill", "filled"].includes(job.status)) {
-        await chrome.storage.local.remove("activeJobId");
+        await chrome.storage.local.remove(["activeJobId", "activeJobKind"]);
       }
       return { ok: true, job };
     }
     if (message.type === "CLEAR_ACTIVE_JOB") {
-      await chrome.storage.local.remove("activeJobId");
+      await chrome.storage.local.remove(["activeJobId", "activeJobKind"]);
       return { ok: true };
     }
-    if (message.type === "START_JOB") return { ok: true, result: await startJob(message.jobId) };
+    if (message.type === "START_JOB") return { ok: true, result: await startJob(message.jobId, message.product) };
     if (message.type === "GET_MRP_DOCUMENT") {
       return {
         ok: true,
@@ -588,7 +604,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return { ok: true };
     }
     if (message.type === "REPORT_JOB") {
-      return { ok: true, job: await api(`/gem/extension/jobs/${message.jobId}/report/`, {
+      return { ok: true, job: await api(`${JOB_APIS[jobKind(message.kind)]}/${message.jobId}/report/`, {
         method: "POST",
         body: JSON.stringify(message.report),
       }) };

@@ -10,8 +10,15 @@ from .GemOpportunityRules import classify_opportunity_item
 
 INDIA_TIMEZONE = ZoneInfo("Asia/Kolkata")
 
+# Printer bids are received at any quantity and however far off they end;
+# Workstation bids at any quantity. Every other rule still applies to them.
+NO_MINIMUM_QUANTITY_PRODUCTS = {"printer", "workstation"}
+NO_DAY_LIMIT_PRODUCTS = {"printer"}
+MINIMUM_QUANTITY = 5
+MAX_DAYS = 120
 
-def valid_opportunity_dates(bid_date, end_date, now=None):
+
+def valid_opportunity_dates(bid_date, end_date, now=None, product_type=""):
     """Return whether an opportunity belongs in the active frontend window."""
     if not bid_date or not end_date:
         return False
@@ -21,9 +28,11 @@ def valid_opportunity_dates(bid_date, end_date, now=None):
     # Every ongoing bid is kept regardless of how long ago it started; the
     # scanner reads all Latest First pages and stops once it reaches bids it
     # has already read.
+    if product_type in NO_DAY_LIMIT_PRODUCTS:
+        return local_bid_date <= local_now.date() and reference < end_date
     return (
         local_bid_date <= local_now.date()
-        and reference < end_date <= reference + timedelta(days=120)
+        and reference < end_date <= reference + timedelta(days=MAX_DAYS)
     )
 
 
@@ -68,7 +77,9 @@ def delete_invalid_unassigned_opportunities(now=None):
     invalid_ids = []
     for row in candidates:
         classification = classify_opportunity_item(row.product_name)
-        if not valid_opportunity_dates(row.bid_date, row.end_date, reference) or not classification:
+        if not classification or not valid_opportunity_dates(
+            row.bid_date, row.end_date, reference, classification["product_type"]
+        ):
             invalid_ids.append(row.id)
             continue
         if (

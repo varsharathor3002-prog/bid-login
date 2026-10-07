@@ -11,6 +11,7 @@ import iso14001Pdf from "../../../assets/14001.pdf?url";
 import iso19752Pdf from "../../../assets/ISO IEC 19752.pdf?url";
 import iso19798Pdf from "../../../assets/ISO IEC 19798.pdf?url";
 import iso27001Pdf from "../../../assets/ISO 27001.pdf?url";
+import { priceInputValue } from "../../../utils/price";
 
 const API_BASE = import.meta.env.VITE_API_URL;
 
@@ -937,6 +938,11 @@ export default function TonerBidApproval() {
                     className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
                 <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Bid Start Date</label>
+                  <input type="date" name="start_date" value={form?.start_date || ""} onChange={handleChange}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Bid End Date</label>
                   <input type="date" name="date" value={form?.date || ""} onChange={handleChange}
                     className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
@@ -1001,7 +1007,7 @@ export default function TonerBidApproval() {
                       <label className="block text-sm font-semibold text-slate-800">Unit Price</label>
                       <div className="flex items-center gap-2">
                         <span className="font-semibold text-slate-700">₹</span>
-                        <input type="number" min="0" step="0.01" name="unit_price" value={form?.unit_price ?? ""} onChange={handleChange}
+                        <input type="number" min="0" step="0.01" name="unit_price" placeholder="Price" value={priceInputValue(form?.unit_price ?? "")} onChange={handleChange}
                           className="w-48 rounded-md border border-slate-300 bg-white px-3 py-2 text-right text-lg font-semibold text-slate-800 outline-none" />
                       </div>
                     </div>
@@ -1014,7 +1020,7 @@ export default function TonerBidApproval() {
                       </label>
                       <div className="flex items-center gap-2">
                         <span className="font-semibold text-emerald-800">₹</span>
-                        <input type="number" min="0" step="0.01" name="total_price" value={form?.total_price ?? ""} onChange={handleChange} required
+                        <input type="number" min="0" step="0.01" name="total_price" value={priceInputValue(form?.total_price ?? "")} onChange={handleChange} required
                           placeholder="Enter approved price"
                           readOnly={selected?.status === "approved"}
                           disabled={selected?.status === "approved"}

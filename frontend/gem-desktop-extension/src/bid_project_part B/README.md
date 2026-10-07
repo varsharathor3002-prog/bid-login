@@ -1,3 +1,111 @@
+# Each product's own GeM spec groups (3.74.0)
+
+The page reader also returns `sections`: the product page's own spec groups
+(<h4> title + table) in GeM order. The backend stores them per product as
+extra_specs["_gem_sections"] (Certification left out) and View Details shows
+exactly those groups, so every product shows its own GeM specs.
+
+# Toner + every GeM configuration (3.73.0)
+
+Each GeM listing is its own directory product: a model number can repeat,
+told apart by its GeM product id (backend migration 0064 - run `migrate`).
+Toner scans also go to the directory's Toner tab (Brand, Cartridge Type,
+Product Class, Colour, Technology, Compatibility, Page Yield, Yield Standard).
+Category names with "/" (Toner) no longer break the category Excel.
+
+# AIO products in the directory (3.72.0)
+
+All in One PC scans also go to the product directory's AIO tab (category
+"aio"), mapped to the AIO fields (Processor, RAM "16GB DDR4", Storage
+"512 GB NVMe SSD", OS, Screen Size "22.87 to 24.8 inch", WiFi Bluetooth,
+Keyboard Mouse, Motherboard Ports) plus every GeM spec; bid-created AIO models
+found on GeM lose their "_source" marker. GeM lists some models several times;
+the scan status now also reports the number of different model numbers.
+
+# Product Scan: acxxel only (3.71.0)
+
+Only acxxel products are taken, in every category. Other brands are skipped
+from the card's "Brand:" text without opening their page (the product page's
+brand is still checked). The backend category Excel accepts acxxel rows only
+and removes any other-brand rows already in the file.
+
+# Product Scan (3.70.0)
+
+Supersedes the GeM Product Specs / GeM Search -> Excel sections below (both
+removed from the popup). One "Product Scan" section that works like Bid To Be
+Participated: search the product on GeM Market (category + filters), click
+Scan Products. It reads the open page in that tab, each product page one by one
+(gem-product-parse.js), saves the page, clicks Next in the tab and continues to
+the last page; Pause/Resume and Copy status as in the other scans. It starts
+from the page that is open. Desktop (Entry and Mid Level / High End) acxxel
+products -> Desktop directory + Desktop_Product.xlsx (update, nothing removed);
+other categories -> backend/gem_products/<Category>.xlsx. The backend Replace
+mode and restore_desktop_products command still exist but have no popup button.
+
+# GeM Search -> Excel, any category (3.69.0)
+
+New popup section. Open any GeM Market search (any category, any filters) and
+click Read Open Search: the extension reads the open search's total and
+category from the tab, then every page (via the search's own pagination links;
+if those don't carry the filters, it clicks Next in the tab - start on page 1)
+and every product page. Searches over 2000 products are refused (add a filter).
+Save: Entry and Mid Level / High End Desktop Computer -> acxxel products update
+the Desktop directory + Desktop_Product.xlsx (mode=update, nothing removed);
+any other category -> backend/gem_products/<Category>.xlsx
+(POST /api/catalogue/gem-category-excel/) with model, brand, product name, URL
+and every GeM spec column; saving again updates rows by model number.
+
+# Both GeM Desktop categories (3.68.0)
+
+Fetch from GeM now reads acxxel products of Entry and Mid Level Desktop
+Computer AND High End Desktop Computer (computers-mid-and-high-end-computer-cpu);
+each category's list must be complete. High End labels are mapped by the
+backend: Base/Higher Processor Number -> Processor Number, Computer Type
+"High End", Primary/Secondary Storage -> SSD/HDD capacity, OS/USB/DIMM label
+variants. A model listed in both categories keeps its first (Entry/Mid) listing.
+
+# One-click GeM Product Specs (3.67.0)
+
+Supersedes the two sections below (manual "Product Directory Specs" is removed).
+Popup section "GeM Product Specs -> Directory": Fetch from GeM reads the
+acxxel list automatically - all products, or only the model typed in Model No.
+(found by its product URL, then confirmed on the product page). Preview, then:
+Update Specs (mode=update) applies GeM specs to matching directory products and
+adds new models, nothing is removed; Replace Directory & Excel (full fetch only)
+works as described in 3.66.0.
+
+# GeM Market products -> Desktop directory + Excel (3.66.0)
+
+Popup section "GeM Market Products -> Directory". Scan GeM Market reads every
+acxxel product of Entry and Mid Level Desktop Computer (category search
+q=acxxel, all pages; the same list as Market > Brand filter acxxel, each
+product's brand is checked on its own page) with all specification rows. No GeM
+login is needed; it runs in the service worker, so the popup can be closed.
+The popup then shows a preview (new / already in directory / to backup /
+duplicates). Replace Directory & Excel (POST /api/catalogue/replace-from-gem-market/)
+makes those products the Desktop directory and writes a fresh
+Desktop_Product.xlsx with one column per spec. Old Desktop products go to
+backend/Desktop_Product.old-<date-time>.xlsx (bid-created models not yet on
+GeM too); AIO/Workstation products are kept. Restore on the server with
+`python manage.py restore_desktop_products` (lists backups) and
+`python manage.py restore_desktop_products <file> [--model MODEL ...]`.
+An incomplete scan is refused by the backend.
+
+# Product directory specs from GeM (3.65.0)
+
+New popup section "Product Directory Specs". Open a Desktop product page on
+GeM that shows its specifications and click Read Specs: the popup previews the
+model number, how many directory spec fields were found and which values will
+change. Save to Directory writes them to the Acxxel product catalogue
+(POST /api/catalogue/import-gem-specs/). Only the Desktop spec fields already
+shown in the product directory are taken; fields not on the GeM page keep their
+current value. A model not yet in the directory is added as a Desktop product.
+AIO/Workstation products are refused. Requires the backend update as well.
+Every save also writes the product's row in backend/Desktop_Product.xlsx
+(same columns as the DB export; a new model is appended). If the Excel file is
+open/locked, the directory is still saved and the popup asks to close the file
+and click Save again.
+
 # Current-year disqualified bids (3.64.12)
 
 Only disqualification dates in the current calendar year are synced and listed.

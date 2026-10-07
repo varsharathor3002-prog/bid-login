@@ -4,6 +4,7 @@ import {
   PROCESSORS, RAMS, HDDS, SSDS, OS_OPTIONS, DVDS, WIFIS, MONITORS,
   CABINETS, KEYBOARDS, WARRANTIES, MOTHERBOARDS, getPriceFromLocalData,
 } from "../User/DesktopConfig";
+import { priceInputValue } from "../../../utils/price";
 
 const API_BASE = import.meta.env.VITE_API_URL;
 
@@ -110,7 +111,7 @@ const PriceField = ({ label, name, priceName, form, handleChange, options, isTex
         <input
           type="text"
           name={priceName}
-          value={form?.[priceName] ?? ""}
+          value={priceInputValue(form?.[priceName] ?? "")}
           onChange={handleChange}
           autoComplete="off"
           placeholder="Price"
@@ -958,6 +959,11 @@ export default function DesktopBidApproval() {
                     className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
                 <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Bid Start Date</label>
+                  <input type="date" name="start_date" value={form?.start_date || ""} onChange={handleChange}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Bid End Date</label>
                   <input type="date" name="date" value={form?.date || ""} onChange={handleChange}
                     className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
@@ -1020,7 +1026,7 @@ export default function DesktopBidApproval() {
                     <input type="text" value={form?.freightInstallation || "Yes"} readOnly
                       className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm bg-gray-50" />
                     <input type="text" name="freightInstallation_price"
-                      value={form?.freightInstallation_price || ""}
+                      value={priceInputValue(form?.freightInstallation_price || "")}
                       onChange={handleChange}
                       disabled={(form?.freightInstallation || "Yes") === "No"}
                       placeholder="Price" className="w-28 border border-blue-300 rounded-md px-2 py-2 text-sm text-center outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400" />
@@ -1038,7 +1044,7 @@ export default function DesktopBidApproval() {
                       <option value="Yes">Yes</option>
                       <option value="None">None</option>
                     </select>
-                    <input type="number" min="0" step="0.01" required={form?.hddreturnable === "Yes"} name="hddreturnable_price" value={form?.hddreturnable_price || ""} onChange={handleChange}
+                    <input type="number" min="0" step="0.01" required={form?.hddreturnable === "Yes"} name="hddreturnable_price" value={priceInputValue(form?.hddreturnable_price || "")} onChange={handleChange}
                       placeholder="Price" className="w-28 border border-blue-300 rounded-md px-2 py-2 text-sm text-center outline-none focus:ring-2 focus:ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
                   </div>
                 </div>
@@ -1071,7 +1077,7 @@ export default function DesktopBidApproval() {
                           min="0"
                           step="0.01"
                           name="total_price"
-                          value={form?.total_price ?? ""}
+                          value={priceInputValue(form?.total_price ?? "")}
                           onChange={handleChange}
                           required
                           placeholder="Enter approved price"
@@ -1102,7 +1108,7 @@ export default function DesktopBidApproval() {
                     <textarea name="optional_ports" value={form?.optional_ports || ""} onChange={handleChange}
                       rows={2} placeholder="e.g. Serial Port, Display Port, USB Type-C"
                       className="flex-1 border border-blue-200 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-blue-50/30 resize-none" />
-                    <input type="text" name="optional_ports_price" value={form?.optional_ports_price ?? ""} onChange={handleChange} placeholder="Price"
+                    <input type="text" name="optional_ports_price" value={priceInputValue(form?.optional_ports_price ?? "")} onChange={handleChange} placeholder="Price"
                       className="w-28 border border-blue-300 rounded-md px-2 py-2 text-sm text-center outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                 </div>

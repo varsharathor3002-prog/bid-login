@@ -140,7 +140,7 @@ export default function DocumentPrintView() {
       <section className="a4-page">
         <img className="letterhead" src={letterhead} alt="Laps N Tabs Technology Pvt. Ltd." />
         <Recipient bid={bid} />
-        <div className="bid-reference"><strong>Bid No: {bid.bid_no}</strong><strong>Dated: {bid.date || ""}</strong></div>
+        <div className="bid-reference"><strong>Bid No: {bid.bid_no}</strong><strong>Dated: {bid.start_date || bid.date || ""}</strong></div>
         <h1>{TITLES[docType] || docType}</h1>
         {isSpec ? <SpecificationTable bid={bid} compliance={docType === "technical_compliance"} /> : docType === "service_support" ? <ServiceSupport product={product} /> : <LetterBody type={docType} bid={bid} product={product} />}
         {!isSpec && <Signatory />}

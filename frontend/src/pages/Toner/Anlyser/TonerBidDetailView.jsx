@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import GemUploadButton from "../../../components/analyser/GemUploadButton";
 import SpecialDocEditor from "../../../components/analyser/SpecialDocEditor";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 // Toner-native dropdown vocabulary — same source used at the User config
@@ -384,7 +385,20 @@ export default function TonerBidDetailView() {
   const [gemJob, setGemJob] = useState(null);
   const [loadingBid, setLoadingBid] = useState(true);
   const [msg, setMsg] = useState("");
-  const [verifiedFields, setVerifiedFields] = useState({});
+  // Ticks survive going to the documents page and coming back (same as
+  // Desktop): kept per bid for this browser tab.
+  const verificationStorageKey = `toner_bid_verified_fields_${id}`;
+  const [verifiedFields, setVerifiedFields] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem(verificationStorageKey);
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+  useEffect(() => {
+    sessionStorage.setItem(verificationStorageKey, JSON.stringify(verifiedFields));
+  }, [verificationStorageKey, verifiedFields]);
   const [modelInputValue, setModelInputValue] = useState("");
   const [modelSearching, setModelSearching] = useState(false);
   const [modelSaving, setModelSaving] = useState(false);
@@ -406,7 +420,7 @@ export default function TonerBidDetailView() {
     let stopped = false;
     const loadJob = async () => {
       const response = await fetch(`${API_BASE}/gem/toner-jobs/?bid_id=${form.id}`, {
-        headers: { "Authorization": `Bearer ${localStorage.getItem("token") || ""}` },
+        headers: { "Authorization": `Bearer ${sessionStorage.getItem("token") || localStorage.getItem("token") || ""}` },
       });
       const data = await response.json().catch(() => []);
       if (!stopped && response.ok && Array.isArray(data) && data[0]) {
@@ -587,7 +601,7 @@ export default function TonerBidDetailView() {
           id,
           bid_id: id,
           model_number: saved,
-          analyser_username: localStorage.getItem("analyser_username") || localStorage.getItem("username") || "",
+          analyser_username: sessionStorage.getItem("analyser_username") || sessionStorage.getItem("username") || localStorage.getItem("analyser_username") || localStorage.getItem("username") || "",
           verified_fields: Object.keys(verifiedFields).filter((key) => verifiedFields[key]),
         },
       },
@@ -612,7 +626,7 @@ export default function TonerBidDetailView() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${localStorage.getItem("token") || ""}`,
+          "Authorization": `Bearer ${sessionStorage.getItem("token") || localStorage.getItem("token") || ""}`,
         },
         body: JSON.stringify({}),
       });
@@ -839,6 +853,9 @@ export default function TonerBidDetailView() {
           <Select name="replacement_policy" options={REPLACEMENT_POLICIES} />
         </VerifiedInputWrapper>
 
+        <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="start_date" label="Bid Start Date">
+          <input type="date" name="start_date" value={form.start_date || ""} onChange={handleChange} disabled={readOnly} className={inputCls} />
+        </VerifiedInputWrapper>
         <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="date" label="Bid End Date">
           <input type="date" name="date" value={form.date || ""} onChange={handleChange} disabled={readOnly} className={inputCls} />
         </VerifiedInputWrapper>
@@ -882,14 +899,7 @@ export default function TonerBidDetailView() {
                   {gemJob?.progress ? ` - ${gemJob.progress}` : ""}
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={handleTonerGemJobUpload}
-                disabled={gemStarting}
-                className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white font-semibold px-6 py-2.5 rounded-md text-sm transition"
-              >
-                Upload to GeM Portal
-              </button>
+              <GemUploadButton size="md" onClick={handleTonerGemJobUpload} loading={gemStarting} />
             </div>
           </div>
         )}

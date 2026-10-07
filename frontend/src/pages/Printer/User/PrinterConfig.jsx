@@ -199,6 +199,7 @@ const INITIAL_FORM = {
   onsite_warranty: "",
   extended_warranty: "",
   date: "",
+  start_date: "",
   extra_requirements: "",
   epbg: "",
   freightInstallation: "Yes",
@@ -673,6 +674,20 @@ export default function PrinterConfig({ bidData, onNext, onBack, productMode = "
           <SectionTitle>Other Details</SectionTitle>
 
           <div className="col-span-1 grid grid-cols-1 gap-7 md:col-span-2 md:grid-cols-3 md:gap-8">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Bid Start Date
+            </label>
+            <input
+              type="date"
+              name="start_date"
+              value={form.start_date}
+              onChange={handleChange}
+              required
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Bid End Date

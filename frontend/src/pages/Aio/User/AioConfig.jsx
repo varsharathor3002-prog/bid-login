@@ -5,6 +5,7 @@ import {
   DVDS,
   WARRANTIES,
 } from "../../Desktop/User/DesktopConfig";
+import { priceInputValue } from "../../../utils/price";
 
 export const AIO_PROCESSORS = [
   ...PROCESSORS
@@ -176,6 +177,7 @@ const INITIAL_FORM = {
   motherboard_price: "",
   motherboard_descp: "",
   date: "",
+  start_date: "",
   epbg: "",
   hddreturnable: "Yes",
   hddreturnable_price: "",
@@ -346,7 +348,7 @@ export default function AioConfig({ bidData, onNext }) {
         </select>
         <input
           type="text"
-          value={form[`${name}_price`] === "" || form[`${name}_price`] == null ? "" : form[`${name}_price`]}
+          value={priceInputValue(form[`${name}_price`] === "" || form[`${name}_price`] == null ? "" : form[`${name}_price`])}
           readOnly
           disabled
           placeholder="Price"
@@ -412,7 +414,7 @@ export default function AioConfig({ bidData, onNext }) {
                   </select>
                   <input
                     type="text"
-                    value={intelProcessors.some((p) => p.name === form.processor) ? form.processor_price : ""}
+                    value={priceInputValue(intelProcessors.some((p) => p.name === form.processor) ? form.processor_price : "")}
                     readOnly
                     disabled
                     placeholder="Price"
@@ -442,7 +444,7 @@ export default function AioConfig({ bidData, onNext }) {
                   </select>
                   <input
                     type="text"
-                    value={amdProcessors.some((p) => p.name === form.processor) ? form.processor_price : ""}
+                    value={priceInputValue(amdProcessors.some((p) => p.name === form.processor) ? form.processor_price : "")}
                     readOnly
                     disabled
                     placeholder="Price"
@@ -507,6 +509,18 @@ export default function AioConfig({ bidData, onNext }) {
           <SelectField label="Warranty" name="warranty" options={WARRANTIES} required />
 
           <div className="col-span-1">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Bid Start Date</label>
+            <input
+              type="date"
+              name="start_date"
+              value={form.start_date}
+              onChange={handleChange}
+              required
+              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div className="col-span-1">
             <label className="block text-sm font-medium text-gray-700 mb-1">Bid End Date</label>
             <input
               type="date"
@@ -545,7 +559,7 @@ export default function AioConfig({ bidData, onNext }) {
               <input
                 type="text"
                 name="hddreturnable_price"
-                value={form.hddreturnable_price}
+                value={priceInputValue(form.hddreturnable_price)}
                 onChange={handleChange}
                 placeholder="Price"
                 className="w-24 border border-gray-300 rounded-md px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"

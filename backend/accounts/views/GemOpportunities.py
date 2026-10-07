@@ -10,7 +10,13 @@ from django.views.decorators.http import require_http_methods
 
 from ..models import GemBidAssignment, GemBidOpportunity
 from .Gem import _request_user
-from .GemOpportunityCleanup import valid_opportunity_dates
+from .GemOpportunityCleanup import (
+    MAX_DAYS,
+    MINIMUM_QUANTITY,
+    NO_DAY_LIMIT_PRODUCTS,
+    NO_MINIMUM_QUANTITY_PRODUCTS,
+    valid_opportunity_dates,
+)
 from .GemOpportunityRules import classify_opportunity_item, clean_opportunity_item
 
 
@@ -115,7 +121,10 @@ def gem_bid_opportunities(request):
             assignment__isnull=True,
             end_date__gt=now,
         )
-        visible = [row for row in rows[:5000] if valid_opportunity_dates(row.bid_date, row.end_date, now)]
+        visible = [
+            row for row in rows[:5000]
+            if valid_opportunity_dates(row.bid_date, row.end_date, now, row.product_type)
+        ]
         return JsonResponse({"results": [_data(row) for row in visible]})
     try:
         body = json.loads(request.body or "{}")
@@ -191,15 +200,20 @@ def gem_bid_opportunities(request):
             continue
         bid_date = _date(item.get("bid_date"))
         end_date = _date(item.get("end_date"))
-        if not valid_opportunity_dates(bid_date, end_date, now):
+        product_type = classification["product_type"]
+        if not valid_opportunity_dates(bid_date, end_date, now, product_type):
             rejections.append({"bid_no": bid_no, "reason": "invalid_date"})
             continue
         validity = item.get("offer_validity_days")
-        if validity is not None and (type(validity) is not int or not 1 <= validity <= 120):
+        max_validity = None if product_type in NO_DAY_LIMIT_PRODUCTS else MAX_DAYS
+        if validity is not None and (
+            type(validity) is not int or validity < 1 or (max_validity and validity > max_validity)
+        ):
             rejections.append({"bid_no": bid_no, "reason": "invalid_offer_validity"})
             continue
         quantity = item.get("quantity")
-        if type(quantity) is not int or quantity < 5:
+        min_quantity = 1 if product_type in NO_MINIMUM_QUANTITY_PRODUCTS else MINIMUM_QUANTITY
+        if type(quantity) is not int or quantity < min_quantity:
             rejections.append({"bid_no": bid_no, "reason": "minimum_quantity_5"})
             continue
         existing = GemBidOpportunity.objects.filter(bid_no=bid_no).first()

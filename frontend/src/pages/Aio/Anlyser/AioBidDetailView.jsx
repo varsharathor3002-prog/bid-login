@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import GemUploadButton from "../../../components/analyser/GemUploadButton";
 import SpecialDocEditor from "../../../components/analyser/SpecialDocEditor";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { DVDS, WARRANTIES } from "../../Desktop/User/DesktopConfig";
@@ -11,6 +12,7 @@ import {
   AIO_PROCESSORS, AIO_KEYBOARDS, AIO_MOTHERBOARDS, getFilteredAioRams,
 } from "../User/AioConfig";
 import { fetchComponentRates } from "../../../utils/componentRates";
+import { priceInputValue } from "../../../utils/price";
 
 const API_BASE = import.meta.env.VITE_API_URL;
 
@@ -287,7 +289,20 @@ export default function AioBidDetailView() {
   const [gemJob, setGemJob] = useState(null);
   const [loadingBid, setLoadingBid] = useState(true);
   const [msg, setMsg] = useState("");
-  const [verifiedFields, setVerifiedFields] = useState({});
+  // Ticks survive going to the documents page and coming back (same as
+  // Desktop): kept per bid for this browser tab.
+  const verificationStorageKey = `aio_bid_verified_fields_${id}`;
+  const [verifiedFields, setVerifiedFields] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem(verificationStorageKey);
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+  useEffect(() => {
+    sessionStorage.setItem(verificationStorageKey, JSON.stringify(verifiedFields));
+  }, [verificationStorageKey, verifiedFields]);
   const [modelInputValue, setModelInputValue] = useState("");
   const [modelSearching, setModelSearching] = useState(false);
   const [modelSaving, setModelSaving] = useState(false);
@@ -315,7 +330,7 @@ export default function AioBidDetailView() {
     let stopped = false;
     const loadJob = async () => {
       const response = await fetch(`${API_BASE}/gem/aio-jobs/?bid_id=${form.id}`, {
-        headers: { "Authorization": `Bearer ${localStorage.getItem("token") || ""}` },
+        headers: { "Authorization": `Bearer ${sessionStorage.getItem("token") || localStorage.getItem("token") || ""}` },
       });
       const data = await response.json().catch(() => []);
       if (!stopped && response.ok && Array.isArray(data) && data[0]) {
@@ -551,7 +566,7 @@ export default function AioBidDetailView() {
           id,
           bid_id: id,
           model_number: saved,
-          analyser_username: localStorage.getItem("analyser_username") || localStorage.getItem("username") || "",
+          analyser_username: sessionStorage.getItem("analyser_username") || sessionStorage.getItem("username") || localStorage.getItem("analyser_username") || localStorage.getItem("username") || "",
           verified_fields: Object.keys(verifiedFields).filter((key) => verifiedFields[key]),
         },
       },
@@ -581,7 +596,7 @@ export default function AioBidDetailView() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${localStorage.getItem("token") || ""}`,
+          "Authorization": `Bearer ${sessionStorage.getItem("token") || localStorage.getItem("token") || ""}`,
         },
         body: JSON.stringify({}),
       });
@@ -654,7 +669,7 @@ export default function AioBidDetailView() {
           {options.map((option) => <option key={option.name} value={option.name}>{option.name}</option>)}
           {!hideNone && <option value="None">None</option>}
         </select>
-        <input type="text" value={form[priceField] || ""} readOnly disabled placeholder="Price" className={priceCls} />
+        <input type="text" value={priceInputValue(form[priceField] || "")} readOnly disabled placeholder="Price" className={priceCls} />
       </div>
     );
   };
@@ -809,6 +824,9 @@ export default function AioBidDetailView() {
           <textarea name="motherboard_descp" value={form.motherboard_descp || ""} onChange={handleChange} disabled={readOnly} rows={2} className={textareaCls} />
         </VerifiedInputWrapper>
 
+        <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="start_date" label="Bid Start Date">
+          <input type="date" name="start_date" value={form.start_date || ""} onChange={handleChange} disabled={readOnly} className={inputCls} />
+        </VerifiedInputWrapper>
         <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="date" label="Bid End Date">
           <input type="date" name="date" value={form.date || ""} onChange={handleChange} disabled={readOnly} className={inputCls} />
         </VerifiedInputWrapper>
@@ -840,13 +858,13 @@ export default function AioBidDetailView() {
               <input
                 type="number"
                 name="freightInstallation_price"
-                value={form?.freightInstallation_price ?? ""}
+                value={priceInputValue(form?.freightInstallation_price ?? "")}
                 onChange={(e) => {
                   const val = e.target.value;
                   setForm((prev) => ({ ...prev, freightInstallation_price: val }));
                 }}
                 disabled={readOnly || (form?.freightInstallation ?? "Yes") === "No"}
-                placeholder="Enter Amount"
+                placeholder="Price"
                 className="w-32 border border-gray-300 rounded-md px-3 py-2 text-sm disabled:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               />
             </div>
@@ -859,7 +877,7 @@ export default function AioBidDetailView() {
               <option>Yes</option>
               <option>No</option>
             </select>
-            <input type="text" name="hddreturnable_price" value={form.hddreturnable_price ?? ""} onChange={handleChange} disabled={readOnly} placeholder="Price" className="w-24 border border-gray-300 rounded-md px-2 py-2 text-sm disabled:bg-gray-100 focus:outline-none focus:border-blue-500 bg-white" />
+            <input type="text" name="hddreturnable_price" value={priceInputValue(form.hddreturnable_price ?? "")} onChange={handleChange} disabled={readOnly} placeholder="Price" className="w-24 border border-gray-300 rounded-md px-2 py-2 text-sm disabled:bg-gray-100 focus:outline-none focus:border-blue-500 bg-white" />
           </div>
         </VerifiedInputWrapper>
 
@@ -902,14 +920,7 @@ export default function AioBidDetailView() {
                   {gemJob?.progress ? ` - ${gemJob.progress}` : ""}
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={handleAioGemJobUpload}
-                disabled={gemStarting}
-                className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white font-semibold px-6 py-2.5 rounded-md text-sm transition"
-              >
-                Upload to GeM Portal
-              </button>
+              <GemUploadButton size="md" onClick={handleAioGemJobUpload} loading={gemStarting} />
             </div>
           </div>
         )}

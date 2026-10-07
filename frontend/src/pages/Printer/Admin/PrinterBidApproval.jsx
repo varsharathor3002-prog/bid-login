@@ -19,7 +19,7 @@ const GENERAL_DOCS = [
 const BID_FIELDS = [
   ["bid_no", "Bid Number"], ["model_number", "Model Number"], ["dept_name", "Department"],
   ["organization", "Organization"], ["qty", "Quantity", "number"], ["pincode", "Buyer Pincode"],
-  ["date", "Bid End Date", "date"], ["address", "Address"], ["local_content", "Local Content (%)"],
+  ["start_date", "Bid Start Date", "date"], ["date", "Bid End Date", "date"], ["address", "Address"], ["local_content", "Local Content (%)"],
 ];
 
 const PRINTER_FIELDS = [

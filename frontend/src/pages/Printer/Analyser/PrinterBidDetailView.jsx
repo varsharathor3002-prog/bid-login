@@ -120,6 +120,7 @@ const FIELD_GROUPS = [
   { name: "Duty Cycle (Prints/Month)", key: "duty_cycle" },
   { name: "On Site Warranty (In Year)", key: "onsite_warranty" },
   { name: "Extended Warranty (in Years) over and above standard warranty", key: "extended_warranty" },
+  { name: "Bid Start Date", key: "start_date", type: "date" },
   { name: "Bid End Date", key: "date", type: "date" },
   { name: "Freight and Installation", key: "freightInstallation" },
   { name: "EPBG (%)", key: "epbg" },
@@ -889,6 +890,9 @@ export default function PrinterBidDetailView() {
                 <input type="text" name="extended_warranty" value={form?.extended_warranty || ""} onChange={handleChange} disabled={readOnly} className={inputCls} />
               </VerifiedInputWrapper>
             )}
+            <VerifiedInputWrapper alignTwoLineLabel={readOnly} verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="start_date" label="Bid Start Date">
+              <input type="date" name="start_date" value={form?.start_date || ""} onChange={handleChange} disabled={readOnly} className={inputCls} />
+            </VerifiedInputWrapper>
             <VerifiedInputWrapper alignTwoLineLabel={readOnly} verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="date" label="Bid End Date">
               <input type="date" name="date" value={form?.date || ""} onChange={handleChange} disabled={readOnly} className={inputCls} />
             </VerifiedInputWrapper>

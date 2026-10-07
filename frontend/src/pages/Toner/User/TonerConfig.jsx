@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { priceInputValue } from "../../../utils/price";
 
 const API_BASE = import.meta.env.VITE_API_URL;
 
@@ -53,7 +54,7 @@ const INITIAL_FORM = {
   page_yield: "", yield_standard: "", chip: "", print_coverage: "",
   warranty: "", warranty_type: "", refillable: "", qty_per_pack: "",
   hsn_code: "", compliance: "", replacement_policy: "",
-  date: "", unit_price: "", toner_models: [],
+  date: "", start_date: "", unit_price: "", toner_models: [],
 };
 
 const getDraftKey = (bidId) => `toner_config_draft_${bidId || "new"}`;
@@ -464,17 +465,7 @@ export default function TonerConfig({ bidData, onBack, onNext }) {
               className="w-full min-h-[38px] border border-gray-300 rounded-md px-3 py-1.5 text-sm text-left focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-700 disabled:bg-gray-100 disabled:text-gray-400 flex items-center justify-between gap-2"
             >
               {form.toner_models.length > 0 ? (
-                <span className="flex flex-wrap gap-1 py-0.5">
-                  {form.toner_models.map((t) => (
-                    <span
-                      key={tonerKey(t)}
-                      className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full ${brandColor(t.brand).bg} ${brandColor(t.brand).text}`}
-                    >
-                      {selectedBrands.length > 1 && <span className={`h-1.5 w-1.5 rounded-full ${brandColor(t.brand).dot}`} />}
-                      {t.tonerModel}
-                    </span>
-                  ))}
-                </span>
+                <span className="truncate text-gray-700">{form.toner_models[0].tonerModel}</span>
               ) : (
                 <span className="text-gray-400">
                   {selectedBrands.length === 0 ? "Select Brand first" : tonerModelsLoading ? "Loading..." : "Select toner model(s)"}
@@ -546,8 +537,32 @@ export default function TonerConfig({ bidData, onBack, onNext }) {
               <p className="text-xs text-gray-500 mt-1">No toner models available for the selected brand(s).</p>
             )}
           </div>
+          {/* First selected toner shows in the Toner Model field above; each
+              further one gets its own field, appearing only once picked. */}
+          {form.toner_models.slice(1).map((t, index) => (
+            <div key={tonerKey(t)} className="col-span-1">
+              <div className="flex items-center gap-2 mb-1">
+                <label className="block text-sm font-medium text-gray-700">Toner Model {index + 2}</label>
+              </div>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={t.tonerModel}
+                  readOnly
+                  className="w-full border border-gray-300 rounded-md pl-3 pr-8 py-2 text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleToggleToner(t)}
+                  aria-label={`Remove ${t.tonerModel}`}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-600 text-xs"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          ))}
           <SelectField label="Type of Cartridge" name="cartridge_type" options={CARTRIDGE_TYPES} required />
-          <SelectField label="Product Class of Cartridge" name="product_class" options={PRODUCT_CLASSES} required />
           <SelectField label="Colour of Ink" name="colour" options={colourOptions} required />
 
           {form.toner_models.length > 0 && (
@@ -670,9 +685,21 @@ export default function TonerConfig({ bidData, onBack, onNext }) {
             <input
               type="text"
               name="unit_price"
-              value={form.unit_price}
+              value={priceInputValue(form.unit_price)}
               onChange={handleChange}
               placeholder="Price"
+              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div className="col-span-1">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Bid Start Date</label>
+            <input
+              type="date"
+              name="start_date"
+              value={form.start_date}
+              onChange={handleChange}
+              required
               className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>

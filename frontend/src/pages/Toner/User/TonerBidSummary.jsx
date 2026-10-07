@@ -7,7 +7,6 @@
 const CONFIG_FIELDS = [
   { key: "brand", label: "Brand" },
   { key: "cartridge_type", label: "Type of Cartridge" },
-  { key: "product_class", label: "Product Class of Cartridge" },
   { key: "colour", label: "Colour of Ink" },
   { key: "technology", label: "Technology" },
   { key: "compatibility", label: "Compatibility" },
@@ -25,6 +24,7 @@ const CONFIG_FIELDS = [
 ];
 
 const OTHER_FIELDS = [
+  { key: "start_date", label: "Bid Start Date" },
   { key: "date", label: "Bid End Date" },
   { key: "unit_price", label: "Unit Price" },
 ];

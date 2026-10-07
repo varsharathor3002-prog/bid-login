@@ -6,6 +6,7 @@ import {
   CABINETS, KEYBOARDS, WARRANTIES, MOTHERBOARDS,
   getFilteredRams, getPriceFromLocalData, isRamCompatible, isMotherboardCompatible,
 } from "../User/DesktopConfig";
+import { priceInputValue } from "../../../utils/price";
 
 const API_BASE = import.meta.env.VITE_API_URL;
 
@@ -354,7 +355,6 @@ export default function BidDetailView({ product = "desktop" }) {
   const [noMatchFound, setNoMatchFound] = useState(false);
   const [newModelInput, setNewModelInput] = useState("");
   const [modelInputValue, setModelInputValue] = useState("");
-  const [gemStarting, setGemStarting] = useState(false);
   const [gemJob, setGemJob] = useState(null);
 
   useEffect(() => {
@@ -675,7 +675,7 @@ export default function BidDetailView({ product = "desktop" }) {
       hddreturnable: snapshot.hddreturnable || "Yes",
       optional_ports: snapshot.optional_ports || "",
       status: "reviewed",
-      analyser_username: localStorage.getItem("username") || "",
+      analyser_username: sessionStorage.getItem("analyser_username") || sessionStorage.getItem("username") || localStorage.getItem("analyser_username") || localStorage.getItem("username") || "",
     };
 
     try {
@@ -718,7 +718,7 @@ export default function BidDetailView({ product = "desktop" }) {
               : 0,
         optional_ports: form?.optional_ports || "",
         status: "reviewed",
-        analyser_username: localStorage.getItem("username") || "",
+        analyser_username: sessionStorage.getItem("analyser_username") || sessionStorage.getItem("username") || localStorage.getItem("analyser_username") || localStorage.getItem("username") || "",
       };
 
       const res = await fetch(REVIEW_API[product](finalBidId), {
@@ -739,85 +739,6 @@ export default function BidDetailView({ product = "desktop" }) {
       setMsg("Server error — unable to save bid data.");
     } finally {
       setSubmitting(false);
-    }
-  };
-
-  const handleGemJobUpload = async () => {
-    const bidId = id || state?.id || state?.bid_id || form?.id || form?.bid_id;
-    if (!bidId) {
-      setMsg("Bid ID was not found, so GeM auto-fill was not queued.");
-      return;
-    }
-    setGemStarting(true);
-    setMsg("");
-    try {
-      const response = await fetch(
-        `${import.meta.env.VITE_API_URL}/desktop-bids/${bidId}/gem-jobs/`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${sessionStorage.getItem("token") || localStorage.getItem("token") || ""}`,
-          },
-          body: JSON.stringify({}),
-        }
-      );
-      const data = await response.json().catch(() => ({}));
-      if (response.status === 401) {
-        localStorage.removeItem("token");
-        setMsg("Acxxel session expired. Log in again before starting GeM auto-fill.");
-        return;
-      }
-      if (response.status === 403) {
-        setMsg(data.error || "Your account is not authorized to start GeM auto-fill for this bid.");
-        return;
-      }
-      if (!response.ok) throw new Error(data.error || "Unable to queue GeM upload.");
-      setGemJob(data);
-      setForm((prev) => ({
-        ...prev,
-        gem_account: data.account_label,
-        gem_status: data.status,
-        gem_error: "",
-      }));
-      if (document.documentElement.dataset.acxxelGemExtension !== "ready") {
-        setMsg("Job queued. Load the Acxxel GeM Desktop Workflow extension, then use its popup.");
-      } else {
-        const bridgeRequest = (requestEvent, resultEvent, detail) => new Promise(
-          (resolve, reject) => {
-            const timeout = window.setTimeout(() => {
-              document.removeEventListener(resultEvent, handleResult);
-              reject(new Error("GeM extension did not respond. Reload the extension and refresh this page."));
-            }, 5000);
-            function handleResult(event) {
-              window.clearTimeout(timeout);
-              document.removeEventListener(resultEvent, handleResult);
-              const result = event.detail || {};
-              if (result.ok) resolve(result);
-              else reject(new Error(result.error || "GeM extension could not complete the request."));
-            }
-            document.addEventListener(resultEvent, handleResult);
-            document.dispatchEvent(new CustomEvent(requestEvent, { detail }));
-          }
-        );
-        await bridgeRequest("acxxel-gem-connect", "acxxel-gem-connect-result", {
-          token: data.extension_token || sessionStorage.getItem("token") || localStorage.getItem("token") || "",
-          apiBase: import.meta.env.VITE_API_URL,
-        });
-        const startResult = await bridgeRequest(
-          "acxxel-gem-start",
-          "acxxel-gem-start-result",
-          { jobId: data.id }
-        );
-        if (!startResult.result?.tabId) {
-          throw new Error("Chrome did not confirm that the GeM login tab was opened.");
-        }
-        setMsg("");
-      }
-    } catch (error) {
-      setMsg(error.message || "Unable to queue GeM upload.");
-    } finally {
-      setGemStarting(false);
     }
   };
 
@@ -902,7 +823,7 @@ export default function BidDetailView({ product = "desktop" }) {
         {options.map((option) => <option key={option.name} value={option.name}>{option.name}</option>)}
         <option value="None">None</option>
       </select>
-      <input type="text" value={form?.[`${name}_price`] || ""} readOnly disabled placeholder="Price" className={priceCls} />
+      <input type="text" value={priceInputValue(form?.[`${name}_price`] || "")} readOnly disabled placeholder="Price" className={priceCls} />
     </div>
   );
 
@@ -1080,6 +1001,9 @@ export default function BidDetailView({ product = "desktop" }) {
             <textarea name="motherboard_descp" value={form?.motherboard_descp || ""} onChange={handleChange} disabled={readOnly} rows={2} className={textareaCls} />
           </VerifiedInputWrapper>
 
+          <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="start_date" label="Bid Start Date">
+            <input type="date" name="start_date" value={form?.start_date || ""} onChange={handleChange} disabled={readOnly} className={inputCls} />
+          </VerifiedInputWrapper>
           <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="date" label="Bid End Date">
             <input type="date" name="date" value={form?.date || ""} onChange={handleChange} disabled={readOnly} className={inputCls} />
           </VerifiedInputWrapper>
@@ -1111,13 +1035,13 @@ export default function BidDetailView({ product = "desktop" }) {
                 <input
                   type="number"
                   name="freightInstallation_price"
-                  value={form?.freightInstallation_price ?? ""}
+                  value={priceInputValue(form?.freightInstallation_price ?? "")}
                   onChange={(e) => {
                     const val = e.target.value;
                     setForm((prev) => ({ ...prev, freightInstallation_price: val }));
                   }}
                   disabled={readOnly || (form?.freightInstallation ?? "Yes") === "No"}
-                  placeholder="Enter Amount"
+                  placeholder="Price"
                   className="w-32 border border-gray-300 rounded-md px-3 py-2 text-sm disabled:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 />
               </div>
@@ -1131,7 +1055,7 @@ export default function BidDetailView({ product = "desktop" }) {
                 <option value="Yes">Yes</option>
                 <option value="None">None</option>
               </select>
-              <input type="text" name="hddreturnable_price" value={form?.hddreturnable_price || ""} onChange={handleChange} disabled={readOnly}
+              <input type="text" name="hddreturnable_price" value={priceInputValue(form?.hddreturnable_price || "")} onChange={handleChange} disabled={readOnly}
                 placeholder="Price" className="w-24 border border-gray-300 rounded-md px-2 py-2 text-sm disabled:bg-gray-100 focus:outline-none focus:border-blue-500 bg-white" />
             </div>
           </VerifiedInputWrapper>
@@ -1306,17 +1230,6 @@ export default function BidDetailView({ product = "desktop" }) {
             </svg>
             {readOnly ? "Back" : "Cancel"}
           </button>
-
-          {readOnly && isApproved && (
-            <button
-              type="button"
-              onClick={handleGemJobUpload}
-              disabled={gemStarting}
-              className="ml-auto bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white font-semibold px-6 py-2.5 rounded-md text-sm transition"
-            >
-              {gemStarting ? "Opening GeM..." : "Upload to GeM Portal"}
-            </button>
-          )}
         </div>
       </form>
     </div>

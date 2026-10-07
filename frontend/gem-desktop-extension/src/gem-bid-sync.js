@@ -1413,16 +1413,20 @@
     ["AIO", "All in One PC", /all\s+in\s+one\s+pc/i],
   ];
 
+  // Printer bids are received at any quantity and however far off they end;
+  // Workstation bids at any quantity. Every other rule still applies.
+  const NO_MINIMUM_QUANTITY_PRODUCTS = new Set(["printer", "workstation"]);
+  const NO_DAY_LIMIT_PRODUCTS = new Set(["printer"]);
+
   function opportunityFromText(bidNo, raw, cardStartDate = "", cardQuantity = 0) {
     const flat = String(raw || "").replace(/[\u0000-\u001f]+/g, " ").replace(/\s+/g, " ").trim();
     const bounded = (start, end) => flat.match(new RegExp(`${start}\\s*:?\\s*(.+?)(?=${end})`, "i"))?.[1]?.trim() || "";
     const quantity = Number(flat.match(/\bTotal\s+Quantity\s*:?\s*(\d+)\b/i)?.[1]
       || cardQuantity
       || flat.match(/\bQuantity\s*:?\s*(\d+)\b/i)?.[1] || 0);
-    // Bids below 5 units are never received; a bid whose quantity could not
-    // be read is rejected too rather than risk saving a small one.
+    // A bid whose quantity could not be read is rejected rather than risk
+    // saving a small one; the minimum itself depends on the product (below).
     if (!quantity) return { reject: "quantity_unread" };
-    if (quantity < 5) return { reject: "quantity" };
     const itemName = bounded(
       "Item\\s+Category",
       "(?:Minimum\\s+Average|Years?\\s+of\\s+Past|MSE\\s+Relaxation|Startup\\s+Relaxation|Bidder\\s+Turnover|$)"
@@ -1446,6 +1450,8 @@
     if (!categories.length || matchedProducts.some((product) => !product)) return { reject: "product" };
     if (categories.length > 1) return { reject: "bunch" };
     const product = matchedProducts[0];
+    // Bids below 5 units are not received, except Printer and Workstation.
+    if (quantity < 5 && !NO_MINIMUM_QUANTITY_PRODUCTS.has(product[0])) return { reject: "quantity" };
     const deliveryText = bounded(
       "Consignees?/Reporting\\s+Officer\\s+and\\s+Quantity",
       "(?:Special\\s+terms|Buyer\\s+Added|Technical\\s+Specifications|$)"
@@ -1474,7 +1480,10 @@
     const endTime = Date.parse(endDate || "");
     if (endTime && endTime <= Date.now()) return { reject: "expired" };
     if (!endTime && !validityDays) return { reject: "date" };
-    if (validityDays > 120 || (endTime && endTime - Date.now() > 120 * 86400000)) return { reject: "over120" };
+    if (
+      !NO_DAY_LIMIT_PRODUCTS.has(product[0])
+      && (validityDays > 120 || (endTime && endTime - Date.now() > 120 * 86400000))
+    ) return { reject: "over120" };
     // The seller-list card is the authoritative current Start Date, including
     // corrigendum changes. Several valid GeM PDFs render their Dated value as
     // glyphs that PyMuPDF cannot extract, so use the PDF value only as a
