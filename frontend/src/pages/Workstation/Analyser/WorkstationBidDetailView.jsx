@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import GemUploadButton from "../../../components/analyser/GemUploadButton";
 import SpecialDocEditor from "../../../components/analyser/SpecialDocEditor";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
@@ -8,6 +9,7 @@ import {
   POWER_SUPPLIES, OS_OPTIONS, MONITORS, WARRANTIES, DVDS, getPriceFromLocalData,
   getFilteredRams, getFilteredIntelMotherboards, getFilteredAmdMotherboards, optionLabel,
 } from "../User/WorkstationConfig";
+import { priceInputValue } from "../../../utils/price";
 
 const API_BASE = import.meta.env.VITE_API_URL;
 const MATCH_API = (id) => `${API_BASE}/workstation-bids/${id}/match-catalogue/`;
@@ -25,7 +27,7 @@ const FIELDS = [
   ["cabinet_price", "Cabinet Price"], ["keyboard", "Keyboard & Mouse"], ["keyboard_price", "Keyboard Price"],
   ["dvd", "DVD"], ["dvd_price", "DVD Price"],
   ["power_supply", "Power Supply"], ["power_supply_price", "Power Supply Price"], ["warranty", "Warranty"],
-  ["warranty_price", "Warranty Price"], ["date", "Bid End Date", "date"], ["epbg", "EPBG (%)"],
+  ["warranty_price", "Warranty Price"], ["start_date", "Bid Start Date", "date"], ["date", "Bid End Date", "date"], ["epbg", "EPBG (%)"],
 ];
 
 const TOP_FIELDS = FIELDS.slice(0, 6).filter(([name]) => name !== "model_number");
@@ -628,7 +630,7 @@ export default function WorkstationBidDetailView() {
       const payload = {
         ...updatedBidData,
         model_number: currentModel,
-        analyser_username: localStorage.getItem("analyser_username") || localStorage.getItem("username") || "",
+        analyser_username: sessionStorage.getItem("analyser_username") || sessionStorage.getItem("username") || localStorage.getItem("analyser_username") || localStorage.getItem("username") || "",
       };
       const res = await fetch(`${API_BASE}/workstation-bids/${id}/review/`, {
         method: "PATCH",
@@ -768,7 +770,7 @@ export default function WorkstationBidDetailView() {
                   </select>
                   <input
                     type="text"
-                    value={form[priceField] || ""}
+                    value={priceInputValue(form[priceField] || "")}
                     readOnly
                     disabled
                     placeholder="Price"
@@ -812,13 +814,13 @@ export default function WorkstationBidDetailView() {
               <input
                 type="number"
                 name="freightInstallation_price"
-                value={form?.freightInstallation_price ?? ""}
+                value={priceInputValue(form?.freightInstallation_price ?? "")}
                 onChange={(e) => {
                   const val = e.target.value;
                   setForm((prev) => ({ ...prev, freightInstallation_price: val }));
                 }}
                 disabled={readOnly || (form?.freightInstallation ?? "Yes") === "No"}
-                placeholder="Enter Amount"
+                placeholder="Price"
                 className="w-32 border border-gray-300 rounded-md px-3 py-2 text-sm disabled:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
               />
             </div>
@@ -866,10 +868,7 @@ export default function WorkstationBidDetailView() {
                   <p className="text-xs text-rose-700 mt-1">{gemJob.error || gemJob.rejection_reason}</p>
                 )}
               </div>
-              <button type="button" onClick={handleGemJobUpload} disabled={gemStarting}
-                className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white font-semibold px-6 py-2.5 rounded-md text-sm transition">
-                {gemStarting ? "Opening GeM..." : "Upload to GeM Portal"}
-              </button>
+              <GemUploadButton size="md" onClick={handleGemJobUpload} loading={gemStarting} />
             </div>
           </div>
         )}

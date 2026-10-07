@@ -47,5 +47,6 @@ document.addEventListener("acxxel-gem-start", (event) => {
   sendBridgeMessage({
     type: "START_JOB",
     jobId: event.detail?.jobId,
+    product: event.detail?.product,
   }, "acxxel-gem-start-result");
 });

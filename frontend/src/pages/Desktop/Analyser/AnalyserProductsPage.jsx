@@ -175,20 +175,58 @@ const WORKSTATION_SECTIONS = [
   },
 ];
 
-// AIO's catalogue rows come straight from aio_specs.xlsx (see backend's
-// import_aio_products.py) — only these fields actually exist for them.
-// Falling through to GEM_SECTIONS (Desktop's ~80-field taxonomy: PCIe slots,
-// cabinet bays, DIMM slots...) showed AIO products full of blank fields that
-// don't apply to an All-in-One PC at all.
+// AIO specs as GeM's "All in One PC" product page groups them (the extension's
+// Product Scan stores every GeM spec). Certification is left out. Older AIO
+// entries (aio_specs.xlsx / bid-created) only have a few summary keys; see
+// getAioSpecs for how those fill these rows. Desktop's GEM_SECTIONS don't
+// apply to an All-in-One PC.
 const AIO_SECTIONS = [
-  { title: "PROCESSOR", fields: ["Processor Number"] },
-  { title: "MEMORY (RAM)", fields: ["RAM"] },
-  { title: "STORAGE", fields: ["SSD"] },
-  { title: "OPERATING SYSTEM", fields: ["Operating System"] },
-  { title: "DISPLAY", fields: ["Screen Size"] },
-  { title: "CONNECTIVITY & PORTS", fields: ["WiFi / Bluetooth", "Ports"] },
-  { title: "INPUT DEVICES", fields: ["Keyboard & Mouse"] },
+  { title: "DESCRIPTION", fields: ["Description of store", "Processor Number"] },
+  { title: "INPUT DEVICES", fields: ["Mouse Connectivity", "Keyboard Connectivity", "Type of Keyboard"] },
+  { title: "GRAPHICS", fields: ["Graphics Type"] },
+  { title: "OPERATING SYSTEM", fields: ["Operating System (Factory Preloaded with Certification)", "Recovery Image Media"] },
+  {
+    title: "MEMORY",
+    fields: [
+      "Type of RAM",
+      "RAM Size (GB)",
+      "Total Numbers of DIMM Slots Available",
+      "Number of DIMM Slots populated",
+      "RAM Expandability up to",
+    ],
+  },
+  { title: "STORAGE", fields: ["Type of Storage Installed with the System", "Storage Capacity (in GB)"] },
+  {
+    title: "DISPLAY",
+    fields: ["Display Size - Diagonal (in Inches)", "Panel Technology", "Display Resolution (in PIXELS)"],
+  },
+  { title: "CONNECTIVITY", fields: ["Type of In-built Wireless Connectivity"] },
+  { title: "PORTS", fields: ["Number of Ports"] },
+  { title: "GENERIC", fields: ["Stand"] },
+  { title: "POWER", fields: ["Maximum Power Supply Capacity (Watt)"] },
+  {
+    title: "OPERATING CONDITIONS",
+    fields: ["Minimum Operating Temperature", "Maximum Operating Temperature", "Operating Humidity (in Percentage)"],
+  },
 ];
+
+// GeM's Certification section (BIS, RoHS, ISO, EPR) is not shown.
+const AIO_CERTIFICATION_FIELDS = new Set([
+  "BIS CRS Compliance",
+  "BIS Registration Number",
+  "ROHS Compliance",
+  "Certification for Environmental Management System with Manufacturer",
+  "Compliance of Information Security, Cybersecurity and Privacy Protection-Information Security Management Systems Requirements",
+  "EPR Registration in respect of the manufacturer as per E waste rules as amended up to date",
+  "Agreed to Provide a copy of EPR Registration Certificate to Buyer on Demand",
+]);
+
+// Summary keys the backend keeps for AIO matching; their values already
+// appear in the GeM rows above, so they are not repeated.
+const AIO_SUMMARY_KEYS = new Set([
+  "_source", "Computer Type", "RAM", "Storage", "SSD", "Operating System", "Screen Size",
+  "WiFi Bluetooth", "Keyboard Mouse", "Motherboard Ports",
+]);
 
 const PRINTER_SECTIONS = [
   {
@@ -703,16 +741,50 @@ function isAioProduct(product) {
 
 function getAioSpecs(product) {
   const raw = getRawExtraSpecs(product);
-  return {
-    "Processor Number": cleanDisplayValue(raw["Processor Number"] || product?.processor),
-    "RAM": cleanDisplayValue(raw.RAM || product?.ram),
-    "SSD": cleanDisplayValue(raw.SSD || product?.storage),
-    "Operating System": cleanDisplayValue(raw["Operating System"] || product?.os),
-    "Screen Size": cleanDisplayValue(raw["Screen Size"]),
-    "WiFi / Bluetooth": cleanDisplayValue(raw["WiFi Bluetooth"]),
-    "Ports": cleanDisplayValue(raw["Motherboard Ports"]),
-    "Keyboard & Mouse": cleanDisplayValue(raw["Keyboard Mouse"]),
+  const specs = {};
+  for (const [field, value] of Object.entries(raw)) {
+    if (!AIO_CERTIFICATION_FIELDS.has(field) && !AIO_SUMMARY_KEYS.has(field)) {
+      specs[field] = cleanDisplayValue(value);
+    }
+  }
+  // Older entries have only summary values ("32GB DDR4 3200", "24 inch");
+  // show them in the matching GeM rows instead of leaving those blank.
+  const fallback = (field, ...values) => {
+    if (!specs[field]) specs[field] = cleanDisplayValue(values.find((v) => cleanDisplayValue(v)));
   };
+  fallback("Processor Number", product?.processor);
+  fallback("Operating System (Factory Preloaded with Certification)", raw["Operating System"], product?.os);
+  fallback("RAM Size (GB)", raw.RAM, product?.ram);
+  fallback("Storage Capacity (in GB)", raw.Storage, raw.SSD, product?.storage);
+  fallback("Display Size - Diagonal (in Inches)", raw["Screen Size"]);
+  fallback("Type of In-built Wireless Connectivity", raw["WiFi Bluetooth"]);
+  fallback("Number of Ports", raw["Motherboard Ports"]);
+  fallback("Keyboard Connectivity", raw["Keyboard Mouse"]);
+  return specs;
+}
+
+// AIO sections plus any other GeM spec not in them, so nothing is hidden.
+function getAioSections(specs) {
+  const listed = new Set(AIO_SECTIONS.flatMap((section) => section.fields));
+  const others = Object.keys(specs).filter((field) => !listed.has(field));
+  return others.length
+    ? [...AIO_SECTIONS, { title: "OTHER SPECIFICATIONS", fields: others }]
+    : AIO_SECTIONS;
+}
+
+function isTonerProduct(product) {
+  return String(product?.category || "").toLowerCase() === "toner" ||
+    String(product?.id || "").toLowerCase().startsWith("toner-");
+}
+
+// The GeM product page's own spec groups, saved by the extension's Product
+// Scan ([[title, [[label, value], ...]], ...], Certification left out). Each
+// product shows exactly its own GeM specs instead of a fixed template.
+function getGemSections(product) {
+  const sections = product?.gem_sections?.length
+    ? product.gem_sections
+    : getRawExtraSpecs(product)._gem_sections;
+  return Array.isArray(sections) ? sections.filter((s) => Array.isArray(s?.[1]) && s[1].length) : [];
 }
 
 function isWorkstationProduct(product) {
@@ -853,13 +925,21 @@ function ProductDetailsModal({ product, onClose, onDeleted, onEdited }) {
       : aio
         ? getAioSpecs(product)
         : getExtraSpecs(product);
-  const sections = printer
-    ? PRINTER_SECTIONS
-    : workstation
-      ? WORKSTATION_SECTIONS
-      : aio
-        ? AIO_SECTIONS
-        : GEM_SECTIONS;
+  const toner = isTonerProduct(product);
+  const gemSections = getGemSections(product);
+  const fromGem = gemSections.length > 0;
+  const sections = fromGem
+    ? gemSections.map(([title, rows]) => ({ title, fields: rows.map(([label]) => label) }))
+    : printer
+      ? PRINTER_SECTIONS
+      : workstation
+        ? WORKSTATION_SECTIONS
+        : aio
+          ? getAioSections(specs)
+          : GEM_SECTIONS;
+  const sectionSpecs = fromGem
+    ? Object.fromEntries(gemSections.flatMap(([, rows]) => rows))
+    : specs;
 
   const deleteProduct = async () => {
     setDeleting(true);
@@ -987,7 +1067,15 @@ function ProductDetailsModal({ product, onClose, onDeleted, onEdited }) {
                   <div className="text-gray-800">{product.category || "—"}</div>
                 </div>
 
-                {!printer && (
+                {product.gem_product_id && (
+                  // One model number can have several GeM configurations.
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="text-gray-500 font-medium">GeM Product ID</div>
+                    <div className="text-gray-800">{product.gem_product_id}</div>
+                  </div>
+                )}
+
+                {!printer && !toner && (
                   <>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="text-gray-500 font-medium">Processor</div>
@@ -999,21 +1087,21 @@ function ProductDetailsModal({ product, onClose, onDeleted, onEdited }) {
                     <div className="grid grid-cols-2 gap-4">
                       <div className="text-gray-500 font-medium">RAM</div>
                       <div className="text-gray-800">
-                        {workstation ? displaySpecValue(specs.RAM || product?.ram) : displayBasicRam(product, specs)}
+                        {workstation ? displaySpecValue(specs.RAM || product?.ram) : aio ? displaySpecValue(product?.ram || specs["RAM Size (GB)"]) : displayBasicRam(product, specs)}
                       </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
                       <div className="text-gray-500 font-medium">Storage</div>
                       <div className="text-gray-800">
-                        {workstation ? displayWorkstationStorage(product, specs) : displayBasicStorage(product, specs)}
+                        {workstation ? displayWorkstationStorage(product, specs) : aio ? displaySpecValue(product?.storage || specs["Storage Capacity (in GB)"]) : displayBasicStorage(product, specs)}
                       </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
                       <div className="text-gray-500 font-medium">OS</div>
                       <div className="text-gray-800">
-                        {workstation ? displaySpecValue(specs["Factory Pre-loaded Operating System"] || product?.os) : displayBasicOs(product, specs)}
+                        {workstation ? displaySpecValue(specs["Factory Pre-loaded Operating System"] || product?.os) : aio ? displaySpecValue(specs["Operating System (Factory Preloaded with Certification)"] || product?.os) : displayBasicOs(product, specs)}
                       </div>
                     </div>
                   </>
@@ -1026,8 +1114,8 @@ function ProductDetailsModal({ product, onClose, onDeleted, onEdited }) {
             {sections
               .map((section) => ({
                 ...section,
-                fields: printer || workstation
-                  ? section.fields.filter((field) => cleanDisplayValue(specs[field]))
+                fields: printer || workstation || aio || fromGem
+                  ? section.fields.filter((field) => cleanDisplayValue(sectionSpecs[field]))
                   : section.fields,
               }))
               .filter((section) => section.fields.length > 0)
@@ -1052,7 +1140,7 @@ function ProductDetailsModal({ product, onClose, onDeleted, onEdited }) {
                         {field}
                       </div>
                       <div className="text-gray-800 leading-snug break-words">
-                        {displaySpecValue(specs[field])}
+                        {displaySpecValue(sectionSpecs[field])}
                       </div>
                     </div>
                   ))}

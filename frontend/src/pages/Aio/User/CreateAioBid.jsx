@@ -47,7 +47,7 @@ export default function CreateAioBid() {
     clearBidStorage();
     window.history.back();
   };
-  const done = () => { clearBidStorage(); alert("AIO Bid Created Successfully"); window.location.href = "/user"; };
+  const done = () => { clearBidStorage(); alert("AIO Bid Created Successfully"); window.location.replace("/user"); };
 
   return <div className="min-h-screen bg-[#f8fafc] flex flex-col font-sans">
     <div className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-gray-200 px-8 py-4 shadow-sm">

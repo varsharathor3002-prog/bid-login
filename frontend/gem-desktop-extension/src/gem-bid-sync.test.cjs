@@ -34,7 +34,7 @@ function retentionResult(valueExpression, referenceExpression) {
   return context;
 }
 
-function opportunityResult(itemCategory, quantityText = "", cardQuantity = 0) {
+function opportunityResult(itemCategory, quantityText = "", cardQuantity = 0, validityDays = 90) {
   const dateStart = source.indexOf("function dateFrom");
   const dateEnd = source.indexOf("function productType", dateStart);
   const parserStart = source.indexOf("const OPPORTUNITY_PRODUCTS");
@@ -52,7 +52,7 @@ function opportunityResult(itemCategory, quantityText = "", cardQuantity = 0) {
     bidNo: "GEM/2026/B/9999999",
     cardStartDate: start.toISOString(),
     cardQuantity,
-    raw: `Bid End Date/Time ${indian(end)} 17:00:00 Bid Offer Validity (From End Date) 90 (Days) `
+    raw: `Bid End Date/Time ${indian(end)} 17:00:00 Bid Offer Validity (From End Date) ${validityDays} (Days) `
       + `Department Name Test Department Item Category ${itemCategory} MSE Relaxation No `
       + `${quantityText === "" ? "Total Quantity 30" : quantityText} `
       + "Consignees/Reporting Officer Test Address 1 Special terms",
@@ -119,6 +119,18 @@ test("accepts exactly the six approved opportunity categories", () => {
     assert.equal(result.eligible, true, category);
     assert.equal(result.product_type, productType, category);
   }
+});
+
+test("receives Printer bids at any quantity and validity, Workstation at any quantity", () => {
+  const printer = "A4 and Legal Size Multifunction Printer (MFP) (Q2)";
+  const workstation = "Fixed Computer Workstation (V2) (Q2)";
+  const desktop = "High End Desktop Computer (Q2)";
+  assert.equal(opportunityResult(printer, "Total Quantity 1").eligible, true);
+  assert.equal(opportunityResult(printer, "Total Quantity 2", 0, 180).eligible, true);
+  assert.equal(opportunityResult(workstation, "Total Quantity 2").eligible, true);
+  assert.equal(opportunityResult(workstation, "Total Quantity 30", 0, 180).reject, "over120");
+  assert.equal(opportunityResult(desktop, "Total Quantity 30", 0, 180).reject, "over120");
+  assert.equal(opportunityResult(printer, "No units listed").reject, "quantity_unread");
 });
 
 test("rejects a bunch bid even when every category is approved", () => {

@@ -100,6 +100,8 @@ export default function TonerAnalyserDocument() {
     try {
       const analyserUsername =
         bidData.analyser_username ||
+        sessionStorage.getItem("analyser_username") ||
+        sessionStorage.getItem("username") ||
         localStorage.getItem("analyser_username") ||
         localStorage.getItem("username") ||
         "";

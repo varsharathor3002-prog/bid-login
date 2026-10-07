@@ -19,7 +19,7 @@ const GENERAL_DOCS = [
 const BID_FIELDS = [
   ["bid_no", "Bid Number"], ["model_number", "Model Number"], ["dept_name", "Department"],
   ["organization", "Organization"], ["qty", "Quantity", "number"], ["pincode", "Buyer Pincode"],
-  ["date", "Bid End Date", "date"], ["address", "Address"], ["local_content", "Local Content (%)"],
+  ["start_date", "Bid Start Date", "date"], ["date", "Bid End Date", "date"], ["address", "Address"], ["local_content", "Local Content (%)"],
 ];
 
 const PRINTER_FIELDS = [
@@ -38,7 +38,7 @@ const PRINTER_FIELDS = [
     ["bypass_tray_facility", "Bypass Tray Facility"], ["bypass_tray_capacity", "Bypass Tray Capacity (75 GSM)"],
     ["connectivity", "Connectivity"], ["duty_cycle", "Duty Cycle (Prints/Month)"],
     ["onsite_warranty", "On Site Warranty (In Year)"], ["extended_warranty", "Extended Warranty (in Years) over and above standard warranty"],
-    ["epbg", "EPBG (%)", "number"], ["freightInstallation", "Freight and Installation"],
+    ["epbg", "EPBG (%)"], ["freightInstallation", "Freight and Installation"],
     ["final_amount", "Final Price *", "number"], ["extra_requirements", "Extra Requirements", "textarea"],
 ];
 

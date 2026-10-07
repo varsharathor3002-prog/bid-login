@@ -18,7 +18,7 @@ const SUMMARY_FIELDS = [
   ["hddreturnable", "HDD Return Option", "hddreturnable_price"],
 ];
 
-const OTHER_FIELDS = [["date", "Bid End Date"], ["epbg", "EPBG (%)"]];
+const OTHER_FIELDS = [["start_date", "Bid Start Date"], ["date", "Bid End Date"], ["epbg", "EPBG (%)"]];
 const DESCRIPTION_FIELDS = [
   ["pro_descp", "Processor Description"],
   ["software1", "Additional Software"],

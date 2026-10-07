@@ -8,9 +8,15 @@ from django.utils.dateparse import parse_datetime
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
-from ..models import GemBidOpportunity
+from ..models import GemBidAssignment, GemBidOpportunity
 from .Gem import _request_user
-from .GemOpportunityCleanup import valid_opportunity_dates
+from .GemOpportunityCleanup import (
+    MAX_DAYS,
+    MINIMUM_QUANTITY,
+    NO_DAY_LIMIT_PRODUCTS,
+    NO_MINIMUM_QUANTITY_PRODUCTS,
+    valid_opportunity_dates,
+)
 from .GemOpportunityRules import classify_opportunity_item, clean_opportunity_item
 
 
@@ -74,6 +80,32 @@ def _corrigendum_fields(existing, item):
     return {}
 
 
+# Assignments still being worked on go back to the unassigned "Bid To Be
+# Participated" list when GeM issues a corrigendum, so the admin can review the
+# changed bid and assign it again. Finished ones (participated / skipped) stay.
+RELEASE_ON_CORRIGENDUM_STATUSES = ("assigned", "in_progress")
+
+
+def _release_assignment_for_corrigendum(opportunity_id):
+    released, _ = GemBidAssignment.objects.filter(
+        opportunity_id=opportunity_id, status__in=RELEASE_ON_CORRIGENDUM_STATUSES,
+    ).delete()
+    return bool(released)
+
+
+def _corrigendum_date_fields(item, now):
+    """Current Start/End Date read from the GeM card alongside a corrigendum;
+    only applied when they are valid, so a bad read never wipes good dates."""
+    fields = {}
+    bid_date = _date(item.get("bid_date"))
+    end_date = _date(item.get("end_date"))
+    if end_date and end_date > now:
+        fields["end_date"] = end_date
+    if bid_date and bid_date <= now:
+        fields["bid_date"] = bid_date
+    return fields
+
+
 @csrf_exempt
 @require_http_methods(["GET", "POST"])
 def gem_bid_opportunities(request):
@@ -89,7 +121,10 @@ def gem_bid_opportunities(request):
             assignment__isnull=True,
             end_date__gt=now,
         )
-        visible = [row for row in rows[:5000] if valid_opportunity_dates(row.bid_date, row.end_date, now)]
+        visible = [
+            row for row in rows[:5000]
+            if valid_opportunity_dates(row.bid_date, row.end_date, now, row.product_type)
+        ]
         return JsonResponse({"results": [_data(row) for row in visible]})
     try:
         body = json.loads(request.body or "{}")
@@ -104,11 +139,27 @@ def gem_bid_opportunities(request):
         ).order_by("end_date")
         return JsonResponse({"bid_nos": list(rows.values_list("bid_no", flat=True)[:500])})
     if body.get("action") == "mark_corrigendum":
-        bid_nos = [str(value or "").strip() for value in body.get("bid_nos") or []]
-        updated = GemBidOpportunity.objects.filter(
-            bid_no__in=bid_nos, is_deleted=False, has_corrigendum=False,
-        ).update(has_corrigendum=True, corrigendum_found_at=timezone.now())
-        return JsonResponse({"updated": updated})
+        now = timezone.now()
+        # "bids" carries each bid's current dates from GeM; older extension
+        # versions send only "bid_nos".
+        items = [item for item in body.get("bids") or [] if isinstance(item, dict)]
+        items += [{"bid_no": value} for value in body.get("bid_nos") or []]
+        updated = 0
+        released = 0
+        for item in items:
+            bid_no = str(item.get("bid_no") or "").strip()
+            row = GemBidOpportunity.objects.filter(
+                bid_no=bid_no, is_deleted=False, has_corrigendum=False,
+            ).first()
+            if not row:
+                continue
+            GemBidOpportunity.objects.filter(id=row.id).update(
+                has_corrigendum=True, corrigendum_found_at=now,
+                **_corrigendum_date_fields(item, now),
+            )
+            updated += 1
+            released += int(_release_assignment_for_corrigendum(row.id))
+        return JsonResponse({"updated": updated, "released": released})
     if body.get("action") == "delete":
         if user.role not in OPPORTUNITY_MANAGEMENT_ROLES:
             return JsonResponse({"error": "You are not authorized for this action."}, status=403)
@@ -149,15 +200,20 @@ def gem_bid_opportunities(request):
             continue
         bid_date = _date(item.get("bid_date"))
         end_date = _date(item.get("end_date"))
-        if not valid_opportunity_dates(bid_date, end_date, now):
+        product_type = classification["product_type"]
+        if not valid_opportunity_dates(bid_date, end_date, now, product_type):
             rejections.append({"bid_no": bid_no, "reason": "invalid_date"})
             continue
         validity = item.get("offer_validity_days")
-        if validity is not None and (type(validity) is not int or not 1 <= validity <= 120):
+        max_validity = None if product_type in NO_DAY_LIMIT_PRODUCTS else MAX_DAYS
+        if validity is not None and (
+            type(validity) is not int or validity < 1 or (max_validity and validity > max_validity)
+        ):
             rejections.append({"bid_no": bid_no, "reason": "invalid_offer_validity"})
             continue
         quantity = item.get("quantity")
-        if type(quantity) is not int or quantity < 5:
+        min_quantity = 1 if product_type in NO_MINIMUM_QUANTITY_PRODUCTS else MINIMUM_QUANTITY
+        if type(quantity) is not int or quantity < min_quantity:
             rejections.append({"bid_no": bid_no, "reason": "minimum_quantity_5"})
             continue
         existing = GemBidOpportunity.objects.filter(bid_no=bid_no).first()
@@ -168,12 +224,19 @@ def gem_bid_opportunities(request):
             continue
         corrigendum = _corrigendum_fields(existing, item)
         if existing and GemBidOpportunity.objects.filter(id=existing.id, assignment__isnull=False).exists():
-            # Assigned bids are otherwise frozen, but the assignee still needs
-            # to know when GeM issues a corrigendum for them.
-            if corrigendum:
-                GemBidOpportunity.objects.filter(id=existing.id).update(**corrigendum)
-            rejections.append({"bid_no": bid_no, "reason": "already_assigned"})
-            continue
+            new_corrigendum = corrigendum.get("has_corrigendum") is True and not existing.has_corrigendum
+            # A new corrigendum sends an in-progress assignment back to the
+            # unassigned list; the update below then refreshes its dates.
+            if not (new_corrigendum and _release_assignment_for_corrigendum(existing.id)):
+                # Otherwise assigned bids stay frozen, but the assignee still
+                # sees the corrigendum and its changed dates.
+                if corrigendum:
+                    GemBidOpportunity.objects.filter(id=existing.id).update(
+                        **corrigendum,
+                        **(_corrigendum_date_fields(item, now) if new_corrigendum else {}),
+                    )
+                rejections.append({"bid_no": bid_no, "reason": "already_assigned"})
+                continue
         row, was_created = GemBidOpportunity.objects.update_or_create(
             bid_no=bid_no,
             defaults={

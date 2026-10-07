@@ -11,3 +11,10 @@ backend/media/gem_job_artifacts/
 *.zip
 settings_*backup*
 backend/db.sqlite3
+backend/Desktop_Product.backup-*.xlsx
+backend/Desktop_Product.xlsx.synced
+backend/Desktop_Product.xlsx.lock
+backend/Desktop_Product.old-*.xlsx
+backend/gem_products/
+backend/AIO_Products.old-*.xlsx
+backend/catalogue_backups/

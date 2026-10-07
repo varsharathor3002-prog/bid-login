@@ -60,7 +60,12 @@ class User(models.Model):
 
 
 class CatalogueProduct(models.Model):
-    model_no = models.CharField(max_length=255, unique=True)
+    # GeM lists several configurations under one model number; each GeM
+    # listing is its own product, told apart by its GeM product id
+    # ("5116877-40739025530"). Manually added products have no GeM id, so a
+    # manual model number can still exist only once.
+    model_no = models.CharField(max_length=255, db_index=True)
+    gem_product_id = models.CharField(max_length=64, blank=True, default="")
     processor = models.TextField(blank=True, null=True)
     ram = models.CharField(max_length=100, blank=True, null=True)
     storage = models.CharField(max_length=200, blank=True, null=True)
@@ -75,6 +80,9 @@ class CatalogueProduct(models.Model):
     class Meta:
         db_table = "product_catalogue"
         ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["model_no", "gem_product_id"], name="catalogue_model_gem_product_unique"),
+        ]
 
     def __str__(self):
         return f"{self.model_no} — {self.category or ''}"
@@ -158,7 +166,8 @@ class DesktopBid(models.Model):
     gp_price = models.FloatField(default=0)
 
     date = models.DateField()
-    epbg = models.FloatField(default=0)
+    start_date = models.DateField(blank=True, null=True)
+    epbg = models.CharField(max_length=20, blank=True, default="0")  # number or "NA"
     epbg_price = models.FloatField(default=0)
     local_content = models.CharField(max_length=20, blank=True, null=True)
 
@@ -563,7 +572,8 @@ class WorkstationBid(models.Model):
 
 
     date = models.DateField()
-    epbg = models.FloatField(default=0)
+    start_date = models.DateField(blank=True, null=True)
+    epbg = models.CharField(max_length=20, blank=True, default="0")  # number or "NA"
     epbg_price = models.FloatField(default=0)
 
     total_price = models.FloatField(default=0)
@@ -701,7 +711,8 @@ class PrinterBid(models.Model):
 
 
     date = models.DateField()
-    epbg = models.FloatField(default=0)
+    start_date = models.DateField(blank=True, null=True)
+    epbg = models.CharField(max_length=20, blank=True, default="0")  # number or "NA"
 
     freightInstallation = models.CharField(max_length=50, default="Yes")
     local_content = models.CharField(max_length=20, blank=True, null=True)

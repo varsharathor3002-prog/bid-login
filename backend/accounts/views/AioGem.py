@@ -25,6 +25,7 @@ from django.views.decorators.http import require_http_methods
 
 from ..models import CatalogueProduct
 from .Aio import AioBid, AioGemUploadJob, AioGemAuditLog, _ensure_table, _ensure_gem_tables
+from ..gem_form_fields import aio_gem_fields
 from .Desktop import _catalogue_extra_specs
 from .Gem import _request_user, _require_role, _extension_token, _json_body
 
@@ -62,6 +63,9 @@ def _aio_gem_payload(bid, request):
         "delivery_address": bid.address or "",
         "pincode": bid.pincode or "",
         "local_content": local_content,
+        "hsn": "8471",
+        # The GeM form, label by label (see gem_form_fields).
+        "gem_fields": aio_gem_fields(bid),
         "specifications": {
             **catalogue_specs,
             "Processor": bid.processor or "",
@@ -232,7 +236,7 @@ def extension_aio_claim_job(request, job_id):
         return JsonResponse({"error": "This job is assigned to another employee."}, status=403)
     if job.status not in {"queued", "ready_for_fill"}:
         return JsonResponse({"error": "This job is not available for form filling."}, status=409)
-    payload = _aio_gem_payload(job.bid, request, {})
+    payload = _aio_gem_payload(job.bid, request)
     payload.pop("gem_account", None)
     job.payload_snapshot = payload
     job.status = "ready_for_fill"

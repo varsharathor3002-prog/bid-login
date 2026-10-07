@@ -109,7 +109,7 @@ export default function CreatePrinterBid({ productMode = "printer" }) {
     setAllData({ bid_id: null });
     setSessionStarted(false);
     setStep(1);
-    window.location.href = "/user";
+    window.location.replace("/user");
   };
 
   return (

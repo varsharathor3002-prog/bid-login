@@ -16,6 +16,7 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
+from ..gem_form_fields import toner_gem_fields
 from ..models import CatalogueProduct
 from .Toner import TonerBid, TonerGemUploadJob, TonerGemAuditLog, _ensure_table, _ensure_gem_tables
 from .Desktop import _catalogue_extra_specs
@@ -36,7 +37,8 @@ def _toner_gem_payload(bid, request):
         "bid_id": bid.id,
         "callback_url": request.build_absolute_uri(f"/api/toner-bids/{bid.id}/gem-status/"),
         "model_number": model_number,
-        "brand": bid.brand or "ACXXEL",
+        # bid.brand is the printer brand; on GeM the cartridge brand is acxxel.
+        "brand": "acxxel",
         # No verified GeM category slug for "Toner Cartridge" yet — left blank
         # rather than guessing at a real GeM taxonomy key.
         "category": {"key": "", "label": "Toner Cartridge", "slug": ""},
@@ -48,6 +50,9 @@ def _toner_gem_payload(bid, request):
         "delivery_address": bid.address or "",
         "pincode": bid.pincode or "",
         "local_content": local_content,
+        "hsn": "8443",
+        # The GeM form, label by label (see gem_form_fields).
+        "gem_fields": toner_gem_fields(bid, model_number),
         "specifications": {
             **catalogue_specs,
             "Brand": bid.brand or "",

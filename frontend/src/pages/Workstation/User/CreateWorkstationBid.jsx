@@ -121,7 +121,7 @@ export default function CreateWorkstationBid() {
     clearBidStorage();
     setAllData({ bid_id: null });
     setStep(1);
-    window.location.href = "/user";
+    window.location.replace("/user");
   };
 
   return (

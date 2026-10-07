@@ -5,18 +5,21 @@ from django.http import JsonResponse
 from django.test import RequestFactory
 from django.views.decorators.csrf import csrf_exempt
 from ..models import User, CatalogueProduct
+from ..auth_identity import request_user, actor_name
+from ..epbg import normalize_epbg
+from ..bid_documents import MISSING_DOCUMENTS_ERROR, has_bid_documents
 # Reused as-is from Desktop's catalogue-matching engine (pure text/scoring
 # helpers, no DesktopBid dependency) so AIO's model search behaves the same way.
 from .Desktop import (
     _match_is_blank, _values_overlap_score, _catalogue_values_for_keys,
-    _monitor_size_match, _keyboard_match, _catalogue_extra_specs, _match_clean,
+    _monitor_size_match, _keyboard_match, _catalogue_extra_specs, _match_clean, safe_float,
 )
 from django.db import IntegrityError, transaction
 
 class AioBid(models.Model):
     user=models.ForeignKey(User,null=True,blank=True,on_delete=models.SET_NULL); username=models.CharField(max_length=150,blank=True,default="")
     bid_no=models.CharField(max_length=150); dept_name=models.CharField(max_length=255,blank=True,default=""); organization=models.CharField(max_length=255,blank=True,default="")
-    model_no=models.CharField(max_length=50,blank=True,default="AXL-AIO000-"); model=models.CharField(max_length=100,blank=True,default=""); qty=models.PositiveIntegerField(default=1); date=models.DateField(null=True,blank=True)
+    model_no=models.CharField(max_length=50,blank=True,default="AXL-AIO000-"); model=models.CharField(max_length=100,blank=True,default=""); qty=models.PositiveIntegerField(default=1); date=models.DateField(null=True,blank=True); start_date=models.DateField(null=True,blank=True)
     atc=models.TextField(blank=True,default=""); address=models.TextField(blank=True,default=""); pincode=models.CharField(max_length=20,blank=True,default="")
     processor=models.TextField(blank=True,default=""); processor_price=models.DecimalField(max_digits=12,decimal_places=2,default=1000)
     ram=models.TextField(blank=True,default=""); ram_price=models.DecimalField(max_digits=12,decimal_places=2,default=1000); hdd=models.TextField(blank=True,default=""); hdd_price=models.DecimalField(max_digits=12,decimal_places=2,default=1000)
@@ -26,7 +29,7 @@ class AioBid(models.Model):
     dvd=models.CharField(max_length=50,blank=True,default=""); dvd_price=models.DecimalField(max_digits=12,decimal_places=2,default=1000); warranty=models.CharField(max_length=50,blank=True,default=""); warranty_price=models.DecimalField(max_digits=12,decimal_places=2,default=1000)
     pro_descp=models.TextField(blank=True,default=""); software1=models.TextField(blank=True,default=""); gp=models.TextField(blank=True,default=""); motherboard_descp=models.TextField(blank=True,default="")
     local_content=models.CharField(max_length=20,blank=True,default="")
-    freightInstallation=models.CharField(max_length=50,default="Yes"); freightInstallation_price=models.DecimalField(max_digits=12,decimal_places=2,default=1000); hddreturnable=models.CharField(max_length=10,default="Yes"); hddreturnable_price=models.DecimalField(max_digits=12,decimal_places=2,default=1000); epbg=models.DecimalField(max_digits=7,decimal_places=2,default=0); epbg_price=models.DecimalField(max_digits=12,decimal_places=2,default=0)
+    freightInstallation=models.CharField(max_length=50,default="Yes"); freightInstallation_price=models.DecimalField(max_digits=12,decimal_places=2,default=1000); hddreturnable=models.CharField(max_length=10,default="Yes"); hddreturnable_price=models.DecimalField(max_digits=12,decimal_places=2,default=1000); epbg=models.CharField(max_length=20,blank=True,default="0"); epbg_price=models.DecimalField(max_digits=12,decimal_places=2,default=0)
     total_price=models.DecimalField(max_digits=14,decimal_places=2,default=0)
     upload_document=models.FileField(upload_to="aio_bid_documents/",null=True,blank=True); atc_special_document=models.FileField(upload_to="aio_bid_documents/special/",null=True,blank=True)
     selected_general_docs=models.TextField(blank=True,default="[]"); verified_fields=models.TextField(blank=True,default="[]"); status=models.CharField(max_length=30,default="draft")
@@ -67,8 +70,8 @@ class AioGemAuditLog(models.Model):
     class Meta: app_label="accounts"; db_table="accounts_aiogemauditlog"; ordering=["-created_at"]
     def __str__(self):return f"{self.job_id}: {self.event}"
 
-FIELDS=["bid_no","dept_name","organization","model_no","model","qty","date","atc","address","pincode","processor","processor_price","ram","ram_price","hdd","hdd_price","ssd","ssd_price","os","os_price","motherboard","motherboard_price","screen_size","screen_price","wifi","wifi_price","keyboard","keyboard_price","dvd","dvd_price","warranty","warranty_price","pro_descp","software1","gp","motherboard_descp","freightInstallation","freightInstallation_price","hddreturnable","hddreturnable_price","epbg","epbg_price","local_content"]
-PRICES={x for x in FIELDS if x.endswith("_price")}|{"epbg"}
+FIELDS=["bid_no","dept_name","organization","model_no","model","qty","date","start_date","atc","address","pincode","processor","processor_price","ram","ram_price","hdd","hdd_price","ssd","ssd_price","os","os_price","motherboard","motherboard_price","screen_size","screen_price","wifi","wifi_price","keyboard","keyboard_price","dvd","dvd_price","warranty","warranty_price","pro_descp","software1","gp","motherboard_descp","freightInstallation","freightInstallation_price","hddreturnable","hddreturnable_price","epbg","epbg_price","local_content"]
+PRICES={x for x in FIELDS if x.endswith("_price")}
 def _ensure_model_table(model):
     table=model._meta.db_table
     if table not in connection.introspection.table_names():
@@ -78,8 +81,20 @@ def _ensure_model_table(model):
     with connection.schema_editor() as e:
         for f in model._meta.local_fields:
             if f.column not in existing:e.add_field(model,f)
+_EPBG_IS_TEXT=False
+def _ensure_epbg_text():
+    # EPBG was a DecimalField; it is text now so a bid can say "NA". The
+    # lazy table only ever adds missing columns, so convert this one once.
+    global _EPBG_IS_TEXT
+    if _EPBG_IS_TEXT:return
+    with connection.cursor() as c:
+        col=next((x for x in connection.introspection.get_table_description(c,AioBid._meta.db_table) if x.name=="epbg"),None)
+    if col and connection.introspection.get_field_type(col.type_code,col)!="CharField":
+        old=models.DecimalField(max_digits=7,decimal_places=2,default=0);old.set_attributes_from_name("epbg");old.model=AioBid
+        with connection.schema_editor() as e:e.alter_field(AioBid,old,AioBid._meta.get_field("epbg"))
+    _EPBG_IS_TEXT=True
 def _ensure_table():
-    _ensure_model_table(AioBid)
+    _ensure_model_table(AioBid);_ensure_epbg_text()
 def _ensure_gem_tables():
     _ensure_model_table(AioGemUploadJob);_ensure_model_table(AioGemAuditLog)
 def _data(r):
@@ -94,7 +109,10 @@ def _assign(b,d):
         if n=="qty":
             try:v=max(1,int(v or 1))
             except:continue
-        elif n in PRICES:v=0 if v in (None,"") else v
+        # Same as Desktop: a typed "na" / "no" in a price box counts as 0.
+        elif n in PRICES:v=safe_float(v)
+        elif n=="start_date" and not v:v=None
+        elif n=="epbg":v=normalize_epbg(v,b.epbg)
         setattr(b,n,v)
 def _json(b,r=None):
     out={}
@@ -114,7 +132,8 @@ def _json(b,r=None):
     if model_number:
         cp=CatalogueProduct.objects.filter(model_no__iexact=model_number,category="aio").first()
         if cp:is_new_product=_catalogue_extra_specs(cp).get("_source")=="aio_bid"
-    out.update(model_number=model_number,submitted_by=b.username,user_name=b.username,is_new_product=is_new_product)
+    submitted_by=b.username or (b.user.username if b.user else "")
+    out.update(model_number=model_number,submitted_by=submitted_by,user_name=submitted_by,is_new_product=is_new_product)
     return out
 
 @csrf_exempt
@@ -122,7 +141,7 @@ def create_aio_bid(r):
     if r.method!="POST":return JsonResponse({"error":"POST required"},status=405)
     _ensure_table();d=_data(r)
     if not d.get("bid_no"):return JsonResponse({"error":"Bid number is required"},status=400)
-    b=AioBid(user=User.objects.filter(id=d.get("user_id")).first(),username=d.get("username",""),bid_no=d["bid_no"]);_assign(b,d);b.save();return JsonResponse({"message":"AIO bid created","bid_id":b.id},status=201)
+    t=request_user(r);u=t if t and t.role=="user" else User.objects.filter(id=d.get("user_id")).first();b=AioBid(user=u,username=d.get("username","") or (u.username if u else ""),bid_no=d["bid_no"]);_assign(b,d);b.save();return JsonResponse({"message":"AIO bid created","bid_id":b.id},status=201)
 @csrf_exempt
 def update_aio_bid(r,bid_id):
     if r.method not in ("POST","PUT","PATCH"):return JsonResponse({"error":"POST, PUT or PATCH required"},status=405)
@@ -134,7 +153,9 @@ def list_aio_bids(r):
     if role=="admin":
         db_status={"pending":["analyzed"],"re-analyze":["rejected","re-analyze"],"approved":["approved"]}.get(s,["analyzed"])
         q=q.filter(status__in=db_status)
-    elif s=="pending":q=q.filter(status__in=["submitted","complete"])
+    # Like Desktop: a bid reaches the analyser only once the user has
+    # submitted its documents (status "complete"), not after the config step.
+    elif s=="pending":q=q.filter(status="complete")
     elif s=="approved":q=q.filter(status="approved")
     elif s=="re-analyze":q=q.filter(status__in=["rejected","re-analyze"])
     elif role=="analyser":q=q.exclude(status="draft")
@@ -160,7 +181,7 @@ def review_aio_bid(r,bid_id):
     # saved moments earlier back to the "AXL-AIO000-" default.
     saved_model_no,saved_model=b.model_no,b.model
     _assign(b,d);b.model_no,b.model=saved_model_no,saved_model
-    b.verified_fields=json.dumps(d.get("verified_fields",[]));b.status=s;b.analyser_note=d.get("analyser_note","");b.analyser_username=d.get("analyser_username","");b.save();return JsonResponse({"message":"Analyser review saved","bid":_json(b,r)})
+    b.verified_fields=json.dumps(d.get("verified_fields",[]));b.status=s;b.analyser_note=d.get("analyser_note","");b.analyser_username=actor_name(r,d.get("analyser_username",""));b.save();return JsonResponse({"message":"Analyser review saved","bid":_json(b,r)})
 @csrf_exempt
 def admin_review_aio_bid(r,bid_id):
     if r.method!="POST":return JsonResponse({"error":"POST required"},status=405)
@@ -191,7 +212,7 @@ def admin_review_aio_bid(r,bid_id):
     if "total_price" in d:
         try:b.total_price=float(d.get("total_price") or 0)
         except (TypeError,ValueError):pass
-    b.status=status;b.admin_note=d.get("admin_note","");b.admin_username=d.get("admin_username","");b.save()
+    b.status=status;b.admin_note=d.get("admin_note","");b.admin_username=actor_name(r,d.get("admin_username",""));b.save()
     return JsonResponse({"message":"Admin review saved","bid":_json(b,r)})
 @csrf_exempt
 def delete_aio_bid(r,bid_id):
@@ -216,7 +237,7 @@ def list_aio_catalogue_products(r):
     for cp in CatalogueProduct.objects.filter(category__iexact="aio").order_by("-created_at"):
         extra_specs=_catalogue_extra_specs(cp)
         product={
-            "id":f"aio-catalogue-{cp.id}","catalogue_id":cp.id,"model_no":cp.model_no or "",
+            "id":f"aio-catalogue-{cp.id}","catalogue_id":cp.id,"model_no":cp.model_no or "","gem_product_id":cp.gem_product_id or "",
             "category":cp.category or "aio",
             "processor":cp.processor or extra_specs.get("Processor Number",""),
             "ram":cp.ram or extra_specs.get("RAM",""),
@@ -532,7 +553,9 @@ def update_aio_docs(r,bid_id):
     if r.method!="POST":return JsonResponse({"error":"POST required"},status=405)
     _ensure_table();b=AioBid.objects.filter(id=bid_id).first()
     if not b:return JsonResponse({"error":"AIO bid not found"},status=404)
-    b.atc_special_document=r.FILES.get("atc_special_document",b.atc_special_document);b.selected_general_docs=r.POST.get("selected_general_docs","[]");b.status="complete";b.save()
+    b.atc_special_document=r.FILES.get("atc_special_document",b.atc_special_document);b.selected_general_docs=r.POST.get("selected_general_docs","[]")
+    if not has_bid_documents(b,b.selected_general_docs):return JsonResponse({"error":MISSING_DOCUMENTS_ERROR},status=400)
+    b.status="complete";b.save()
     from .GemAssignments import complete_user_assignment_for_bid
     complete_user_assignment_for_bid(b.bid_no,b.user)
     return JsonResponse({"message":"AIO documents saved successfully","bid":_json(b,r)})
@@ -1067,7 +1090,9 @@ def _add_aio_page_numbers(path,fitz):
                     text=" ".join(span.get("text","") for span in line.get("spans",[])).strip()
                     if line["bbox"][1]>page.rect.height-55 and re.fullmatch(r"(?:Page\s*)?\d+(?:\s*(?:of|/)\s*\d+)?",text,re.I):
                         page.add_redact_annot(fitz.Rect(line["bbox"])+(-3,-2,3,2),fill=(1,1,1))
-            page.apply_redactions()
+            # images=0: blanking a footer number must not re-store full-page
+            # scans uncompressed (that made bundles hundreds of MB).
+            page.apply_redactions(images=0, graphics=0)
             page.insert_textbox(
                 fitz.Rect(page.rect.width-115,page.rect.height-28,page.rect.width-18,page.rect.height-8),
                 str(page_index+1),fontsize=9,fontname="hebo",color=(0,0,0),align=2,
@@ -2021,7 +2046,7 @@ _TC_PROCESSOR_ALLOWED=(
     "Intel Core i5: 12400, 14400\n"
     "Intel Core i7: 12700, 14700\n"
     "Intel Core i9: 14900\n"
-    "Intel Ultra 5: 225, 245K | Ultra 7: 265K\n"
+    "Intel Ultra 5: 225, 235, 245K | Ultra 7: 265K\n"
     "AMD Ryzen 3: 4300G, 5300G\n"
     "AMD Ryzen 5: 5600G, 8500G\n"
     "AMD Ryzen 7: 5700G | Ryzen 9: 9300G\n"
@@ -2179,7 +2204,7 @@ def generate_aio_documents(r,bid_id):
     if r.method!="POST":return JsonResponse({"error":"POST required"},status=405)
     _ensure_table();b=AioBid.objects.filter(id=bid_id).first()
     if not b:return JsonResponse({"error":"AIO bid not found"},status=404)
-    typ=_data(r).get("doc_type","");ranges={"manufacturer_auth":(2,4),"make_in_india":(5,5),"warranty":(6,6),"bidder_financial":(7,7),"non_obsolete":(8,8),"non_malicious":(16,16),"non_return_hdd":(17,17),"technical_compliance":(18,18),"non_blacklisting":(20,20),"ipv6":(21,21),"preloaded_os":(22,22),"service_support":(25,30),"data_sheet":(31,32)}
+    req_data=_data(r);typ=req_data.get("doc_type","");ranges={"manufacturer_auth":(2,4),"make_in_india":(5,5),"warranty":(6,6),"bidder_financial":(7,7),"non_obsolete":(8,8),"non_malicious":(16,16),"non_return_hdd":(17,17),"technical_compliance":(18,18),"non_blacklisting":(20,20),"ipv6":(21,21),"preloaded_os":(22,22),"service_support":(25,30),"data_sheet":(31,32)}
     static={"experience_certificate":"experience_certificate.pdf","past_performance":"past_performance.pdf","oem_annual_turnover":"oem_annual_turnover.pdf","atc_acceptance_letter":"atc_acceptance_letter.pdf"}
     # experience_certificate/past_performance use AIO's own real GeM contract
     # history export (Aioexp.pdf) instead of Desktop's copies — it sits
@@ -2191,7 +2216,7 @@ def generate_aio_documents(r,bid_id):
         return JsonResponse({"error":"Only approved bids can be downloaded"},status=403)
     try:
         import fitz
-        out=os.path.join(settings.MEDIA_ROOT,"generated","aio");os.makedirs(out,exist_ok=True);name=f"aio_{b.id}_{typ}.pdf";path=os.path.join(out,name);date=b.date.strftime("%d-%m-%Y") if b.date else "";addr=str(b.address or "")
+        out=os.path.join(settings.MEDIA_ROOT,"generated","aio");os.makedirs(out,exist_ok=True);name=f"aio_{b.id}_{typ}.pdf";path=os.path.join(out,name);date=(b.start_date or b.date).strftime("%d-%m-%Y") if (b.start_date or b.date) else "";addr=str(b.address or "")
         pincode=str(b.pincode or "").strip()
         if pincode and pincode not in addr:addr=f"{addr}, {pincode}".strip(", ")
         model_number=f"{b.model_no}{b.model}".strip()
@@ -2399,7 +2424,7 @@ def generate_aio_documents(r,bid_id):
             selected_atc_ids=list(dict.fromkeys(cid for cid in selected if cid in atc_labels))
             factory=RequestFactory()
             def _gen_child(child_id):
-                child_request=factory.post(f"/api/aio-bids/{bid_id}/generate-docs/",data=json.dumps({"doc_type":child_id}),content_type="application/json",HTTP_HOST=r.get_host())
+                child_request=factory.post(f"/api/aio-bids/{bid_id}/generate-docs/",data=json.dumps({"doc_type":child_id,"bundle_child":True}),content_type="application/json",HTTP_HOST=r.get_host())
                 child_response=generate_aio_documents(child_request,bid_id)
                 if child_response.status_code!=200:return None
                 child_path=os.path.join(out,f"aio_{bid_id}_{child_id}.pdf")
@@ -2458,9 +2483,9 @@ def generate_aio_documents(r,bid_id):
                             text=" ".join(s.get("text","") for s in line.get("spans",[])).strip()
                             if line["bbox"][1]>pg.rect.height-60 and re.fullmatch(r"(?:Page\s*)?\d+",text,re.IGNORECASE):
                                 pg.add_redact_annot(fitz.Rect(line["bbox"])+(-3,-2,3,2),fill=(1,1,1))
-                    pg.apply_redactions()
+                    pg.apply_redactions(images=0, graphics=0)
                     pg.insert_textbox(fitz.Rect(pg.rect.width-60,pg.rect.height-28,pg.rect.width-18,pg.rect.height-8),str(pidx),fontsize=9,fontname="hebo",align=2)
-                bundle.save(os.path.join(out,out_name));bundle.close()
+                bundle.save(os.path.join(out,out_name), garbage=3, deflate=True);bundle.close()
                 return out_name
 
             if typ=="approved_all_documents":
@@ -2479,7 +2504,8 @@ def generate_aio_documents(r,bid_id):
                 if out_name is None:return JsonResponse({"error":"No ATC-related documents selected"},status=400)
             return JsonResponse({"message":f"{typ} generated","pdf_url":r.build_absolute_uri(f"{settings.MEDIA_URL}generated/aio/{out_name}")+f"?v={int(time.time())}"})
         else:return JsonResponse({"error":f"Invalid doc_type: '{typ}'"},status=400)
-        _add_aio_page_numbers(path,fitz)
+        # A bundle renumbers every page itself, so its child documents skip this.
+        if not req_data.get("bundle_child"):_add_aio_page_numbers(path,fitz)
         return JsonResponse({"message":f"{typ} generated","pdf_url":r.build_absolute_uri(f"{settings.MEDIA_URL}generated/aio/{name}")+f"?v={int(time.time())}"})
     except Exception as e:return JsonResponse({"error":f"Document generation failed: {e}"},status=500)
 

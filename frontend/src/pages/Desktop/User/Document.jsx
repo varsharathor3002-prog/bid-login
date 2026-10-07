@@ -111,6 +111,10 @@ export default function Document({ bidData, onSuccess }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!specialDoc && selectedGeneralDocIds.length === 0) {
+      setError("Please select at least one document or upload the special document before submitting.");
+      return;
+    }
     setLoading(true);
     setError("");
 

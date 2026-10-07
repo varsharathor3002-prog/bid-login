@@ -147,6 +147,31 @@ export default function AddUser() {
   };
 
   
+  // Set when the user being deleted still has assigned bids; drives the
+  // Delete / Cancel warning popup below.
+  const [bidWarning, setBidWarning] = useState(null);
+  const [deletingUser, setDeletingUser] = useState(false);
+
+  const requestDeleteUser = async (id, confirmAssigned) => {
+    const res = await fetch(
+      `${API_BASE}/delete-user/${id}/${confirmAssigned ? "?confirm=1" : ""}`,
+      {
+        method: "DELETE",
+      }
+    );
+    const data = await res.json().catch(() => ({}));
+    return { res, data };
+  };
+
+  const finishDelete = (res, data) => {
+    if (res.ok) {
+      alert(data.message);
+      fetchUsers();
+    } else {
+      alert(data.error || "Delete failed");
+    }
+  };
+
   const deleteUser = async (id) => {
 
     const confirmDelete = window.confirm(
@@ -155,58 +180,38 @@ export default function AddUser() {
 
     if (!confirmDelete) return;
 
-    const requestDelete = async (confirmAssigned) => {
-      const res = await fetch(
-        `${API_BASE}/delete-user/${id}/${confirmAssigned ? "?confirm=1" : ""}`,
-        {
-          method: "DELETE",
-        }
-      );
-      const data = await res.json().catch(() => ({}));
-      return { res, data };
-    };
-
     try {
+      const { res, data } = await requestDeleteUser(id, false);
 
-      let { res, data } = await requestDelete(false);
-
-      // The user still has "Bid To Be Participated" bids assigned: deleting
-      // them goes ahead only if the admin confirms; Cancel deletes nothing.
+      // The user still has "Bid To Be Participated" bids assigned: show the
+      // warning popup; nothing is deleted unless the admin clicks Delete.
       if (res.status === 409 && data.requires_confirmation) {
-        const count = data.assigned_count;
-        const shown = data.bid_nos || [];
-        const bidList = shown.map((bidNo) => `  • ${bidNo}`).join("\n");
-        const more = count > shown.length ? `\n  • ...and ${count - shown.length} more` : "";
-        const bidWord = count === 1 ? "bid" : "bids";
-        const confirmWithBids = window.confirm(
-          `⚠️ WARNING: This user has ${count} ${bidWord} assigned to them:\n` +
-          `${bidList}${more}\n\n` +
-          `If you continue, the user AND these ${count} assigned ${bidWord} will be permanently deleted.\n\n` +
-          `Want to keep the ${bidWord}? Click Cancel, reassign them to another user ` +
-          `from "Bid To Be Participated", then delete this user.\n\n` +
-          `OK  →  Delete the user and the ${bidWord}\n` +
-          "Cancel  →  Delete nothing"
-        );
-        if (!confirmWithBids) return;
-        ({ res, data } = await requestDelete(true));
+        setBidWarning({ id, count: data.assigned_count, bidNos: data.bid_nos || [] });
+        return;
       }
 
-      if (res.ok) {
-
-        alert(data.message);
-
-        fetchUsers();
-
-      } else {
-
-        alert(data.error || "Delete failed");
-      }
+      finishDelete(res, data);
 
     } catch (error) {
 
       console.log(error);
 
       alert("Backend not connected ❌");
+    }
+  };
+
+  const confirmDeleteWithBids = async () => {
+    if (!bidWarning) return;
+    setDeletingUser(true);
+    try {
+      const { res, data } = await requestDeleteUser(bidWarning.id, true);
+      setBidWarning(null);
+      finishDelete(res, data);
+    } catch (error) {
+      console.log(error);
+      alert("Backend not connected ❌");
+    } finally {
+      setDeletingUser(false);
     }
   };
 
@@ -456,6 +461,53 @@ export default function AddUser() {
 
           </div>
         )
+      }
+
+      {
+        bidWarning && (() => {
+          const { count, bidNos } = bidWarning;
+          const bidWord = count === 1 ? "bid" : "bids";
+          return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+              <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl">
+                <h2 className="text-lg font-bold text-red-600">
+                  ⚠️ WARNING: This user has {count} {bidWord} assigned to them
+                </h2>
+                <ul className="mt-3 max-h-40 list-disc overflow-y-auto pl-6 text-sm text-gray-700">
+                  {bidNos.map((bidNo) => (
+                    <li key={bidNo}>{bidNo}</li>
+                  ))}
+                  {count > bidNos.length && <li>...and {count - bidNos.length} more</li>}
+                </ul>
+                <p className="mt-4 text-sm text-gray-700">
+                  If you continue, the user <strong>AND</strong> these {count} assigned {bidWord} will be permanently deleted.
+                </p>
+                <p className="mt-3 text-sm text-gray-700">
+                  Want to keep the {bidWord}? Click Cancel, reassign them to another user from
+                  "Bid To Be Participated", then delete this user.
+                </p>
+                <div className="mt-6 flex justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setBidWarning(null)}
+                    disabled={deletingUser}
+                    className="rounded-lg border border-gray-300 px-5 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={confirmDeleteWithBids}
+                    disabled={deletingUser}
+                    className="rounded-lg bg-red-600 px-5 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+                  >
+                    {deletingUser ? "Deleting..." : "Delete"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()
       }
 
     </div>

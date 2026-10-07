@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { fetchComponentRates } from "../../../utils/componentRates";
+import { priceInputValue } from "../../../utils/price";
 
 const API_BASE = import.meta.env.VITE_API_URL;
 
@@ -225,6 +226,7 @@ const INITIAL_FORM = {
   warranty: "",
   warranty_price: "",
   date: "",
+  start_date: "",
   pro_descp: "",
   motherboard_descp: "",
   epbg: "",
@@ -435,7 +437,7 @@ export default function DesktopConfig({ bidData, onNext }) {
         </select>
         <input
           type="text"
-          value={form[`${name}_price`] || ""}
+          value={priceInputValue(form[`${name}_price`] || "")}
           readOnly
           disabled
           placeholder="Price"
@@ -503,11 +505,9 @@ export default function DesktopConfig({ bidData, onNext }) {
                   </select>
                   <input
                     type="text"
-                    value={
-                      intelProcessors.some((p) => p.name === form.processor)
+                    value={priceInputValue(intelProcessors.some((p) => p.name === form.processor)
                         ? form.processor_price
-                        : ""
-                    }
+                        : "")}
                     readOnly
                     disabled
                     placeholder="Price"
@@ -537,11 +537,9 @@ export default function DesktopConfig({ bidData, onNext }) {
                   </select>
                   <input
                     type="text"
-                    value={
-                      amdProcessors.some((p) => p.name === form.processor)
+                    value={priceInputValue(amdProcessors.some((p) => p.name === form.processor)
                         ? form.processor_price
-                        : ""
-                    }
+                        : "")}
                     readOnly
                     disabled
                     placeholder="Price"
@@ -614,6 +612,18 @@ export default function DesktopConfig({ bidData, onNext }) {
           <SelectField label="Warranty" name="warranty" options={WARRANTIES} required />
 
           <div className="col-span-1">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Bid Start Date</label>
+            <input
+              type="date"
+              name="start_date"
+              value={form.start_date}
+              onChange={handleChange}
+              required
+              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div className="col-span-1">
             <label className="block text-sm font-medium text-gray-700 mb-1">Bid End Date</label>
             <input
               type="date"
@@ -632,7 +642,7 @@ export default function DesktopConfig({ bidData, onNext }) {
               name="epbg"
               value={form.epbg}
               onChange={handleChange}
-              placeholder="Price"
+              placeholder="e.g. 3 or NA"
               className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm text-gray-500 bg-gray-50 outline-none"
             />
           </div>
@@ -654,7 +664,7 @@ export default function DesktopConfig({ bidData, onNext }) {
               <input
                 type="text"
                 name="hddreturnable_price"
-                value={form.hddreturnable_price}
+                value={priceInputValue(form.hddreturnable_price)}
                 onChange={handleChange}
                 placeholder="Price"
                 className="w-24 border border-gray-300 rounded-md px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -698,11 +708,9 @@ export default function DesktopConfig({ bidData, onNext }) {
                   </select>
                   <input
                     type="text"
-                    value={
-                      filteredIntelMotherboards.some((m) => m.name === form.motherboard)
+                    value={priceInputValue(filteredIntelMotherboards.some((m) => m.name === form.motherboard)
                         ? form.motherboard_price
-                        : ""
-                    }
+                        : "")}
                     readOnly
                     disabled
                     placeholder="Price"
@@ -742,11 +750,9 @@ export default function DesktopConfig({ bidData, onNext }) {
                   </select>
                   <input
                     type="text"
-                    value={
-                      filteredAmdMotherboards.some((m) => m.name === form.motherboard)
+                    value={priceInputValue(filteredAmdMotherboards.some((m) => m.name === form.motherboard)
                         ? form.motherboard_price
-                        : ""
-                    }
+                        : "")}
                     readOnly
                     disabled
                     placeholder="Price"

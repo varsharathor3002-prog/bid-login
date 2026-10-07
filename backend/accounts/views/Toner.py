@@ -5,9 +5,11 @@ from django.http import JsonResponse
 from django.test import RequestFactory
 from django.views.decorators.csrf import csrf_exempt
 from ..models import User, CatalogueProduct
+from ..auth_identity import request_user, actor_name
+from ..bid_documents import MISSING_DOCUMENTS_ERROR, has_bid_documents
 # Pure text/scoring helpers, reused as-is (same pattern AIO/Workstation use)
 # so Toner's model search behaves the same way as every other product line.
-from .Desktop import _match_is_blank, _values_overlap_score, _catalogue_values_for_keys, _catalogue_extra_specs
+from .Desktop import _match_is_blank, _values_overlap_score, _catalogue_values_for_keys, _catalogue_extra_specs, safe_float
 from django.db import IntegrityError, transaction
 
 # Everything imported here from Aio.py is generic to any Acxxel bid — the
@@ -39,7 +41,7 @@ class TonerBid(models.Model):
     user=models.ForeignKey(User,null=True,blank=True,on_delete=models.SET_NULL); username=models.CharField(max_length=150,blank=True,default="")
     bid_no=models.CharField(max_length=150); dept_name=models.CharField(max_length=255,blank=True,default=""); organization=models.CharField(max_length=255,blank=True,default="")
     model_no=models.CharField(max_length=50,blank=True,default="AXL-TNR000-"); model=models.CharField(max_length=100,blank=True,default="")
-    qty=models.PositiveIntegerField(default=1); date=models.DateField(null=True,blank=True)
+    qty=models.PositiveIntegerField(default=1); date=models.DateField(null=True,blank=True); start_date=models.DateField(null=True,blank=True)
     atc=models.TextField(blank=True,default=""); address=models.TextField(blank=True,default=""); pincode=models.CharField(max_length=20,blank=True,default="")
     # ---- Config step fields ----
     brand=models.CharField(max_length=100,blank=True,default=""); cartridge_type=models.CharField(max_length=100,blank=True,default=""); product_class=models.CharField(max_length=20,blank=True,default="")
@@ -100,7 +102,7 @@ class TonerGemAuditLog(models.Model):
     class Meta: app_label="accounts"; db_table="accounts_tonergemauditlog"; ordering=["-created_at"]
     def __str__(self):return f"{self.job_id}: {self.event}"
 
-FIELDS=["bid_no","dept_name","organization","model_no","model","qty","date","atc","address","pincode",
+FIELDS=["bid_no","dept_name","organization","model_no","model","qty","date","start_date","atc","address","pincode",
     "brand","cartridge_type","product_class","colour","compatibility","technology","cartridge_quality","page_yield",
     "yield_standard","toner_capacity","yield_type","drum","chip","print_coverage","packaging","shelf_life",
     "warranty","warranty_type","oem_equivalent","refillable","qty_per_pack","hsn_code","compliance",
@@ -137,7 +139,9 @@ def _assign(b,d):
         if n=="qty":
             try:v=max(1,int(v or 1))
             except:continue
-        elif n in PRICES:v=0 if v in (None,"") else v
+        # Same as Desktop: a typed "na" / "no" in a price box counts as 0.
+        elif n in PRICES:v=safe_float(v)
+        elif n=="start_date" and not v:v=None
         setattr(b,n,v)
 
 def _json(b,r=None):
@@ -168,7 +172,8 @@ def _json(b,r=None):
     if model_number:
         cp=CatalogueProduct.objects.filter(model_no__iexact=model_number,category="toner").first()
         if cp:is_new_product=_catalogue_extra_specs(cp).get("_source")=="toner_bid"
-    out.update(model_number=model_number,submitted_by=b.username,user_name=b.username,is_new_product=is_new_product)
+    submitted_by=b.username or (b.user.username if b.user else "")
+    out.update(model_number=model_number,submitted_by=submitted_by,user_name=submitted_by,is_new_product=is_new_product)
     return out
 
 @csrf_exempt
@@ -176,7 +181,7 @@ def create_toner_bid(r):
     if r.method!="POST":return JsonResponse({"error":"POST required"},status=405)
     _ensure_table();d=_data(r)
     if not d.get("bid_no"):return JsonResponse({"error":"Bid number is required"},status=400)
-    b=TonerBid(user=User.objects.filter(id=d.get("user_id")).first(),username=d.get("username",""),bid_no=d["bid_no"]);_assign(b,d);b.save()
+    t=request_user(r);u=t if t and t.role=="user" else User.objects.filter(id=d.get("user_id")).first();b=TonerBid(user=u,username=d.get("username","") or (u.username if u else ""),bid_no=d["bid_no"]);_assign(b,d);b.save()
     return JsonResponse({"message":"Toner bid created","bid_id":b.id},status=201)
 
 @csrf_exempt
@@ -192,7 +197,9 @@ def list_toner_bids(r):
     if role=="admin":
         db_status={"pending":["analyzed"],"re-analyze":["rejected","re-analyze"],"approved":["approved"]}.get(s,["analyzed"])
         q=q.filter(status__in=db_status)
-    elif s=="pending":q=q.filter(status__in=["submitted","complete"])
+    # Like Desktop: a bid reaches the analyser only once the user has
+    # submitted its documents (status "complete"), not after the config step.
+    elif s=="pending":q=q.filter(status="complete")
     elif s=="approved":q=q.filter(status="approved")
     elif s=="re-analyze":q=q.filter(status__in=["rejected","re-analyze"])
     elif role=="analyser":q=q.exclude(status="draft")
@@ -217,7 +224,7 @@ def review_toner_bid(r,bid_id):
     # — same stale-payload wipe risk as AIO's review_aio_bid, guarded the same way.
     saved_model_no,saved_model=b.model_no,b.model
     _assign(b,d);b.model_no,b.model=saved_model_no,saved_model
-    b.verified_fields=json.dumps(d.get("verified_fields",[]));b.status=s;b.analyser_note=d.get("analyser_note","");b.analyser_username=d.get("analyser_username","");b.save();return JsonResponse({"message":"Analyser review saved","bid":_json(b,r)})
+    b.verified_fields=json.dumps(d.get("verified_fields",[]));b.status=s;b.analyser_note=d.get("analyser_note","");b.analyser_username=actor_name(r,d.get("analyser_username",""));b.save();return JsonResponse({"message":"Analyser review saved","bid":_json(b,r)})
 
 @csrf_exempt
 def admin_review_toner_bid(r,bid_id):
@@ -244,7 +251,7 @@ def admin_review_toner_bid(r,bid_id):
     if "total_price" in d:
         try:b.total_price=float(d.get("total_price") or 0)
         except (TypeError,ValueError):pass
-    b.status=status;b.admin_note=d.get("admin_note","");b.admin_username=d.get("admin_username","");b.save()
+    b.status=status;b.admin_note=d.get("admin_note","");b.admin_username=actor_name(r,d.get("admin_username",""));b.save()
     return JsonResponse({"message":"Admin review saved","bid":_json(b,r)})
 
 @csrf_exempt
@@ -397,7 +404,9 @@ def update_toner_docs(r,bid_id):
     if r.method!="POST":return JsonResponse({"error":"POST required"},status=405)
     _ensure_table();b=TonerBid.objects.filter(id=bid_id).first()
     if not b:return JsonResponse({"error":"Toner bid not found"},status=404)
-    b.atc_special_document=r.FILES.get("atc_special_document",b.atc_special_document);b.selected_general_docs=r.POST.get("selected_general_docs","[]");b.status="complete";b.save()
+    b.atc_special_document=r.FILES.get("atc_special_document",b.atc_special_document);b.selected_general_docs=r.POST.get("selected_general_docs","[]")
+    if not has_bid_documents(b,b.selected_general_docs):return JsonResponse({"error":MISSING_DOCUMENTS_ERROR},status=400)
+    b.status="complete";b.save()
     from .GemAssignments import complete_user_assignment_for_bid
     complete_user_assignment_for_bid(b.bid_no,b.user)
     return JsonResponse({"message":"Toner documents saved successfully","bid":_json(b,r)})
@@ -741,7 +750,7 @@ def generate_toner_documents(r,bid_id):
     if r.method!="POST":return JsonResponse({"error":"POST required"},status=405)
     _ensure_table();b=TonerBid.objects.filter(id=bid_id).first()
     if not b:return JsonResponse({"error":"Toner bid not found"},status=404)
-    typ=_data(r).get("doc_type","");ranges={"manufacturer_auth":(2,4),"make_in_india":(5,5),"warranty":(6,6),"bidder_financial":(7,7),"non_obsolete":(8,8),"non_malicious":(16,16),"non_return_hdd":(17,17),"technical_compliance":(18,18),"non_blacklisting":(20,20),"ipv6":(21,21),"preloaded_os":(22,22),"service_support":(25,30),"data_sheet":(31,32)}
+    req_data=_data(r);typ=req_data.get("doc_type","");ranges={"manufacturer_auth":(2,4),"make_in_india":(5,5),"warranty":(6,6),"bidder_financial":(7,7),"non_obsolete":(8,8),"non_malicious":(16,16),"non_return_hdd":(17,17),"technical_compliance":(18,18),"non_blacklisting":(20,20),"ipv6":(21,21),"preloaded_os":(22,22),"service_support":(25,30),"data_sheet":(31,32)}
     static={"experience_certificate":"experience_certificate.pdf","past_performance":"past_performance.pdf","oem_annual_turnover":"oem_annual_turnover.pdf","atc_acceptance_letter":"atc_acceptance_letter.pdf"}
     # experience_certificate/past_performance use Acxxel's own real GeM
     # contract history export (Aioexp.pdf) — same file AIO points at, same
@@ -751,7 +760,7 @@ def generate_toner_documents(r,bid_id):
         return JsonResponse({"error":"Only approved bids can be downloaded"},status=403)
     try:
         import fitz
-        out=os.path.join(settings.MEDIA_ROOT,"generated","toner");os.makedirs(out,exist_ok=True);name=f"toner_{b.id}_{typ}.pdf";path=os.path.join(out,name);date=b.date.strftime("%d-%m-%Y") if b.date else "";addr=str(b.address or "")
+        out=os.path.join(settings.MEDIA_ROOT,"generated","toner");os.makedirs(out,exist_ok=True);name=f"toner_{b.id}_{typ}.pdf";path=os.path.join(out,name);date=(b.start_date or b.date).strftime("%d-%m-%Y") if (b.start_date or b.date) else "";addr=str(b.address or "")
         model_number=f"{b.model_no}{b.model}".strip()
         local_content=str(_data(r).get("local_content") or b.local_content or "").strip()
         if typ in static:
@@ -887,7 +896,7 @@ def generate_toner_documents(r,bid_id):
             selected_atc_ids=list(dict.fromkeys(cid for cid in selected if cid in atc_labels))
             factory=RequestFactory()
             def _gen_child(child_id):
-                child_request=factory.post(f"/api/toner-bids/{bid_id}/generate-docs/",data=json.dumps({"doc_type":child_id}),content_type="application/json",HTTP_HOST=r.get_host())
+                child_request=factory.post(f"/api/toner-bids/{bid_id}/generate-docs/",data=json.dumps({"doc_type":child_id,"bundle_child":True}),content_type="application/json",HTTP_HOST=r.get_host())
                 child_response=generate_toner_documents(child_request,bid_id)
                 if child_response.status_code!=200:return None
                 child_path=os.path.join(out,f"toner_{bid_id}_{child_id}.pdf")
@@ -946,9 +955,9 @@ def generate_toner_documents(r,bid_id):
                             text=" ".join(s.get("text","") for s in line.get("spans",[])).strip()
                             if line["bbox"][1]>pg.rect.height-60 and re.fullmatch(r"(?:Page\s*)?\d+",text,re.IGNORECASE):
                                 pg.add_redact_annot(fitz.Rect(line["bbox"])+(-3,-2,3,2),fill=(1,1,1))
-                    pg.apply_redactions()
+                    pg.apply_redactions(images=0, graphics=0)
                     pg.insert_textbox(fitz.Rect(pg.rect.width-60,pg.rect.height-28,pg.rect.width-18,pg.rect.height-8),str(pidx),fontsize=9,fontname="hebo",align=2)
-                bundle.save(os.path.join(out,out_name));bundle.close()
+                bundle.save(os.path.join(out,out_name), garbage=3, deflate=True);bundle.close()
                 return out_name
 
             if typ=="approved_all_documents":
@@ -967,6 +976,7 @@ def generate_toner_documents(r,bid_id):
                 if out_name is None:return JsonResponse({"error":"No ATC-related documents selected"},status=400)
             return JsonResponse({"message":f"{typ} generated","pdf_url":r.build_absolute_uri(f"{settings.MEDIA_URL}generated/toner/{out_name}")+f"?v={int(time.time())}"})
         else:return JsonResponse({"error":f"Invalid doc_type: '{typ}'"},status=400)
-        _add_page_numbers(path,fitz)
+        # A bundle renumbers every page itself, so its child documents skip this.
+        if not req_data.get("bundle_child"):_add_page_numbers(path,fitz)
         return JsonResponse({"message":f"{typ} generated","pdf_url":r.build_absolute_uri(f"{settings.MEDIA_URL}generated/toner/{name}")+f"?v={int(time.time())}"})
     except Exception as e:return JsonResponse({"error":f"Document generation failed: {e}"},status=500)

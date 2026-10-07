@@ -11,6 +11,10 @@ from datetime import timedelta
 from django.views.decorators.http import require_http_methods
 from django.test import RequestFactory
 from ..models import User, DesktopBid, CatalogueProduct
+from ..auth_identity import request_user, actor_name
+from ..epbg import normalize_epbg
+from ..bid_documents import MISSING_DOCUMENTS_ERROR, has_bid_documents
+from .. import desktop_excel
 from ..restricted_pincodes import is_restricted_pincode, restriction_message
 from .bid_cleanup import delete_bid_with_related_data
 import re
@@ -573,7 +577,7 @@ def generate_certificates(request, bid_id):
         page.add_redact_annot(dynamic_rect, fill=(1, 1, 1))
         page.apply_redactions()
 
-        bid_date = str(bid.date or "")
+        bid_date = str(getattr(bid, "start_date", None) or bid.date or "")
         if re.fullmatch(r"\d{4}-\d{2}-\d{2}", bid_date):
             year, month, day = bid_date.split("-")
             bid_date = f"{day}-{month}-{year}"
@@ -1044,12 +1048,13 @@ def generate_certificates(request, bid_id):
         full_address = f"{full_address}, {pincode}".strip(", ")
 
     bid_date_formatted = ""
-    if bid.date:
+    doc_date = getattr(bid, "start_date", None) or bid.date
+    if doc_date:
         try:
-            d = datetime.strptime(str(bid.date), "%Y-%m-%d")
+            d = datetime.strptime(str(doc_date), "%Y-%m-%d")
             bid_date_formatted = d.strftime("%d-%m-%Y")
         except Exception:
-            bid_date_formatted = str(bid.date)
+            bid_date_formatted = str(doc_date)
 
     def _text_width(text, fontsize, bold=False):
         try:
@@ -4170,7 +4175,7 @@ def update_desktop_docs(request, bid_id):
 
             bid.atc_special_document = uploaded_file
 
-        analyser_username = request.POST.get("analyser_username", "").strip()
+        analyser_username = actor_name(request, request.POST.get("analyser_username", ""))
 
         selected_analyser_docs_raw = request.POST.get("selected_analyser_docs", "")
         selected_analyser_labels_raw = request.POST.get("selected_analyser_doc_labels", "")
@@ -4183,6 +4188,8 @@ def update_desktop_docs(request, bid_id):
             or selected_analyser_docs_raw
             or selected_analyser_labels_raw
         )
+        if not is_analyser_submit and not has_bid_documents(bid, selected_general_docs_raw):
+            return JsonResponse({"error": MISSING_DOCUMENTS_ERROR}, status=400)
 
         model_number = (
             request.POST.get("model_number")
@@ -4557,6 +4564,8 @@ def _catalogue_product_data(product, request):
     if isinstance(extra_specs, str):
         try: extra_specs = json.loads(extra_specs)
         except Exception: extra_specs = {}
+    # The GeM page's own spec groups (Product Scan); normalizing drops them.
+    gem_sections = extra_specs.get("_gem_sections") if isinstance(extra_specs, dict) else None
     if isinstance(extra_specs, dict) and extra_specs.get("Motherboard"):
         motherboard_text = str(extra_specs.get("Motherboard") or "")
         features = _extract_motherboard_features_from_text(motherboard_text)
@@ -4597,11 +4606,11 @@ def _catalogue_product_data(product, request):
         })
     extra_specs = _normalize_extra_specs(extra_specs)
     return {
-        "id": product.id, "model_no": product.model_no or "",
+        "id": product.id, "model_no": product.model_no or "", "gem_product_id": product.gem_product_id or "",
         "processor": product.processor or "", "ram": product.ram or "",
         "storage": product.storage or "", "os": product.os or "",
         "category": product.category or "", "description": product.description or "",
-        "extra_specs": extra_specs, "image": _file_url(request, product.image),
+        "extra_specs": extra_specs, "gem_sections": gem_sections or [], "image": _file_url(request, product.image),
         "created_at": product.created_at.strftime("%Y-%m-%d") if product.created_at else "",
     }
 
@@ -4642,6 +4651,7 @@ def extract_catalogue_pdf(request):
 @require_http_methods(["GET"])
 def list_catalogue_products(request):
     try:
+        desktop_excel.sync_from_excel()
         qs = CatalogueProduct.objects.all().order_by("-created_at")
         search = request.GET.get("search", "").strip()
         if search: qs = qs.filter(model_no__icontains=search)
@@ -4656,6 +4666,7 @@ def list_catalogue_products(request):
 @require_http_methods(["GET"])
 def get_catalogue_product(request, product_id):
     try:
+        desktop_excel.sync_from_excel()
         product = CatalogueProduct.objects.get(id=product_id)
         return JsonResponse(_catalogue_product_data(product, request), status=200)
     except CatalogueProduct.DoesNotExist:
@@ -4731,7 +4742,11 @@ def delete_catalogue_product(request, product_id):
 @require_http_methods(["DELETE"])
 def delete_all_catalogue_products(request):
     try:
-        count, _ = CatalogueProduct.objects.all().delete()
+        # One backup + clear of Desktop_Product.xlsx instead of a rewrite per
+        # product; otherwise the next directory load re-imports every row.
+        with desktop_excel.paused():
+            count, _ = CatalogueProduct.objects.all().delete()
+        desktop_excel.backup_and_clear()
         return JsonResponse({"message": f"{count} products deleted successfully", "deleted_count": count}, status=200)
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
@@ -4756,6 +4771,7 @@ def _bid_data(bid, request, status_label=None):
         "review_status": bid.review_status,
         "created_at": bid.created_at.strftime("%Y-%m-%d") if bid.created_at else "",
         "date": str(bid.date) if bid.date else "",
+        "start_date": str(bid.start_date) if bid.start_date else "",
         "remark": bid.analyser_note or "", "remarks": bid.analyser_note or "",
         "analyser_note": bid.analyser_note or "",
         "analyser_name": bid.analyser_username or "", "analyser_username": bid.analyser_username or "",
@@ -4836,7 +4852,8 @@ def _pincode_restriction_error(data):
 def create_desktop_bid(request):
     try:
         data = request.POST
-        user_id = data.get("user_id")
+        token_user = request_user(request)
+        user_id = token_user.id if token_user and token_user.role == "user" else data.get("user_id")
         if not user_id:
             return JsonResponse({"error": "User ID required"}, status=400)
 
@@ -4981,8 +4998,10 @@ def update_desktop_bid(request, bid_id):
 
         if data.get("date"):
             bid.date = data.get("date")
+        if "start_date" in data:
+            bid.start_date = data.get("start_date") or None
 
-        bid.epbg = safe_float(data.get("epbg"), bid.epbg)
+        bid.epbg = normalize_epbg(data.get("epbg"), bid.epbg)
 
         bid.freightInstallation = data.get("freightInstallation", bid.freightInstallation)
 
@@ -5154,9 +5173,10 @@ def save_model_number(request, bid_id):
                         )
                     catalogue_created = True
                 except IntegrityError:
-                    catalogue_product = CatalogueProduct.objects.get(
+                    # A model number can have several GeM configurations.
+                    catalogue_product = CatalogueProduct.objects.filter(
                         model_no__iexact=model_number
-                    )
+                    ).first()
             else:
                 existing_specs = _catalogue_extra_specs(catalogue_product)
                 if (
@@ -5413,8 +5433,10 @@ def review_desktop_bid(request, bid_id):
 
         if data.get("date"):
             bid.date = data.get("date")
+        if "start_date" in data:
+            bid.start_date = data.get("start_date") or None
 
-        bid.epbg = safe_float(data.get("epbg"), bid.epbg)
+        bid.epbg = normalize_epbg(data.get("epbg"), bid.epbg)
 
         bid.freightInstallation = data.get(
             "freightInstallation",
@@ -5451,6 +5473,7 @@ def review_desktop_bid(request, bid_id):
             or data.get("username")
             or ""
         ).strip()
+        analyser_username = actor_name(request, analyser_username)
 
         if analyser_username:
             bid.analyser_username = analyser_username
@@ -5616,8 +5639,10 @@ def admin_review_desktop_bid(request, bid_id):
 
         if data.get("date"):
             bid.date = data.get("date")
+        if "start_date" in data:
+            bid.start_date = data.get("start_date") or None
 
-        bid.epbg = safe_float(data.get("epbg"), bid.epbg)
+        bid.epbg = normalize_epbg(data.get("epbg"), bid.epbg)
         if "local_content" in data:
             bid.local_content = str(data.get("local_content") or "").strip().rstrip("%")
         bid.freightInstallation = data.get("freightInstallation", bid.freightInstallation)
@@ -5634,7 +5659,7 @@ def admin_review_desktop_bid(request, bid_id):
         elif "optional_port1" in data: bid.optional_ports = data.get("optional_port1") or ""
         bid.review_status = action
         bid.admin_note = data.get("admin_note", "").strip()
-        bid.admin_username = data.get("admin_username", "").strip()
+        bid.admin_username = actor_name(request, data.get("admin_username", ""))
 
         bid.save()
 
@@ -5682,6 +5707,40 @@ def list_desktop_gem_accounts(request):
     ], safe=False)
 
 
+GEM_DESKTOP_CATEGORIES = {
+    "Entry Level": {
+        "key": "entry_level",
+        "label": "Entry and Mid Level Desktop Computer",
+        "slug": "computers-entry-level-computer-cpu",
+    },
+    "Mid Level": {
+        "key": "mid_level",
+        "label": "Entry and Mid Level Desktop Computer",
+        "slug": "computers-mid-level-computer-cpu",
+    },
+    "High End": {
+        "key": "high_end",
+        "label": "High End Desktop Computer",
+        "slug": "computers-high-end-computer-cpu",
+    },
+}
+
+GEM_PROCESSOR_TIERS = [
+    ("High End", r"\bi[79]\b|\bcore\s*(?:ultra\s*)?[79]\b|\bryzen\s*[79]\b|\bxeon\b"),
+    ("Mid Level", r"\bi5\b|\bcore\s*(?:ultra\s*)?5\b|\bryzen\s*5\b"),
+    ("Entry Level", r"\bi3\b|\bcore\s*3\b|\bryzen\s*3\b|\bpentium\b|\bceleron\b|\bathlon\b"),
+]
+
+
+def _gem_computer_type(processor_text):
+    """GeM Computer Type for a processor ("Intel Core i3 12100" -> "Entry Level")."""
+    text = str(processor_text or "").replace("-", " ")
+    for computer_type, pattern in GEM_PROCESSOR_TIERS:
+        if re.search(pattern, text, re.IGNORECASE):
+            return computer_type
+    return None
+
+
 def _desktop_gem_payload(bid, request, account):
     model_number = str(bid.model_number or "").upper()
     local_content = str(bid.local_content or "").strip().rstrip("%")
@@ -5715,34 +5774,18 @@ def _desktop_gem_payload(bid, request, account):
         if re.search(r"\b(?:amd|ryzen)\b", processor_text, re.IGNORECASE)
         else "Intel HD 60"
     )
-    if model_number.startswith("ACL-1060DS-25DE-"):
-        gem_computer_type = "Entry Level"
-        gem_category = {
-            "key": "entry_level",
-            "label": "Entry and Mid Level Desktop Computer",
-            "slug": "computers-entry-level-computer-cpu",
-        }
-    elif model_number.startswith("ACL-1077DS-25DE-"):
-        gem_computer_type = "Mid Level"
-        gem_category = {
-            "key": "mid_level",
-            "label": "Entry and Mid Level Desktop Computer",
-            "slug": "computers-mid-level-computer-cpu",
-        }
-    elif model_number.startswith("ACL-1082DS-25DE-"):
-        gem_computer_type = "High End"
-        gem_category = {
-            "key": "high_end",
-            "label": "High End Desktop Computer",
-            "slug": "computers-high-end-computer-cpu",
-        }
-    else:
-        gem_computer_type = None
-        gem_category = {
-            "key": "entry_level",
-            "label": "Entry and Mid Level Desktop Computer",
-            "slug": "computers-entry-level-computer-cpu",
-        }
+    # GeM's Computer Type follows the processor: it decides which Processor
+    # Number options GeM offers (Entry Level: i3 ..., Mid Level: i5 / Ryzen 5).
+    # The model number prefix is only a fallback for unrecognised processors.
+    gem_computer_type = _gem_computer_type(processor_text)
+    if not gem_computer_type:
+        if model_number.startswith("ACL-1060DS-25DE-"):
+            gem_computer_type = "Entry Level"
+        elif model_number.startswith("ACL-1077DS-25DE-"):
+            gem_computer_type = "Mid Level"
+        elif model_number.startswith("ACL-1082DS-25DE-"):
+            gem_computer_type = "High End"
+    gem_category = GEM_DESKTOP_CATEGORIES.get(gem_computer_type, GEM_DESKTOP_CATEGORIES["Entry Level"])
 
     catalogue_product = CatalogueProduct.objects.filter(
         model_no__iexact=bid.model_number or ""
@@ -6642,6 +6685,7 @@ def match_catalogue_models(request, bid_id):
 
     bid_specs = _desktop_bid_specs(body, bid)
 
+    desktop_excel.sync_from_excel()
     results = _catalogue_match_results(bid_specs)
     debug_all = list(results)
 

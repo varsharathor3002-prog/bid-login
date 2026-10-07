@@ -38,22 +38,19 @@ export default function TonerApprovedBidDownloads() {
         throw new Error(data.error || "Document generate nahi hua.");
       }
 
-      const fileResponse = await fetch(data.pdf_url);
-      if (!fileResponse.ok) throw new Error("Document download nahi hua.");
-
-      const blobUrl = URL.createObjectURL(await fileResponse.blob());
       const link = document.createElement("a");
-      link.href = blobUrl;
       const fileLabel = docId === "approved_all_documents"
         ? "All_Approved_Documents"
         : docId === "approved_atc_documents"
           ? "ATC_Documents"
           : docId;
       link.download = `${bid?.bid_no || `bid_${id}`}_${fileLabel}.pdf`;
+      // Let the browser download it directly (streams to disk) instead of
+      // fetch()-ing into a Blob, which fails on large bundles.
+      link.href = `${import.meta.env.VITE_API_URL}/generated-docs/download/?path=${encodeURIComponent(data.pdf_url)}&name=${encodeURIComponent(link.download)}`;
       document.body.appendChild(link);
       link.click();
       link.remove();
-      URL.revokeObjectURL(blobUrl);
     } catch (error) {
       alert(error.message || "Download failed.");
     } finally {

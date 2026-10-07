@@ -9,6 +9,9 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from ..models import User, PrinterBid, CatalogueProduct
+from ..auth_identity import request_user, actor_name
+from ..epbg import normalize_epbg
+from ..bid_documents import MISSING_DOCUMENTS_ERROR, has_bid_documents
 from .bid_cleanup import delete_bid_with_related_data
 from . import Desktop as desktop_views
 from .Desktop import (
@@ -701,7 +704,7 @@ def _post_process_printer_pdf(doc_type, output_path, bid=None):
                 from .Aio import _fill_service_support_escalation
                 _fill_service_support_escalation(page, fitz)
                 from .Aio import _add_service_support_bid_date
-                service_date = bid.date.strftime("%d-%m-%Y") if bid is not None and bid.date else ""
+                service_date = (bid.start_date or bid.date).strftime("%d-%m-%Y") if bid is not None and (bid.start_date or bid.date) else ""
                 _add_service_support_bid_date(page, fitz, bid.bid_no if bid is not None else "", service_date)
                 from .Aio import _add_service_support_last_page_bid_date
                 printer_address = f"{bid.address} - {bid.pincode}" if bid is not None and bid.pincode else (bid.address if bid is not None else "")
@@ -746,7 +749,7 @@ def _post_process_printer_pdf(doc_type, output_path, bid=None):
                 from .Aio import _fill_service_support_escalation
                 _fill_service_support_escalation(page, fitz)
                 from .Aio import _add_service_support_bid_date
-                service_date = bid.date.strftime("%d-%m-%Y") if bid is not None and bid.date else ""
+                service_date = (bid.start_date or bid.date).strftime("%d-%m-%Y") if bid is not None and (bid.start_date or bid.date) else ""
                 _add_service_support_bid_date(page, fitz, bid.bid_no if bid is not None else "", service_date)
                 from .Aio import _add_service_support_last_page_bid_date
                 printer_address = f"{bid.address} - {bid.pincode}" if bid is not None and bid.pincode else (bid.address if bid is not None else "")
@@ -894,7 +897,7 @@ def _generate_printer_spec_pdf(request, bid, doc_type):
     page_width, page_height = 595, 842
     margin, bottom = 54, 72
     model = str(bid.model_number or "").strip() or "Not Assigned"
-    date_text = bid.date.isoformat() if bid.date else ""
+    date_text = (bid.start_date or bid.date).isoformat() if (bid.start_date or bid.date) else ""
     title = (
         f"SUBJECT: COMPLIANCE OF BOQ SPECIFICATION ({model})"
         if is_compliance
@@ -1008,6 +1011,7 @@ class _PrinterDesktopBidAdapter:
         self.pincode = bid.pincode
         self.atc = bid.atc
         self.date = bid.date
+        self.start_date = bid.start_date
         self.model_number = bid.model_number
         self.static_document_overrides = {
             "experience_certificate": "printer_experience_certificate.pdf",
@@ -1106,7 +1110,8 @@ def generate_printer_certificates(request, bid_id):
 def create_printer_bid(request):
     try:
         data = request.POST
-        user_id  = data.get("user_id")
+        token_user = request_user(request)
+        user_id  = token_user.id if token_user and token_user.role == "user" else data.get("user_id")
         username = data.get("username", "")
 
         print(f"🔍 Received user_id: {user_id}, username: {username}")
@@ -1235,7 +1240,9 @@ def update_printer_bid(request, bid_id):
 
 
         bid.date = data.get("date") or bid.date
-        bid.epbg = float(data.get("epbg", 0) or 0)
+        if "start_date" in data:
+            bid.start_date = data.get("start_date") or None
+        bid.epbg = normalize_epbg(data.get("epbg"), "0")
 
         bid.freightInstallation = data.get("freightInstallation", bid.freightInstallation or "Yes")
 
@@ -1310,6 +1317,7 @@ def _printer_bid_data(bid, request, status_label=None):
         "extra_requirements": bid.extra_requirements or "",
         "software1": bid.software1 or "",
         "date": bid.date.isoformat() if bid.date else "",
+        "start_date": bid.start_date.isoformat() if bid.start_date else "",
         "epbg": bid.epbg,
         "freightInstallation": bid.freightInstallation or "Yes",
         "model_number": bid.model_number or "",
@@ -1370,7 +1378,9 @@ def _apply_printer_payload(bid, data):
     bid.software1 = data.get("software1", bid.software1)
     if data.get("date"):
         bid.date = data.get("date")
-    bid.epbg = safe_float(data.get("epbg"), bid.epbg)
+    if "start_date" in data:
+        bid.start_date = data.get("start_date") or None
+    bid.epbg = normalize_epbg(data.get("epbg"), bid.epbg)
     bid.freightInstallation = data.get("freightInstallation", bid.freightInstallation)
     bid.local_content = str(data.get("local_content", bid.local_content) or "").strip().rstrip("%")
     bid.final_amount = safe_float(data.get("final_amount"), bid.final_amount)
@@ -1609,7 +1619,7 @@ def review_printer_bid(request, bid_id):
         bid = PrinterBid.objects.get(id=bid_id)
         data = json.loads(request.body)
         _apply_printer_payload(bid, data)
-        analyser_username = (data.get("analyser_username") or data.get("username") or "").strip()
+        analyser_username = actor_name(request, data.get("analyser_username") or data.get("username") or "")
         if analyser_username:
             bid.analyser_username = analyser_username
         bid.status = "complete"
@@ -1650,7 +1660,7 @@ def admin_review_printer_bid(request, bid_id):
         _apply_printer_payload(bid, data)
         bid.review_status = action
         bid.admin_note = data.get("admin_note", "").strip()
-        bid.admin_username = data.get("admin_username", "").strip()
+        bid.admin_username = actor_name(request, data.get("admin_username", ""))
         bid.save()
         return JsonResponse({"success": True, "bid_id": bid.id, "review_status": bid.review_status})
     except PrinterBid.DoesNotExist:
@@ -1680,12 +1690,15 @@ def update_printer_docs(request, bid_id):
         if "atc_special_document" in request.FILES:
             uploaded_file = request.FILES["atc_special_document"]
             bid.atc_special_document = uploaded_file
-        analyser_username = request.POST.get("analyser_username", "").strip()
+        analyser_username = actor_name(request, request.POST.get("analyser_username", ""))
         selected_general_docs = _parse_json_list(request.POST.get("selected_general_docs", ""))
         selected_general_labels = _parse_json_list(request.POST.get("selected_general_doc_labels", ""))
         selected_analyser_docs = _parse_json_list(request.POST.get("selected_analyser_docs", ""))
         selected_analyser_labels = _parse_json_list(request.POST.get("selected_analyser_doc_labels", ""))
-        if analyser_username or selected_analyser_docs or selected_analyser_labels:
+        is_analyser_submit = bool(analyser_username or selected_analyser_docs or selected_analyser_labels)
+        if not is_analyser_submit and not has_bid_documents(bid, selected_general_docs):
+            return JsonResponse({"error": MISSING_DOCUMENTS_ERROR}, status=400)
+        if is_analyser_submit:
             bid.selected_general_docs = list(dict.fromkeys((bid.selected_general_docs or []) + selected_analyser_docs))
             bid.selected_general_doc_labels = list(dict.fromkeys((bid.selected_general_doc_labels or []) + selected_analyser_labels))
             bid.analyser_username = analyser_username or bid.analyser_username
