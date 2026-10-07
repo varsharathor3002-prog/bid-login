@@ -167,7 +167,7 @@ class DesktopBid(models.Model):
 
     date = models.DateField()
     start_date = models.DateField(blank=True, null=True)
-    epbg = models.FloatField(default=0)
+    epbg = models.CharField(max_length=20, blank=True, default="0")  # number or "NA"
     epbg_price = models.FloatField(default=0)
     local_content = models.CharField(max_length=20, blank=True, null=True)
 
@@ -573,7 +573,7 @@ class WorkstationBid(models.Model):
 
     date = models.DateField()
     start_date = models.DateField(blank=True, null=True)
-    epbg = models.FloatField(default=0)
+    epbg = models.CharField(max_length=20, blank=True, default="0")  # number or "NA"
     epbg_price = models.FloatField(default=0)
 
     total_price = models.FloatField(default=0)
@@ -712,7 +712,7 @@ class PrinterBid(models.Model):
 
     date = models.DateField()
     start_date = models.DateField(blank=True, null=True)
-    epbg = models.FloatField(default=0)
+    epbg = models.CharField(max_length=20, blank=True, default="0")  # number or "NA"
 
     freightInstallation = models.CharField(max_length=50, default="Yes")
     local_content = models.CharField(max_length=20, blank=True, null=True)

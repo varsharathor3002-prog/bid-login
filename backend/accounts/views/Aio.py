@@ -6,6 +6,8 @@ from django.test import RequestFactory
 from django.views.decorators.csrf import csrf_exempt
 from ..models import User, CatalogueProduct
 from ..auth_identity import request_user, actor_name
+from ..epbg import normalize_epbg
+from ..bid_documents import MISSING_DOCUMENTS_ERROR, has_bid_documents
 # Reused as-is from Desktop's catalogue-matching engine (pure text/scoring
 # helpers, no DesktopBid dependency) so AIO's model search behaves the same way.
 from .Desktop import (
@@ -27,7 +29,7 @@ class AioBid(models.Model):
     dvd=models.CharField(max_length=50,blank=True,default=""); dvd_price=models.DecimalField(max_digits=12,decimal_places=2,default=1000); warranty=models.CharField(max_length=50,blank=True,default=""); warranty_price=models.DecimalField(max_digits=12,decimal_places=2,default=1000)
     pro_descp=models.TextField(blank=True,default=""); software1=models.TextField(blank=True,default=""); gp=models.TextField(blank=True,default=""); motherboard_descp=models.TextField(blank=True,default="")
     local_content=models.CharField(max_length=20,blank=True,default="")
-    freightInstallation=models.CharField(max_length=50,default="Yes"); freightInstallation_price=models.DecimalField(max_digits=12,decimal_places=2,default=1000); hddreturnable=models.CharField(max_length=10,default="Yes"); hddreturnable_price=models.DecimalField(max_digits=12,decimal_places=2,default=1000); epbg=models.DecimalField(max_digits=7,decimal_places=2,default=0); epbg_price=models.DecimalField(max_digits=12,decimal_places=2,default=0)
+    freightInstallation=models.CharField(max_length=50,default="Yes"); freightInstallation_price=models.DecimalField(max_digits=12,decimal_places=2,default=1000); hddreturnable=models.CharField(max_length=10,default="Yes"); hddreturnable_price=models.DecimalField(max_digits=12,decimal_places=2,default=1000); epbg=models.CharField(max_length=20,blank=True,default="0"); epbg_price=models.DecimalField(max_digits=12,decimal_places=2,default=0)
     total_price=models.DecimalField(max_digits=14,decimal_places=2,default=0)
     upload_document=models.FileField(upload_to="aio_bid_documents/",null=True,blank=True); atc_special_document=models.FileField(upload_to="aio_bid_documents/special/",null=True,blank=True)
     selected_general_docs=models.TextField(blank=True,default="[]"); verified_fields=models.TextField(blank=True,default="[]"); status=models.CharField(max_length=30,default="draft")
@@ -69,7 +71,7 @@ class AioGemAuditLog(models.Model):
     def __str__(self):return f"{self.job_id}: {self.event}"
 
 FIELDS=["bid_no","dept_name","organization","model_no","model","qty","date","start_date","atc","address","pincode","processor","processor_price","ram","ram_price","hdd","hdd_price","ssd","ssd_price","os","os_price","motherboard","motherboard_price","screen_size","screen_price","wifi","wifi_price","keyboard","keyboard_price","dvd","dvd_price","warranty","warranty_price","pro_descp","software1","gp","motherboard_descp","freightInstallation","freightInstallation_price","hddreturnable","hddreturnable_price","epbg","epbg_price","local_content"]
-PRICES={x for x in FIELDS if x.endswith("_price")}|{"epbg"}
+PRICES={x for x in FIELDS if x.endswith("_price")}
 def _ensure_model_table(model):
     table=model._meta.db_table
     if table not in connection.introspection.table_names():
@@ -79,8 +81,20 @@ def _ensure_model_table(model):
     with connection.schema_editor() as e:
         for f in model._meta.local_fields:
             if f.column not in existing:e.add_field(model,f)
+_EPBG_IS_TEXT=False
+def _ensure_epbg_text():
+    # EPBG was a DecimalField; it is text now so a bid can say "NA". The
+    # lazy table only ever adds missing columns, so convert this one once.
+    global _EPBG_IS_TEXT
+    if _EPBG_IS_TEXT:return
+    with connection.cursor() as c:
+        col=next((x for x in connection.introspection.get_table_description(c,AioBid._meta.db_table) if x.name=="epbg"),None)
+    if col and connection.introspection.get_field_type(col.type_code,col)!="CharField":
+        old=models.DecimalField(max_digits=7,decimal_places=2,default=0);old.set_attributes_from_name("epbg");old.model=AioBid
+        with connection.schema_editor() as e:e.alter_field(AioBid,old,AioBid._meta.get_field("epbg"))
+    _EPBG_IS_TEXT=True
 def _ensure_table():
-    _ensure_model_table(AioBid)
+    _ensure_model_table(AioBid);_ensure_epbg_text()
 def _ensure_gem_tables():
     _ensure_model_table(AioGemUploadJob);_ensure_model_table(AioGemAuditLog)
 def _data(r):
@@ -98,6 +112,7 @@ def _assign(b,d):
         # Same as Desktop: a typed "na" / "no" in a price box counts as 0.
         elif n in PRICES:v=safe_float(v)
         elif n=="start_date" and not v:v=None
+        elif n=="epbg":v=normalize_epbg(v,b.epbg)
         setattr(b,n,v)
 def _json(b,r=None):
     out={}
@@ -538,7 +553,9 @@ def update_aio_docs(r,bid_id):
     if r.method!="POST":return JsonResponse({"error":"POST required"},status=405)
     _ensure_table();b=AioBid.objects.filter(id=bid_id).first()
     if not b:return JsonResponse({"error":"AIO bid not found"},status=404)
-    b.atc_special_document=r.FILES.get("atc_special_document",b.atc_special_document);b.selected_general_docs=r.POST.get("selected_general_docs","[]");b.status="complete";b.save()
+    b.atc_special_document=r.FILES.get("atc_special_document",b.atc_special_document);b.selected_general_docs=r.POST.get("selected_general_docs","[]")
+    if not has_bid_documents(b,b.selected_general_docs):return JsonResponse({"error":MISSING_DOCUMENTS_ERROR},status=400)
+    b.status="complete";b.save()
     from .GemAssignments import complete_user_assignment_for_bid
     complete_user_assignment_for_bid(b.bid_no,b.user)
     return JsonResponse({"message":"AIO documents saved successfully","bid":_json(b,r)})
@@ -2029,7 +2046,7 @@ _TC_PROCESSOR_ALLOWED=(
     "Intel Core i5: 12400, 14400\n"
     "Intel Core i7: 12700, 14700\n"
     "Intel Core i9: 14900\n"
-    "Intel Ultra 5: 225, 245K | Ultra 7: 265K\n"
+    "Intel Ultra 5: 225, 235, 245K | Ultra 7: 265K\n"
     "AMD Ryzen 3: 4300G, 5300G\n"
     "AMD Ryzen 5: 5600G, 8500G\n"
     "AMD Ryzen 7: 5700G | Ryzen 9: 9300G\n"

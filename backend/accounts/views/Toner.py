@@ -6,6 +6,7 @@ from django.test import RequestFactory
 from django.views.decorators.csrf import csrf_exempt
 from ..models import User, CatalogueProduct
 from ..auth_identity import request_user, actor_name
+from ..bid_documents import MISSING_DOCUMENTS_ERROR, has_bid_documents
 # Pure text/scoring helpers, reused as-is (same pattern AIO/Workstation use)
 # so Toner's model search behaves the same way as every other product line.
 from .Desktop import _match_is_blank, _values_overlap_score, _catalogue_values_for_keys, _catalogue_extra_specs, safe_float
@@ -403,7 +404,9 @@ def update_toner_docs(r,bid_id):
     if r.method!="POST":return JsonResponse({"error":"POST required"},status=405)
     _ensure_table();b=TonerBid.objects.filter(id=bid_id).first()
     if not b:return JsonResponse({"error":"Toner bid not found"},status=404)
-    b.atc_special_document=r.FILES.get("atc_special_document",b.atc_special_document);b.selected_general_docs=r.POST.get("selected_general_docs","[]");b.status="complete";b.save()
+    b.atc_special_document=r.FILES.get("atc_special_document",b.atc_special_document);b.selected_general_docs=r.POST.get("selected_general_docs","[]")
+    if not has_bid_documents(b,b.selected_general_docs):return JsonResponse({"error":MISSING_DOCUMENTS_ERROR},status=400)
+    b.status="complete";b.save()
     from .GemAssignments import complete_user_assignment_for_bid
     complete_user_assignment_for_bid(b.bid_no,b.user)
     return JsonResponse({"message":"Toner documents saved successfully","bid":_json(b,r)})

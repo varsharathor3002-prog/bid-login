@@ -10,7 +10,10 @@ import { priceInputValue } from "../../../utils/price";
 export const AIO_PROCESSORS = [
   ...PROCESSORS
     .filter((processor) => !processor.name.includes("Composite"))
-    .map((processor) => ({ ...processor })),
+    // AIO-only: Ultra 5 235 sits right after Desktop's Ultra 5 225.
+    .flatMap((processor) => processor.name === "Ultra 5 225"
+      ? [{ ...processor }, { name: "Ultra 5 235", price: 18500 }]
+      : [{ ...processor }]),
   { name: "12th Gen Embedded i5", price: 18000 },
   { name: "12th Gen Embedded i7", price: 23000 },
   { name: "13th Gen Embedded i5", price: 18000 },
@@ -539,7 +542,7 @@ export default function AioConfig({ bidData, onNext }) {
               name="epbg"
               value={form.epbg}
               onChange={handleChange}
-              placeholder="Price"
+              placeholder="e.g. 3 or NA"
               className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm text-gray-500 bg-gray-50 outline-none"
             />
           </div>

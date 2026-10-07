@@ -12,6 +12,8 @@ from django.views.decorators.http import require_http_methods
 from django.test import RequestFactory
 from ..models import User, DesktopBid, CatalogueProduct
 from ..auth_identity import request_user, actor_name
+from ..epbg import normalize_epbg
+from ..bid_documents import MISSING_DOCUMENTS_ERROR, has_bid_documents
 from .. import desktop_excel
 from ..restricted_pincodes import is_restricted_pincode, restriction_message
 from .bid_cleanup import delete_bid_with_related_data
@@ -4186,6 +4188,8 @@ def update_desktop_docs(request, bid_id):
             or selected_analyser_docs_raw
             or selected_analyser_labels_raw
         )
+        if not is_analyser_submit and not has_bid_documents(bid, selected_general_docs_raw):
+            return JsonResponse({"error": MISSING_DOCUMENTS_ERROR}, status=400)
 
         model_number = (
             request.POST.get("model_number")
@@ -4997,7 +5001,7 @@ def update_desktop_bid(request, bid_id):
         if "start_date" in data:
             bid.start_date = data.get("start_date") or None
 
-        bid.epbg = safe_float(data.get("epbg"), bid.epbg)
+        bid.epbg = normalize_epbg(data.get("epbg"), bid.epbg)
 
         bid.freightInstallation = data.get("freightInstallation", bid.freightInstallation)
 
@@ -5432,7 +5436,7 @@ def review_desktop_bid(request, bid_id):
         if "start_date" in data:
             bid.start_date = data.get("start_date") or None
 
-        bid.epbg = safe_float(data.get("epbg"), bid.epbg)
+        bid.epbg = normalize_epbg(data.get("epbg"), bid.epbg)
 
         bid.freightInstallation = data.get(
             "freightInstallation",
@@ -5638,7 +5642,7 @@ def admin_review_desktop_bid(request, bid_id):
         if "start_date" in data:
             bid.start_date = data.get("start_date") or None
 
-        bid.epbg = safe_float(data.get("epbg"), bid.epbg)
+        bid.epbg = normalize_epbg(data.get("epbg"), bid.epbg)
         if "local_content" in data:
             bid.local_content = str(data.get("local_content") or "").strip().rstrip("%")
         bid.freightInstallation = data.get("freightInstallation", bid.freightInstallation)

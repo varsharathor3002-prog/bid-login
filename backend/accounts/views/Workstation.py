@@ -11,6 +11,8 @@ from django.views.decorators.http import require_http_methods
 from django.test import RequestFactory
 from ..models import User, WorkstationBid, CatalogueProduct
 from ..auth_identity import request_user, actor_name
+from ..epbg import normalize_epbg
+from ..bid_documents import MISSING_DOCUMENTS_ERROR, has_bid_documents
 from .bid_cleanup import delete_bid_with_related_data
 
 from .Desktop import (
@@ -331,7 +333,7 @@ def update_workstation_bid(request, bid_id):
         # ── Financials ─────────────────────────────────────────
         bid.date = data.get("date") or None
         bid.start_date = data.get("start_date") or None
-        bid.epbg = float(data.get("epbg", 0) or 0)
+        bid.epbg = normalize_epbg(data.get("epbg"), "0")
 
         bid.status = "configured"
         bid.save()
@@ -499,7 +501,7 @@ def _apply_workstation_payload(bid, data):
         bid.date = data.get("date")
     if "start_date" in data:
         bid.start_date = data.get("start_date") or None
-    bid.epbg = safe_float(data.get("epbg"), bid.epbg)
+    bid.epbg = normalize_epbg(data.get("epbg"), bid.epbg)
     bid.freightInstallation = data.get("freightInstallation", bid.freightInstallation)
     bid.freightInstallation_price = safe_float(data.get("freightInstallation_price"), bid.freightInstallation_price)
     bid.hdd_non_return = data.get("hdd_non_return") or data.get("hddreturnable") or bid.hdd_non_return
@@ -971,7 +973,10 @@ def update_workstation_docs(request, bid_id):
         selected_general_labels = _parse_json_list(request.POST.get("selected_general_doc_labels", ""))
         selected_analyser_docs = _parse_json_list(request.POST.get("selected_analyser_docs", ""))
         selected_analyser_labels = _parse_json_list(request.POST.get("selected_analyser_doc_labels", ""))
-        if analyser_username or selected_analyser_docs or selected_analyser_labels:
+        is_analyser_submit = bool(analyser_username or selected_analyser_docs or selected_analyser_labels)
+        if not is_analyser_submit and not has_bid_documents(bid, selected_general_docs):
+            return JsonResponse({"error": MISSING_DOCUMENTS_ERROR}, status=400)
+        if is_analyser_submit:
             bid.selected_general_docs = list(dict.fromkeys((bid.selected_general_docs or []) + selected_analyser_docs))
             bid.selected_general_doc_labels = list(dict.fromkeys((bid.selected_general_doc_labels or []) + selected_analyser_labels))
             bid.analyser_username = analyser_username or bid.analyser_username
