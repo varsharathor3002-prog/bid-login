@@ -10,7 +10,7 @@ from ..auth_identity import request_user, actor_name
 # helpers, no DesktopBid dependency) so AIO's model search behaves the same way.
 from .Desktop import (
     _match_is_blank, _values_overlap_score, _catalogue_values_for_keys,
-    _monitor_size_match, _keyboard_match, _catalogue_extra_specs, _match_clean,
+    _monitor_size_match, _keyboard_match, _catalogue_extra_specs, _match_clean, safe_float,
 )
 from django.db import IntegrityError, transaction
 
@@ -95,7 +95,8 @@ def _assign(b,d):
         if n=="qty":
             try:v=max(1,int(v or 1))
             except:continue
-        elif n in PRICES:v=0 if v in (None,"") else v
+        # Same as Desktop: a typed "na" / "no" in a price box counts as 0.
+        elif n in PRICES:v=safe_float(v)
         elif n=="start_date" and not v:v=None
         setattr(b,n,v)
 def _json(b,r=None):

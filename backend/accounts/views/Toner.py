@@ -8,7 +8,7 @@ from ..models import User, CatalogueProduct
 from ..auth_identity import request_user, actor_name
 # Pure text/scoring helpers, reused as-is (same pattern AIO/Workstation use)
 # so Toner's model search behaves the same way as every other product line.
-from .Desktop import _match_is_blank, _values_overlap_score, _catalogue_values_for_keys, _catalogue_extra_specs
+from .Desktop import _match_is_blank, _values_overlap_score, _catalogue_values_for_keys, _catalogue_extra_specs, safe_float
 from django.db import IntegrityError, transaction
 
 # Everything imported here from Aio.py is generic to any Acxxel bid — the
@@ -138,7 +138,8 @@ def _assign(b,d):
         if n=="qty":
             try:v=max(1,int(v or 1))
             except:continue
-        elif n in PRICES:v=0 if v in (None,"") else v
+        # Same as Desktop: a typed "na" / "no" in a price box counts as 0.
+        elif n in PRICES:v=safe_float(v)
         elif n=="start_date" and not v:v=None
         setattr(b,n,v)
 
