@@ -1,8 +1,8 @@
 """Empty the product directory so it can be fetched again from GeM (the
 extension's Product Scan).
 
-Printer products and models created from bids (not on GeM yet, so a scan
-cannot bring them back) are kept. Without --confirm only the counts are
+Only Printer products are kept; everything else, models created from bids
+included, is removed. Without --confirm only the counts are
 shown. With --confirm the removed products are first saved to
 catalogue_backups/catalogue_deleted_<time>.json (restore with
 `python manage.py loaddata <file>`), Desktop_Product.xlsx is backed up and
@@ -22,17 +22,15 @@ from django.db import transaction
 from accounts import desktop_excel
 from accounts.models import CatalogueProduct
 
-BID_SOURCES = {"desktop_bid", "aio_bid", "toner_bid", "workstation_bid"}
 BACKUP_DIR = "catalogue_backups"
 
 
 def is_kept(product):
-    specs = product.extra_specs if isinstance(product.extra_specs, dict) else {}
-    return (product.category or "").strip().lower() == "printer" or specs.get("_source") in BID_SOURCES
+    return (product.category or "").strip().lower() == "printer"
 
 
 class Command(BaseCommand):
-    help = "Delete every directory product except Printer and bid-created models."
+    help = "Delete every directory product except Printer."
 
     def add_arguments(self, parser):
         parser.add_argument("--confirm", action="store_true", help="Actually delete (otherwise only counts are shown).")
