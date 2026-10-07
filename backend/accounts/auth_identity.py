@@ -29,8 +29,14 @@ def request_user(request):
     return user
 
 
+STAFF_ROLES = {"analyser", "admin", "management"}
+
+
 def actor_name(request, fallback=""):
+    """Analyser/admin name for a review. A bid submitter's token must never
+    count: the document upload endpoints treat any analyser name as an
+    analyser submit and send the bid straight to Admin."""
     user = request_user(request)
-    if user:
+    if user and user.role in STAFF_ROLES:
         return user.username
     return (fallback or "").strip()
