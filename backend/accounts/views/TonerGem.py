@@ -28,7 +28,7 @@ def _toner_gem_payload(bid, request):
     local_content = str(bid.local_content or "").strip().rstrip("%")
 
     catalogue_product = CatalogueProduct.objects.filter(
-        model_no__iexact=model_number, category="toner"
+        model_no__iexact=model_number, category__iexact="toner"
     ).first()
     catalogue_specs = _catalogue_extra_specs(catalogue_product) if catalogue_product else {}
 

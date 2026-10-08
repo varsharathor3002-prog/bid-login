@@ -1589,7 +1589,7 @@ export default function CatalogueProducts() {
   };
 
   const addProductToList = (product) => {
-    if (categoryFilter !== "All" && product.category !== categoryFilter) {
+    if (categoryFilter !== "All" && String(product.category || "").toLowerCase() !== categoryFilter.toLowerCase()) {
       return;
     }
 
@@ -1598,7 +1598,7 @@ export default function CatalogueProducts() {
 
   const updateProductInList = (updated) => {
     setProducts((prev) => {
-      if (categoryFilter !== "All" && updated.category !== categoryFilter) {
+      if (categoryFilter !== "All" && String(updated.category || "").toLowerCase() !== categoryFilter.toLowerCase()) {
         return prev.filter((p) => p.id !== updated.id);
       }
 

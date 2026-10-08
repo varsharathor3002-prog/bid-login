@@ -21,7 +21,7 @@ from .models import CatalogueProduct
 def _listings(category):
     """[(model_no, {label: value}, [labels in GeM order])] of GeM-scanned products."""
     rows = []
-    for product in CatalogueProduct.objects.filter(category=category).order_by("-updated_at"):
+    for product in CatalogueProduct.objects.filter(category__iexact=category).order_by("-updated_at"):
         specs = product.extra_specs if isinstance(product.extra_specs, dict) else {}
         values, order = {}, []
         for section in specs.get("_gem_sections") or []:

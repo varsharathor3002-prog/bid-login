@@ -531,6 +531,10 @@ def _update_workstation_sheet(items):
         desktop_excel._save_workbook(workbook, path)
 
 
+# How each product category is written in the directory.
+CATEGORY_NAMES = {"aio": "AIO", "toner": "Toner", "workstation": "Workstation"}
+
+
 def _save_category_directory(items, category, fields, default_description):
     """acxxel GeM products -> the directory tab of `category`, one product
     per GeM listing (a model number can have several configurations)."""
@@ -552,7 +556,7 @@ def _save_category_directory(items, category, fields, default_description):
         if product and (product.category or "").lower() != category:
             continue  # another category's model with the same number
         if product is None:
-            product = CatalogueProduct(model_no=key[0], category=category)
+            product = CatalogueProduct(model_no=key[0], category=CATEGORY_NAMES.get(category, category))
             added += 1
         else:
             updated += 1

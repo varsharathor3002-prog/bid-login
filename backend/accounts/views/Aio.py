@@ -135,7 +135,7 @@ def _json(b,r=None):
     # the Analyser's "Transfer Catalogue to GeM" tab surfaces exactly these.
     is_new_product=False
     if model_number:
-        cp=CatalogueProduct.objects.filter(model_no__iexact=model_number,category="aio").first()
+        cp=CatalogueProduct.objects.filter(model_no__iexact=model_number,category__iexact="aio").first()
         if cp:is_new_product=_catalogue_extra_specs(cp).get("_source")=="aio_bid"
     submitted_by=b.username or (b.user.username if b.user else "")
     out.update(model_number=model_number,submitted_by=submitted_by,user_name=submitted_by,is_new_product=is_new_product)
@@ -453,7 +453,7 @@ def match_aio_catalogue_models(r,bid_id):
     own_model_no=f"{b.model_no}{b.model}".strip()
 
     results=[]
-    for product in CatalogueProduct.objects.filter(category="aio"):
+    for product in CatalogueProduct.objects.filter(category__iexact="aio"):
         if own_model_no and (product.model_no or "").strip().lower()==own_model_no.lower():continue
         matched_count,checked_count,total_score=_score_fields(
             bid_specs,lambda k,v,p=product:_best_catalogue_match_aio(k,v,p,AIO_CATALOGUE_FIELD_MAP[k])
@@ -541,14 +541,14 @@ def save_aio_model_number(r,bid_id):
             if cp is None:
                 try:
                     with transaction.atomic():
-                        CatalogueProduct.objects.create(model_no=model_number,processor=processor,ram=ram,storage=storage,os=os_value,category="aio",description=pro_descp or "All in One PC",extra_specs=extra_specs)
+                        CatalogueProduct.objects.create(model_no=model_number,processor=processor,ram=ram,storage=storage,os=os_value,category="AIO",description=pro_descp or "All in One PC",extra_specs=extra_specs)
                 except IntegrityError:
                     pass
             else:
                 existing=_catalogue_extra_specs(cp)
                 if existing.get("_source")=="aio_bid":
                     existing.update(extra_specs)
-                    cp.processor=processor;cp.ram=ram;cp.storage=storage;cp.os=os_value;cp.category="aio";cp.extra_specs=existing
+                    cp.processor=processor;cp.ram=ram;cp.storage=storage;cp.os=os_value;cp.category="AIO";cp.extra_specs=existing
                     cp.save(update_fields=["processor","ram","storage","os","category","extra_specs","updated_at"])
     except Exception:
         pass

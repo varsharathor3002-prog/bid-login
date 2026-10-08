@@ -170,7 +170,7 @@ def _json(b,r=None):
     # "Transfer Catalogue to GeM" tab.
     is_new_product=False
     if model_number:
-        cp=CatalogueProduct.objects.filter(model_no__iexact=model_number,category="toner").first()
+        cp=CatalogueProduct.objects.filter(model_no__iexact=model_number,category__iexact="toner").first()
         if cp:is_new_product=_catalogue_extra_specs(cp).get("_source")=="toner_bid"
     submitted_by=b.username or (b.user.username if b.user else "")
     out.update(model_number=model_number,submitted_by=submitted_by,user_name=submitted_by,is_new_product=is_new_product)
@@ -331,7 +331,7 @@ def match_toner_catalogue_models(r,bid_id):
     bid_specs={k:str((body.get(k) if body.get(k) not in (None,"") else getattr(b,k,"")) or "").strip() for k in TONER_CATALOGUE_FIELD_MAP}
 
     results=[]
-    for product in CatalogueProduct.objects.filter(category="toner"):
+    for product in CatalogueProduct.objects.filter(category__iexact="toner"):
         matched_count,checked_count,total_score=_score_fields_toner(
             bid_specs,lambda k,v,p=product:_best_catalogue_match_toner(k,v,p,TONER_CATALOGUE_FIELD_MAP[k])
         )
@@ -386,14 +386,14 @@ def save_toner_model_number(r,bid_id):
             if cp is None:
                 try:
                     with transaction.atomic():
-                        CatalogueProduct.objects.create(model_no=model_number,category="toner",description="Toner Cartridge",extra_specs=extra_specs)
+                        CatalogueProduct.objects.create(model_no=model_number,category="Toner",description="Toner Cartridge",extra_specs=extra_specs)
                 except IntegrityError:
                     pass
             else:
                 existing=_catalogue_extra_specs(cp)
                 if existing.get("_source")=="toner_bid":
                     existing.update(extra_specs)
-                    cp.category="toner";cp.extra_specs=existing
+                    cp.category="Toner";cp.extra_specs=existing
                     cp.save(update_fields=["category","extra_specs","updated_at"])
     except Exception:
         pass

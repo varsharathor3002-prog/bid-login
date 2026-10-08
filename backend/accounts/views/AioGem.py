@@ -42,7 +42,7 @@ def _aio_gem_payload(bid, request):
         keyboard_mouse_connectivity = ""
 
     catalogue_product = CatalogueProduct.objects.filter(
-        model_no__iexact=model_number, category="aio"
+        model_no__iexact=model_number, category__iexact="aio"
     ).first()
     catalogue_specs = _catalogue_extra_specs(catalogue_product) if catalogue_product else {}
 
