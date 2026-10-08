@@ -379,9 +379,11 @@ export default function DesktopConfig({ bidData, onNext }) {
 
         const handleSubmit = async (e) => {
     e.preventDefault();
-    const hasValidProcessor = PROCESSORS.some((processor) => processor.name === form.processor);
+    // A listed processor, or "None" with the processor written in Processor Description.
+    const hasValidProcessor = PROCESSORS.some((processor) => processor.name === form.processor)
+      || (!form.processor && String(form.pro_descp || "").trim() !== "");
     if (!hasValidProcessor) {
-      const validationMessage = "Please select an Intel or AMD Ryzen processor before submitting the form.";
+      const validationMessage = "Please select an Intel or AMD Ryzen processor, or select None and write the processor in Processor Description.";
       setMsg(validationMessage);
       window.alert(validationMessage);
       return;
