@@ -185,11 +185,10 @@ MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 
 def attach_gem_image(product, url):
-    """Save the GeM listing's picture as the product image, once: a product
-    that already has an image (uploaded by hand or fetched before) keeps it.
-    Only GeM's own image host is downloaded from."""
+    """Save the GeM listing's picture as the product image, replacing any
+    earlier one. Only GeM's own image host is downloaded from."""
     url = str(url or "")
-    if product.image or not url.startswith(GEM_IMAGE_PREFIX):
+    if not url.startswith(GEM_IMAGE_PREFIX):
         return False
     try:
         request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
@@ -202,7 +201,12 @@ def attach_gem_image(product, url):
     if not data or len(data) > MAX_IMAGE_BYTES:
         return False
     name = re.sub(r"[^A-Za-z0-9-]+", "_", f"{product.model_no}_{product.gem_product_id}").strip("_")
-    product.image.save(f"gem_{name[:80]}.jpg", ContentFile(data), save=False)
+    filename = f"gem_{name[:80]}.jpg"
+    # A previous GeM picture of this product is replaced, not kept as a copy.
+    # Any other old image file stays on disk: another product may use it.
+    if product.image and os.path.basename(product.image.name).startswith(f"gem_{name[:80]}"):
+        product.image.delete(save=False)
+    product.image.save(filename, ContentFile(data), save=False)
     product.save(update_fields=["image", "updated_at"])
     return True
 
