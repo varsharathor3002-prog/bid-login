@@ -426,6 +426,52 @@ def _save_toner_directory(items):
     return _save_category_directory(items, "toner", _toner_directory_fields, "Toner Cartridge")
 
 
+WORKSTATION_CATEGORY = re.compile(r"^fixed computer workstation", re.IGNORECASE)
+
+
+def _workstation_directory_fields(pairs):
+    """GeM "Fixed Computer Workstation" specs -> the keys the Workstation tab
+    and its Find Model read (the same ones worksation.xlsx rows get). GeM's
+    exact labels are matched by keyword, so small wording changes still map."""
+    raw, _get = _gem_specs(pairs)
+
+    def find(pattern, exclude=None):
+        for label, value in raw.items():
+            if value and re.search(pattern, label, re.IGNORECASE) and not (exclude and re.search(exclude, label, re.IGNORECASE)):
+                return value
+        return ""
+
+    processor = find(r"processor\s*(number|model|name)") or find(r"^processor", r"generation|core|thread|cache|speed|clock|description")
+    ram_size = find(r"(ram|memory).*(size|capacity)", r"expand|graphic|cache")
+    ram_type = find(r"(type of ram|ram type|memory type)")
+    ram = " ".join(x for x in [f"{ram_size}GB" if ram_size.isdigit() else ram_size, ram_type] if x)
+    ssd = find(r"ssd.*capacity|capacity.*ssd")
+    hdd = find(r"hdd.*capacity|capacity.*hdd")
+    storage_type = find(r"type of storage")
+    graphics = find(r"graphic.*(make|model|card)", r"memory|type of") or find(r"graphic", r"memory|type of")
+    os_value = find(r"operating system", r"recovery")
+    monitor = find(r"(screen|display|monitor).*size")
+    power = find(r"power supply", r"monitor")
+    chipset = find(r"chipset|motherboard")
+    specs = {
+        **raw,
+        "Computer Type": "Workstation",
+        "Processor": processor, "Processor Number": processor,
+        "Motherboard": chipset, "RAM": ram,
+        "SSD": ssd, "HDD": hdd, "Storage": " + ".join(x for x in [ssd and f"{ssd} GB SSD", hdd and f"{hdd} GB HDD"] if x) or storage_type,
+        "Graphics Card": graphics, "Graphic Card Make and Model": graphics,
+        "Operating System": os_value, "Factory Pre-loaded Operating System": os_value,
+        "Monitor": monitor, "Screen Size": monitor,
+        "Power Supply": power,
+    }
+    summary = {"processor": processor, "ram": ram, "storage": specs["Storage"], "os": os_value}
+    return specs, summary
+
+
+def _save_workstation_directory(items):
+    return _save_category_directory(items, "workstation", _workstation_directory_fields, "Workstation")
+
+
 def _save_category_directory(items, category, fields, default_description):
     """acxxel GeM products -> the directory tab of `category`, one product
     per GeM listing (a model number can have several configurations)."""
@@ -559,6 +605,8 @@ def save_gem_category_excel(request):
         directory_added, directory_updated = _save_aio_directory(items)
     elif TONER_CATEGORY.match(category):
         directory_added, directory_updated = _save_toner_directory(items)
+    elif WORKSTATION_CATEGORY.match(category):
+        directory_added, directory_updated = _save_workstation_directory(items)
     return JsonResponse({
         "directory_added": directory_added, "directory_updated": directory_updated,
         "file": os.path.join(CATEGORY_EXCEL_DIR, os.path.basename(path)),

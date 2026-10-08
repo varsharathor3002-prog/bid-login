@@ -891,8 +891,9 @@ function getImage(product, index = 0) {
     return PRINTER_MODEL_IMAGES[normalizedModel] || product?.image || getFallbackImage(index);
   }
 
+  // The GeM picture saved by Product Scan, else a sample picture.
   if (isDesktopOrWorkstationProduct(product)) {
-    return getFallbackImage(index);
+    return product?.image || getFallbackImage(index);
   }
 
   // AIO: the picture follows the keyboard, whatever GeM shows (some

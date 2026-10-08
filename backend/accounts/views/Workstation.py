@@ -814,6 +814,7 @@ def list_workstation_catalogue_products(request):
             "monitor": extra_specs.get("Monitor", ""),
             "power_supply": extra_specs.get("Power Supply", ""),
             "description": catalogue_product.description or "Workstation",
+            "image": _file_url(request, catalogue_product.image),
             "extra_specs": extra_specs,
             "source": "catalogue",
         }

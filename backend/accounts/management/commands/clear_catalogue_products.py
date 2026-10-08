@@ -78,6 +78,24 @@ class Command(BaseCommand):
                 marker.write(datetime.now().isoformat())
             desktop_excel._remember_mtime(excel)
 
+        if "workstation" in only:
+            self._clear_workstation_sheet(backup_dir, stamp)
+
         self.stdout.write(self.style.SUCCESS(
             f"Deleted {len(removed)} products. Backup: {json_path} (restore: python manage.py loaddata <file>)."
         ))
+
+    def _clear_workstation_sheet(self, backup_dir, stamp):
+        """The Workstation tab also lists worksation.xlsx rows; keep only its
+        header so GeM's Workstation products (Product Scan) replace them."""
+        path = os.path.join(settings.BASE_DIR, "worksation.xlsx")
+        if not os.path.exists(path):
+            return
+        shutil.copy2(path, os.path.join(backup_dir, f"worksation_{stamp}.xlsx"))
+        workbook = openpyxl.load_workbook(path)
+        sheet = workbook.active
+        rows = sheet.max_row - 1
+        if rows > 0:
+            sheet.delete_rows(2, rows)
+        workbook.save(path)
+        self.stdout.write(f"worksation.xlsx: {max(rows, 0)} rows removed (backup worksation_{stamp}.xlsx).")
