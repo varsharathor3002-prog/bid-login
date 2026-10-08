@@ -1265,6 +1265,10 @@ def generate_certificates(request, bid_id):
         return _catalogue_spec(*labels)
 
     def _form_specs():
+        # Processor "None" -> the processor written in Processor Description.
+        processor = _bid_value("processor")
+        if processor.lower() in ("", "none"):
+            processor = _bid_value("pro_descp")
         hdd = _bid_value("hdd")
         ssd1 = _bid_value("ssd1", "ssd")
         ssd2 = _bid_value("ssd2")
@@ -1280,7 +1284,7 @@ def generate_certificates(request, bid_id):
             "model_number": _format_model_number(model_number),
             "brand": "acxxel",
             "computer_type": _catalogue_spec("Computer Type", default="Desktop Computer"),
-            "processor": _prefer_catalogue(_bid_value("processor"), "Processor Number"),
+            "processor": _prefer_catalogue(processor, "Processor Number"),
             "motherboard": _motherboard_chipset(motherboard),
             "pcie_x1": _prefer_catalogue(_motherboard_feature_value(mb_features, "pcie_x1", ""), "Expansion Slots (PCIe x 1)"),
             "pcie_x4": _prefer_catalogue(_motherboard_feature_value(mb_features, "pcie_x4", ""), "Expansion Slots (PCIe x 4)"),

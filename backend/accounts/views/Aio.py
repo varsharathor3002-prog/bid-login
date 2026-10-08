@@ -72,6 +72,11 @@ class AioGemAuditLog(models.Model):
 
 FIELDS=["bid_no","dept_name","organization","model_no","model","qty","date","start_date","atc","address","pincode","processor","processor_price","ram","ram_price","hdd","hdd_price","ssd","ssd_price","os","os_price","motherboard","motherboard_price","screen_size","screen_price","wifi","wifi_price","keyboard","keyboard_price","dvd","dvd_price","warranty","warranty_price","pro_descp","software1","gp","motherboard_descp","freightInstallation","freightInstallation_price","hddreturnable","hddreturnable_price","epbg","epbg_price","local_content"]
 PRICES={x for x in FIELDS if x.endswith("_price")}
+def _doc_processor(b):
+    # Processor "None" -> the processor written in Processor Description.
+    p=str(b.processor or "").strip()
+    return p if p and p.lower()!="none" else str(b.pro_descp or "").strip()
+
 def _ensure_model_table(model):
     table=model._meta.db_table
     if table not in connection.introspection.table_names():
@@ -2124,7 +2129,7 @@ def _fill_aio_technical_compliance_page1(page,fitz,bid_no,b):
     if model_number and model_number not in description:description=f"{description} Model: {model_number}".strip()
     rows=[
         (190,280,"Description of Store","All in One PC with Integrated Monitor, Compatible Chipset as per Processor make with Minimum 4 USB Port",description,8.0),
-        (280,410,"Processor Number",_TC_PROCESSOR_ALLOWED,b.processor,7.2),
+        (280,410,"Processor Number",_TC_PROCESSOR_ALLOWED,_doc_processor(b),7.2),
         (410,458,"Mouse Connectivity","Wired | Wireless Or higher",_tc_keyboard_connectivity(b.keyboard),8.5),
         (458,506,"Keyboard Connectivity","Wired | Wireless Or higher",_tc_keyboard_connectivity(b.keyboard),8.5),
         (506,550,"Graphics Type","Integrated",_tc_graphics_type(b.gp),8.5),
@@ -2171,7 +2176,7 @@ def _fill_aio_data_sheet_page(page,fitz,page_index,b):
     if page_index==0:
         sections=[
             ("PRODUCT DETAILS",[("Model Number",model_number),("Brand","acxxel"),("Product Type","All in One PC")]),
-            ("PROCESSOR",[("Processor Number",b.processor)]),
+            ("PROCESSOR",[("Processor Number",_doc_processor(b))]),
             ("OPERATING SYSTEM & MEMORY",[("Factory Pre-loaded Operating System",b.os),("Type of RAM",_tc_ram_type(b.ram)),("RAM Size",(_tc_ram_size(b.ram)+" GB") if _tc_ram_size(b.ram)!=str(b.ram or "") else b.ram)]),
             ("MONITOR",[("Integrated Screen Size",b.screen_size)]),
             ("CONNECTIVITY & PORTS",[("WiFi / Bluetooth",b.wifi),("Ports",b.motherboard)]),

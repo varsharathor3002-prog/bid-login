@@ -1584,7 +1584,8 @@ def generate_workstation_certificates(request, bid_id):
             "model_number": model_number,
             "brand": "acxxel",
             "computer_type": "Workstation",
-            "processor": clean_text(bid.processor),
+            # Processor "None" -> the processor written in Processor Description.
+            "processor": clean_text(bid.processor if str(bid.processor or "").strip().lower() not in ("", "none") else bid.pro_descp),
             "motherboard": clean_text(bid.motherboard or bid.motherboard_descp),
             "pcie_x1": "",
             "pcie_x4": "",
