@@ -469,7 +469,63 @@ def _workstation_directory_fields(pairs):
 
 
 def _save_workstation_directory(items):
-    return _save_category_directory(items, "workstation", _workstation_directory_fields, "Workstation")
+    result = _save_category_directory(items, "workstation", _workstation_directory_fields, "Workstation")
+    _update_workstation_sheet(items)
+    return result
+
+
+def _gb_text(value, kind):
+    value = _clean_text(value)
+    if not value or value in {"0", "NA"}:
+        return "None"
+    return f"{value} GB {kind}" if value.isdigit() else value
+
+
+def _update_workstation_sheet(items):
+    """worksation.xlsx (the Workstation tab's own sheet) gets every scanned
+    model: its row is updated, a new model is added at the end."""
+    path = os.path.join(settings.BASE_DIR, "worksation.xlsx")
+    if not os.path.exists(path):
+        return
+    with desktop_excel._file_lock(path):
+        workbook = openpyxl.load_workbook(path)
+        sheet = workbook.active
+        columns = {_label_key(cell.value): cell.column for cell in sheet[1] if cell.value}
+        model_col = columns.get("modelnumber")
+        if not model_col:
+            return
+        rows = {
+            _clean_text(sheet.cell(row, model_col).value).upper(): row
+            for row in range(2, sheet.max_row + 1)
+            if _clean_text(sheet.cell(row, model_col).value)
+        }
+        for item in items:
+            model_no = _clean_text(item.get("model_no")).upper()
+            if not model_no:
+                continue
+            specs, _summary = _workstation_directory_fields(item.get("pairs"))
+            values = {
+                "modelnumber": model_no,
+                "processor": specs["Processor"],
+                "ram": specs["RAM"],
+                "ssd": _gb_text(specs["SSD"], "SSD"),
+                "hdd": _gb_text(specs["HDD"], "HDD"),
+                "graphicscard": specs["Graphics Card"],
+                "operatingsystem": specs["Operating System"],
+                "monitorsize": specs["Monitor"],
+                "powersupply": specs["Power Supply"],
+            }
+            row = rows.get(model_no)
+            if row is None:
+                row = sheet.max_row + 1
+                rows[model_no] = row
+                values["modelnumber"] = _clean_text(item.get("model_no"))
+            else:
+                values.pop("modelnumber")  # keep the sheet's own spelling
+            for key, value in values.items():
+                if key in columns and value:
+                    sheet.cell(row, columns[key]).value = value
+        desktop_excel._save_workbook(workbook, path)
 
 
 def _save_category_directory(items, category, fields, default_description):

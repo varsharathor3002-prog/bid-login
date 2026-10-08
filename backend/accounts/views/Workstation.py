@@ -791,8 +791,11 @@ def match_workstation_catalogue_models(request, bid_id):
 @require_http_methods(["GET"])
 def list_workstation_catalogue_products(request):
     search = (request.GET.get("search") or "").strip().lower()
-    products = _load_workstation_catalogue()
-    known_models = {product["model_no"].strip().lower() for product in products}
+    # A model in both the directory and worksation.xlsx shows the directory
+    # copy (GeM picture and full GeM specs); sheet-only models follow.
+    sheet_products = _load_workstation_catalogue()
+    products = []
+    known_models = set()
     for catalogue_product in CatalogueProduct.objects.filter(category__icontains="workstation").order_by("-created_at"):
         model_key = (catalogue_product.model_no or "").strip().lower()
         if not model_key or model_key in known_models:
@@ -820,6 +823,7 @@ def list_workstation_catalogue_products(request):
         }
         products.append(product)
         known_models.add(model_key)
+    products += [p for p in sheet_products if p["model_no"].strip().lower() not in known_models]
     if search:
         products = [
             product for product in products
