@@ -1429,8 +1429,12 @@ export default function CatalogueProducts() {
   const [showAdd, setShowAdd] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const productHistoryPushed = useRef(false);
+  // Only the latest request may fill the list: a slow "All" load that
+  // finishes after the user picked AIO must not overwrite the AIO list.
+  const latestFetch = useRef(0);
 
   const fetchProducts = async () => {
+    const fetchId = ++latestFetch.current;
     setLoading(true);
     setLoadError("");
 
@@ -1519,16 +1523,18 @@ export default function CatalogueProducts() {
       }
 
       const responses = await Promise.all(requests);
+      if (fetchId !== latestFetch.current) return;
       const mergedProducts = responses
         .flat()
         .map((product, index) => ({ ...product, __imageIndex: index }));
 
       setProducts(mergedProducts);
     } catch (err) {
+      if (fetchId !== latestFetch.current) return;
       setLoadError(err.message);
       setProducts([]);
     } finally {
-      setLoading(false);
+      if (fetchId === latestFetch.current) setLoading(false);
     }
   };
 
