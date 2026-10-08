@@ -48,3 +48,9 @@ test('reads model, brand and decoded specification rows from a product page', ()
     ['Screen Size (in CMs)', '48.26 - 53 (19.0" - 20.87")'],
   ]);
 });
+
+test('reads the product image in GeM largest size', () => {
+  const html = '<meta property="og:image" content="https://assets-mkpbg.gem.gov.in/img/othe/5770552/cc/a1/wired1.png.c64bddcca1.999x200x200.jpg"/>';
+  assert.equal(parseProduct(html).image, 'https://assets-mkpbg.gem.gov.in/img/othe/5770552/cc/a1/wired1.png.c64bddcca1.999x420x420.jpg');
+  assert.equal(parseProduct('<meta property="og:image" content="https://evil.example/x.jpg"/>').image, '');
+});

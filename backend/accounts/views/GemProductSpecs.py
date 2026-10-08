@@ -1,9 +1,11 @@
 import json
 import os
 import re
+import urllib.request
 
 import openpyxl
 from django.conf import settings
+from django.core.files.base import ContentFile
 from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
@@ -178,6 +180,31 @@ def import_gem_product_specs(request):
 
 
 MARKET_BRAND = "acxxel"
+GEM_IMAGE_PREFIX = "https://assets-mkpbg.gem.gov.in/img/"
+MAX_IMAGE_BYTES = 5 * 1024 * 1024
+
+
+def attach_gem_image(product, url):
+    """Save the GeM listing's picture as the product image, once: a product
+    that already has an image (uploaded by hand or fetched before) keeps it.
+    Only GeM's own image host is downloaded from."""
+    url = str(url or "")
+    if product.image or not url.startswith(GEM_IMAGE_PREFIX):
+        return False
+    try:
+        request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(request, timeout=15) as response:
+            if not response.headers.get_content_type().startswith("image/"):
+                return False
+            data = response.read(MAX_IMAGE_BYTES + 1)
+    except Exception:
+        return False
+    if not data or len(data) > MAX_IMAGE_BYTES:
+        return False
+    name = re.sub(r"[^A-Za-z0-9-]+", "_", f"{product.model_no}_{product.gem_product_id}").strip("_")
+    product.image.save(f"gem_{name[:80]}.jpg", ContentFile(data), save=False)
+    product.save(update_fields=["image", "updated_at"])
+    return True
 
 
 def gem_sections(item):
@@ -255,6 +282,7 @@ def replace_from_gem_market(request):
         models[model_no] = models.get(model_no, 0) + 1
         entries[(model_no, gem_id)] = {
             "model_no": model_no, "gem_product_id": gem_id, "sections": gem_sections(item),
+            "image": item.get("image") or "",
             "specs": specs, "summary": _summary_fields(_normalize_extra_specs(specs)),
         }
     if problems:
@@ -262,6 +290,15 @@ def replace_from_gem_market(request):
 
     apply = desktop_excel.update_directory if mode == "update" else desktop_excel.replace_directory
     result = apply(list(entries.values()), dry_run=bool(data.get("dry_run")))
+    if not data.get("dry_run"):
+        # The Excel row needs no image; skip rewriting it once per picture.
+        with desktop_excel.paused():
+            for entry in entries.values():
+                product = CatalogueProduct.objects.filter(
+                    model_no=entry["model_no"], gem_product_id=entry["gem_product_id"],
+                ).first()
+                if product:
+                    attach_gem_image(product, entry["image"])
     result.update({
         "scanned": len(scanned),
         # Model numbers with more than one GeM configuration (all are kept).
@@ -418,6 +455,7 @@ def _save_category_directory(items, category, fields, default_description):
             if value:
                 setattr(product, field, value)
         product.save()
+        attach_gem_image(product, item.get("image"))
     return added, updated
 
 

@@ -47,7 +47,16 @@
       title: decode(html.match(/itemprop=['"]name['"][^>]*>([^<]+)</)?.[1]),
       pairs: specRows(html),
       sections: parseSections(html),
+      image: parseImage(html),
     };
+  }
+
+  // The product's main picture (og:image) in GeM's largest size, 420x420.
+  function parseImage(html) {
+    const url = decode(html.match(/property=["']og:image["'][^>]*content=["']([^"']+)["']/i)?.[1]
+      || html.match(/content=["']([^"']+)["'][^>]*property=["']og:image["']/i)?.[1]);
+    if (!/^https:\/\/assets-mkpbg\.gem\.gov\.in\/img\//.test(url)) return '';
+    return url.replace(/\.999x\d+x\d+\.jpg$/, '.999x420x420.jpg');
   }
 
   async function fetchText(url) {
