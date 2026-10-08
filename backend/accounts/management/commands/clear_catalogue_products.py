@@ -34,11 +34,15 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("--confirm", action="store_true", help="Actually delete (otherwise only counts are shown).")
+        parser.add_argument("--only", nargs="+", metavar="CATEGORY",
+                            help="Delete only these categories, e.g. --only aio toner (case does not matter).")
 
     def handle(self, *args, **options):
         products = list(CatalogueProduct.objects.all())
-        kept = [p for p in products if is_kept(p)]
-        removed = [p for p in products if not is_kept(p)]
+        only = {c.strip().lower() for c in options["only"] or []}
+        keep = (lambda p: (p.category or "desktop").strip().lower() not in only) if only else is_kept
+        kept = [p for p in products if keep(p)]
+        removed = [p for p in products if not keep(p)]
         by_category = Counter((p.category or "Desktop") for p in removed)
         self.stdout.write(f"Total {len(products)}: delete {len(removed)} {dict(by_category)}, keep {len(kept)} "
                           f"{dict(Counter((p.category or 'Desktop') for p in kept))}")

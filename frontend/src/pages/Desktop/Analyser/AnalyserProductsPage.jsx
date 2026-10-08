@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import img1 from "../../../assets/img1.png";
 import img2 from "../../../assets/img2.png";
 import img3 from "../../../assets/img3.png";
+import aioWiredImage from "../../../assets/aio-wired.jpg";
+import aioWirelessImage from "../../../assets/aio-wireless.jpg";
 import printerOm052 from "../../../assets/OMO52.png";
 import printerOm271 from "../../../assets/OM271.png";
 import printerOm050 from "../../../assets/OMO50.png";
@@ -891,6 +893,15 @@ function getImage(product, index = 0) {
 
   if (isDesktopOrWorkstationProduct(product)) {
     return getFallbackImage(index);
+  }
+
+  // AIO: the picture follows the keyboard, whatever GeM shows (some
+  // wireless GeM listings carry the wired picture).
+  if (isAioProduct(product)) {
+    const specs = product?.extra_specs || {};
+    const keyboard = [product?.keyboard, specs["Keyboard Connectivity"], specs["Mouse Connectivity"]].join(" ");
+    if (/wireless/i.test(keyboard)) return aioWirelessImage;
+    if (/wired|usb/i.test(keyboard)) return aioWiredImage;
   }
 
   return product?.image || getFallbackImage(index);
