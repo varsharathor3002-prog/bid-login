@@ -332,6 +332,7 @@ export default function WorkstationBidDetailView() {
   const [modelMatches, setModelMatches] = useState([]);
   const [showModelResult, setShowModelResult] = useState(false);
   const [noMatchFound, setNoMatchFound] = useState(false);
+  const [manualModelChosen, setManualModelChosen] = useState(false);
   const [newModelInput, setNewModelInput] = useState("");
   const [modelInputValue, setModelInputValue] = useState(location.state?.bid?.model_number || "");
   const [verifiedFields, setVerifiedFields] = useState(() => {
@@ -497,6 +498,7 @@ export default function WorkstationBidDetailView() {
       if (!item?.model_no) {
         setModelMatches([]);
         setNoMatchFound(true);
+        setManualModelChosen(false);
         setShowModelResult(false);
         if (data.best_failed_match) console.log("Best failed workstation match:", data.best_failed_match);
         return;
@@ -516,6 +518,16 @@ export default function WorkstationBidDetailView() {
     setShowModelResult(false);
     setNoMatchFound(false);
     setNewModelInput("");
+  };
+
+  // A model was found, but the analyser may still create a new one by hand
+  // (same manual path as when no model matches).
+  const startManualModel = () => {
+    setModelMatches([]);
+    setShowModelResult(false);
+    setNoMatchFound(true);
+    setManualModelChosen(true);
+    setModelInputValue("");
   };
 
   const handleCreateNewModel = async () => {
@@ -908,7 +920,7 @@ export default function WorkstationBidDetailView() {
 
           {noMatchFound && !readOnly && !showModelResult && (
             <div className="ml-1 w-52 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs leading-4 text-amber-800">
-              <span className="font-bold">No matching model found.</span>{" "}Please create a new model number.
+              <span className="font-bold">{manualModelChosen ? "Create a new model." : "No matching model found."}</span>{" "}Please create a new model number.
             </div>
           )}
 
@@ -953,7 +965,11 @@ export default function WorkstationBidDetailView() {
                       {modelMatches[0].category && <div className="text-xs text-gray-500 mt-1">{modelMatches[0].category}</div>}
                     </div>
                   </div>
-                  <div className="flex justify-end">
+                  <div className="flex justify-end gap-2">
+                    <button type="button" onClick={startManualModel} disabled={modelSaving}
+                      className="text-xs border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-50 text-gray-700 px-4 py-2 rounded font-semibold transition">
+                      Create New Model
+                    </button>
                     <button type="button" onClick={() => selectModelNumber(modelMatches[0].modelNo)} disabled={modelSaving}
                       className="text-xs bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white px-4 py-2 rounded font-semibold transition">
                       {modelSaving ? "Saving..." : "Use This Model"}
