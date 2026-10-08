@@ -399,14 +399,6 @@ export default function TonerBidDetailView() {
   useEffect(() => {
     sessionStorage.setItem(verificationStorageKey, JSON.stringify(verifiedFields));
   }, [verificationStorageKey, verifiedFields]);
-  const [modelInputValue, setModelInputValue] = useState("");
-  const [modelSearching, setModelSearching] = useState(false);
-  const [modelSaving, setModelSaving] = useState(false);
-  const [modelMatches, setModelMatches] = useState([]);
-  const [showModelResult, setShowModelResult] = useState(false);
-  const [noMatchFound, setNoMatchFound] = useState(false);
-  const [newModelInput, setNewModelInput] = useState("");
-
   useEffect(() => {
     fetchBid();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -458,12 +450,6 @@ export default function TonerBidDetailView() {
         data = await res.json();
       }
       setForm(data);
-      // Same to same as AIO's shouldShowSavedModel: only pre-fill the
-      // Assigned Model box for a bid that already went through Find Model
-      // once — a fresh pending bid always starts with an empty box so the
-      // analyser has to actually run Find Model, not see stale text.
-      const shouldShowSavedModel = readOnly || ["analyzed", "approved", "re-analyze", "rejected"].includes(data.status);
-      setModelInputValue(shouldShowSavedModel ? data.model_number || "" : "");
     } catch {
       setMsg("Error: Unable to load bid data.");
     } finally {
@@ -483,124 +469,17 @@ export default function TonerBidDetailView() {
     requestAnimationFrame(() => window.scrollTo(scrollX, scrollY));
   };
 
-  const handleModelInputChange = (e) => setModelInputValue(e.target.value);
-
-  const handleFindModel = async () => {
-    if (!form) return;
-    setModelSearching(true);
-    setModelMatches([]);
-    setShowModelResult(false);
-    setNoMatchFound(false);
-    setNewModelInput("");
-    try {
-      const res = await fetch(`${API_BASE}/toner-bids/${id}/match-catalogue/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        alert(data.error || "Server error — unable to find a matching model.");
-        return;
-      }
-      const item = data.match;
-      if (!item?.model_no) {
-        setModelMatches([]);
-        setNoMatchFound(true);
-        setShowModelResult(false);
-        return;
-      }
-      setModelMatches([{ modelNo: item.model_no, product_id: item.product_id }]);
-      setNoMatchFound(false);
-      setShowModelResult(true);
-    } catch (error) {
-      console.error(error);
-      alert("Network error — unable to connect to the server.");
-    } finally {
-      setModelSearching(false);
-    }
-  };
-
-  const saveModelNumberToDB = async (modelNo) => {
-    const trimmedModelNo = String(modelNo || "").trim();
-    if (!trimmedModelNo) {
-      alert("Model number required.");
-      return null;
-    }
-    setModelSaving(true);
-    try {
-      const res = await fetch(`${API_BASE}/toner-bids/${id}/save-model-number/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model_number: trimmedModelNo }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        alert(data.error || "Model number save failed.");
-        return null;
-      }
-      const savedModel = data.model_number || trimmedModelNo;
-      setModelInputValue(savedModel);
-      // TonerBid stores the model across two DB fields (model_no + model,
-      // concatenated into the model_number the API returns) — updating only
-      // the synthetic model_number here left form.model/form.model_no stale,
-      // same risk AIO's own detail view guards against.
-      setForm((prev) => ({ ...prev, model_number: savedModel, model: savedModel, model_no: "" }));
-      setMsg("Model number saved successfully ✅");
-      return savedModel;
-    } catch (error) {
-      console.error(error);
-      alert("Server error — unable to save model number.");
-      return null;
-    } finally {
-      setModelSaving(false);
-    }
-  };
-
-  const selectModelNumber = async (modelNo) => {
-    const saved = await saveModelNumberToDB(modelNo);
-    if (!saved) return;
-    setShowModelResult(false);
-    setNoMatchFound(false);
-    setNewModelInput("");
-  };
-
-  const handleCreateNewModel = async () => {
-    const trimmed = modelInputValue.trim();
-    if (!trimmed) {
-      alert("Please enter a model number.");
-      return;
-    }
-    const saved = await saveModelNumberToDB(trimmed);
-    if (!saved) return;
-    setShowModelResult(false);
-    setNoMatchFound(false);
-    setNewModelInput("");
-  };
-
   const requiredVerifiedCount = REQUIRED_FIELDS.filter((field) => !!verifiedFields[field]).length;
   const allVerified = REQUIRED_FIELDS.every((field) => !!verifiedFields[field]);
 
-  // Same to same as AIO's handleNextClick: saves the verified model number,
-  // then hands the bid off to the Step 2/2 "General Documents" page
-  // (TonerAnalyserDocument.jsx) instead of sending straight to Admin here.
-  const handleNextClick = async () => {
+  const handleNextClick = () => {
     if (!allVerified) return;
-    const currentModel = modelInputValue.trim();
-    if (!currentModel) {
-      alert("Please find/save a Model Number before proceeding.");
-      return;
-    }
-    const saved = await saveModelNumberToDB(currentModel);
-    if (!saved) return;
-
     navigate("/analyser-dashboard/toner/document", {
       state: {
         bidData: {
           ...form,
           id,
           bid_id: id,
-          model_number: saved,
           analyser_username: sessionStorage.getItem("analyser_username") || sessionStorage.getItem("username") || localStorage.getItem("analyser_username") || localStorage.getItem("username") || "",
           verified_fields: Object.keys(verifiedFields).filter((key) => verifiedFields[key]),
         },
@@ -683,7 +562,6 @@ export default function TonerBidDetailView() {
   const isAnalyzed = form.status === "analyzed";
   const isApproved = form.status === "approved";
   const isPending = !isReAnalyze && !isAnalyzed && !isApproved;
-  const hasExistingModel = !!form?.model_number && form.model_number.trim() !== "";
 
   const inputCls = "w-full border border-gray-300 rounded-md px-3 py-2 text-sm disabled:bg-gray-100 focus:outline-none focus:border-blue-500 bg-white";
   const textareaCls = "w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none disabled:bg-gray-100 bg-white";
@@ -795,6 +673,13 @@ export default function TonerBidDetailView() {
           <Select name="cartridge_type" options={CARTRIDGE_TYPES} />
         </VerifiedInputWrapper>
 
+        <div className="md:col-span-2 lg:col-span-3">
+          <Label>Toner Models</Label>
+          <div className="border border-gray-300 rounded-md px-3 py-2 text-sm">
+            {parseList(form.toner_models).map((toner) => `${toner.brand} ${toner.tonerModel}`).join(", ") || "Not selected"}
+          </div>
+        </div>
+
         <VerifiedInputWrapper verifiedFields={verifiedFields} readOnly={readOnly} toggleVerification={toggleVerification} name="product_class" label="Product Class of Cartridge">
           <Select name="product_class" options={PRODUCT_CLASSES} />
         </VerifiedInputWrapper>
@@ -904,101 +789,6 @@ export default function TonerBidDetailView() {
           </div>
         )}
 
-      <div className={isPending ? "min-w-0" : "md:col-start-2 md:row-start-3 lg:col-start-3 lg:row-start-2"}>
-          <div className={`relative flex items-center gap-2 rounded-lg border p-2 ${isPending ? "w-fit border-blue-300 bg-blue-50/60 shadow-sm" : "w-fit border-gray-300 bg-gray-50"}`}>
-            <div className="flex flex-col">
-              <label className={`mb-1 text-sm font-bold ${isPending ? "text-blue-900" : "text-gray-700"}`}>Assigned Model</label>
-              <input
-                type="text"
-                name="model_number"
-                value={modelInputValue}
-                onChange={handleModelInputChange}
-                placeholder={readOnly ? "No model assigned" : noMatchFound ? "Enter model number manually..." : "Search model..."}
-                disabled={readOnly || modelSearching || showModelResult}
-                className={`rounded border px-3 py-1.5 text-sm outline-none w-64 font-semibold focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500 ${isPending ? "border-blue-300 bg-white text-slate-900 placeholder:text-slate-500" : "border-gray-300 text-gray-800"}`}
-              />
-            </div>
-
-            {!readOnly && (
-              <button
-                type="button"
-                onClick={noMatchFound ? handleCreateNewModel : handleFindModel}
-                disabled={modelSearching || modelSaving || showModelResult}
-                className={`mt-4 whitespace-nowrap ${noMatchFound ? "bg-blue-600 hover:bg-blue-700" : isReAnalyze && hasExistingModel ? "bg-amber-600 hover:bg-amber-700" : "bg-slate-700 hover:bg-slate-800"} disabled:bg-slate-400 text-white px-3 py-1.5 rounded text-xs font-bold transition shadow-sm`}
-              >
-                {modelSaving ? "Saving..." : modelSearching ? "Searching..." : noMatchFound ? "Save Model" : (isReAnalyze && hasExistingModel) ? "Change Model" : "Find Model"}
-              </button>
-            )}
-
-            {noMatchFound && !readOnly && !showModelResult && (
-              <div className="ml-1 w-52 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs leading-4 text-amber-800">
-                <span className="font-bold">No matching model found.</span>{" "}
-                Please create a new model number.
-              </div>
-            )}
-
-            {readOnly && isReAnalyze && hasExistingModel && (
-              <div className="mt-4 flex items-center gap-2">
-                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700 border border-green-300">
-                  ✅ Assigned
-                </span>
-              </div>
-            )}
-
-            {showModelResult && !readOnly && (
-              <div className="absolute left-0 top-full mt-2 w-[420px] bg-white border border-gray-300 rounded-lg shadow-xl z-50 overflow-hidden">
-                <div className="flex items-center justify-between px-4 py-2.5 border-b bg-slate-50">
-                  <span className="text-sm font-bold text-gray-700">Catalogue Model</span>
-                  <button
-                    type="button"
-                    onClick={() => { setShowModelResult(false); setNoMatchFound(false); setNewModelInput(""); }}
-                    className="text-xs text-red-500 font-semibold hover:text-red-700"
-                  >
-                    Close ✕
-                  </button>
-                </div>
-
-                {modelSearching ? (
-                  <div className="p-6 text-center">
-                    <div className="text-gray-400 text-sm animate-pulse">Searching catalogue for a matching model...</div>
-                  </div>
-                ) : noMatchFound ? (
-                  <div className="p-5">
-                    <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
-                      <span className="text-2xl leading-none mt-0.5">⚠️</span>
-                      <div>
-                        <div className="text-sm font-bold text-amber-800">No 100% accurate model match found</div>
-                        <div className="text-xs text-amber-700 mt-0.5">
-                          Please recheck your specs or create another bid.
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ) : modelMatches.length === 0 ? (
-                  <div className="p-6 text-center">
-                    <div className="text-sm text-gray-500 font-medium">No model found.</div>
-                  </div>
-                ) : (
-                  <div className="p-4">
-                    <div className="flex items-start gap-3 bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
-                      <span className="text-xl leading-none">✅</span>
-                      <div>
-                        <div className="text-sm font-bold text-green-800">Model found</div>
-                        <div className="text-lg font-extrabold text-blue-700 mt-1">{modelMatches[0].modelNo}</div>
-                      </div>
-                    </div>
-                    <div className="flex justify-end">
-                      <button type="button" onClick={() => selectModelNumber(modelMatches[0].modelNo)} disabled={modelSaving}
-                        className="text-xs bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white px-4 py-2 rounded font-semibold transition">
-                        {modelSaving ? "Saving..." : "Use This Model"}
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
       </div>
 
       {!readOnly && (
@@ -1006,26 +796,17 @@ export default function TonerBidDetailView() {
           <div className="mb-10 mt-4 flex gap-3 items-center flex-wrap">
             <button
               type="button"
-              disabled={!allVerified || !modelInputValue.trim() || modelSaving}
+              disabled={!allVerified}
               onClick={handleNextClick}
               className={`font-semibold px-8 py-2.5 rounded-md text-sm transition flex items-center gap-2 ${
-                allVerified && modelInputValue.trim() ? "bg-blue-600 hover:bg-blue-700 text-white shadow-md" : "bg-gray-200 text-gray-400 cursor-not-allowed"
+                allVerified ? "bg-blue-600 hover:bg-blue-700 text-white shadow-md" : "bg-gray-200 text-gray-400 cursor-not-allowed"
               }`}
             >
-              {modelSaving ? (
-                "Saving..."
-              ) : !allVerified ? (
+              {!allVerified ? (
                 <>
                   <span>Next</span>
                   <span className="text-[10px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full border border-gray-300">
                     {requiredVerifiedCount} / {REQUIRED_FIELDS.length} Verified
-                  </span>
-                </>
-              ) : !modelInputValue.trim() ? (
-                <>
-                  <span>Next</span>
-                  <span className="text-[10px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full border border-gray-300">
-                    Find Model first
                   </span>
                 </>
               ) : (
