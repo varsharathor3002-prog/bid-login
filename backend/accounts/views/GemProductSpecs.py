@@ -442,17 +442,20 @@ def _workstation_directory_fields(pairs):
         return ""
 
     processor = find(r"processor\s*(number|model|name)") or find(r"^processor", r"generation|core|thread|cache|speed|clock|description")
-    ram_size = find(r"(ram|memory).*(size|capacity)", r"expand|graphic|cache")
-    ram_type = find(r"(type of ram|ram type|memory type)")
+    # GeM: "Installed System Memory (RAM) (in GB)", "System Memory (RAM) Type".
+    ram_size = find(r"(ram|memory).*(size|capacity|in gb)", r"expand|graphic|gpu|cache|video|max")
+    ram_type = find(r"type of ram|(ram|memory).*type")
     ram = " ".join(x for x in [f"{ram_size}GB" if ram_size.isdigit() else ram_size, ram_type] if x)
     ssd = find(r"ssd.*capacity|capacity.*ssd")
     hdd = find(r"hdd.*capacity|capacity.*hdd")
     storage_type = find(r"type of storage")
-    graphics = find(r"graphic.*(make|model|card)", r"memory|type of") or find(r"graphic", r"memory|type of")
+    # GeM: "GPU Model" (and "Number of Factory-Fitted Discrete GPUs", skipped).
+    graphics = (find(r"gpu model|graphic.*(make|model|card)", r"memory|type of|number of")
+                or find(r"graphic|gpu", r"memory|type of|number of"))
     os_value = find(r"operating system", r"recovery")
     monitor = find(r"(screen|display|monitor).*size")
     power = find(r"power supply", r"monitor")
-    chipset = find(r"chipset|motherboard")
+    chipset = find(r"chipset") or find(r"motherboard")
     specs = {
         **raw,
         "Computer Type": "Workstation",
