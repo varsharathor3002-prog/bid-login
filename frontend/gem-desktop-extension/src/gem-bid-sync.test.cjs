@@ -133,6 +133,17 @@ test("receives Printer bids at any quantity and validity, Workstation at any qua
   assert.equal(opportunityResult(printer, "No units listed").reject, "quantity_unread");
 });
 
+test("removes a Printer bid only when its Printer Technology is just Inkjet", () => {
+  const printer = "A4 and Legal Size Multifunction Printer (MFP) (Q2)";
+  const desktop = "High End Desktop Computer (Q2)";
+  assert.equal(opportunityResult(printer, "Total Quantity 3 Printer Technology Inkjet Print Speed 20").reject, "inkjet");
+  assert.equal(opportunityResult(printer, "Total Quantity 3 Printer Technology Ink Jet").reject, "inkjet");
+  assert.equal(opportunityResult(printer, "Total Quantity 3 Printer Technology Electrophotography/Xerography (Laser/LED)").eligible, true);
+  assert.equal(opportunityResult(printer, "Total Quantity 3 Printer Technology Inkjet, Electrophotography/Xerography (Laser/LED)").eligible, true);
+  assert.equal(opportunityResult(printer, "Total Quantity 3").eligible, true);
+  assert.equal(opportunityResult(desktop, "Total Quantity 30 Printer Technology Inkjet").eligible, true);
+});
+
 test("rejects a bunch bid even when every category is approved", () => {
   const result = opportunityResult(
     "All in One PC (V2) (Q2), Entry and Mid Level Desktop Computer (Q2), "

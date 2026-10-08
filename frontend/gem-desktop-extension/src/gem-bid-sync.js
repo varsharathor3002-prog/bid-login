@@ -1418,6 +1418,16 @@
   const NO_MINIMUM_QUANTITY_PRODUCTS = new Set(["printer", "workstation"]);
   const NO_DAY_LIMIT_PRODUCTS = new Set(["printer"]);
 
+  // A Printer bid whose Printer Technology is only Inkjet is not received;
+  // one that also allows Electrophotography/Xerography (Laser/LED) is kept,
+  // and so is one whose technology could not be read.
+  function inkjetOnlyPrinter(flat) {
+    const values = [...flat.matchAll(/Print(?:er|ing)?\s+Technology\s*:?\s*(.{0,120})/gi)].map((match) => match[1]);
+    if (!values.length) return false;
+    const text = values.join(" ");
+    return /ink\s*-?\s*jet/i.test(text) && !/laser|\bled\b|electro\s*-?\s*photo|xerograph/i.test(text);
+  }
+
   function opportunityFromText(bidNo, raw, cardStartDate = "", cardQuantity = 0) {
     const flat = String(raw || "").replace(/[\u0000-\u001f]+/g, " ").replace(/\s+/g, " ").trim();
     const bounded = (start, end) => flat.match(new RegExp(`${start}\\s*:?\\s*(.+?)(?=${end})`, "i"))?.[1]?.trim() || "";
@@ -1452,6 +1462,7 @@
     const product = matchedProducts[0];
     // Bids below 5 units are not received, except Printer and Workstation.
     if (quantity < 5 && !NO_MINIMUM_QUANTITY_PRODUCTS.has(product[0])) return { reject: "quantity" };
+    if (product[0] === "printer" && inkjetOnlyPrinter(flat)) return { reject: "inkjet" };
     const deliveryText = bounded(
       "Consignees?/Reporting\\s+Officer\\s+and\\s+Quantity",
       "(?:Special\\s+terms|Buyer\\s+Added|Technical\\s+Specifications|$)"
@@ -1895,7 +1906,7 @@
     let knownPages = Number(resume?.knownPages || 0);
     let corrigendaFound = 0;
     const rejected = {
-      product: 0, bunch: 0, quantity: 0, quantity_unread: 0, pac: 0, location: 0, date: 0, expired: 0, over120: 0, detail: 0, api: 0,
+      product: 0, bunch: 0, quantity: 0, quantity_unread: 0, pac: 0, location: 0, date: 0, expired: 0, over120: 0, inkjet: 0, detail: 0, api: 0,
       ...(resume?.rejected || {}),
     };
     try {
@@ -1963,7 +1974,7 @@
           if (row?.reject !== "detail") runBids[bidNo] = Date.now();
         }
         await storeBidMap(OPPORTUNITY_RUN_BIDS_KEY, runBids);
-        await progress("running", `Selected category page ${page}: checked ${checked}; ${opportunitySaveSummary(saved, created, updated, rejected.api)}. Rejected before API: detail ${rejected.detail}, product ${rejected.product}, bunch ${rejected.bunch || 0}, qty<5 ${rejected.quantity}, qty unread ${rejected.quantity_unread}, PAC ${rejected.pac}, location ${rejected.location}, date ${rejected.date}, expired ${rejected.expired}, >120d ${rejected.over120}.`, { page, saved, checked });
+        await progress("running", `Selected category page ${page}: checked ${checked}; ${opportunitySaveSummary(saved, created, updated, rejected.api)}. Rejected before API: detail ${rejected.detail}, product ${rejected.product}, bunch ${rejected.bunch || 0}, qty<5 ${rejected.quantity}, qty unread ${rejected.quantity_unread}, PAC ${rejected.pac}, location ${rejected.location}, date ${rejected.date}, expired ${rejected.expired}, >120d ${rejected.over120}, inkjet-only ${rejected.inkjet}.`, { page, saved, checked });
         const advance = await advancePageWithRecovery(signature, page, async (attempt, reason) => {
           await progress(
             "running",
@@ -2012,7 +2023,7 @@
       if (error.code === "GEM_SYNC_STOPPED") {
         await progress(
           "stopped",
-          `Opportunity scan stopped after ${checked} bids; ${opportunitySaveSummary(saved, created, updated, rejected.api)}. Rejected before API: detail ${rejected.detail}, product ${rejected.product}, bunch ${rejected.bunch || 0}, qty<5 ${rejected.quantity}, qty unread ${rejected.quantity_unread}, PAC ${rejected.pac}, location ${rejected.location}, date ${rejected.date}, expired ${rejected.expired}, >120d ${rejected.over120}.`,
+          `Opportunity scan stopped after ${checked} bids; ${opportunitySaveSummary(saved, created, updated, rejected.api)}. Rejected before API: detail ${rejected.detail}, product ${rejected.product}, bunch ${rejected.bunch || 0}, qty<5 ${rejected.quantity}, qty unread ${rejected.quantity_unread}, PAC ${rejected.pac}, location ${rejected.location}, date ${rejected.date}, expired ${rejected.expired}, >120d ${rejected.over120}, inkjet-only ${rejected.inkjet}.`,
           { page, saved, checked },
         );
         return;
