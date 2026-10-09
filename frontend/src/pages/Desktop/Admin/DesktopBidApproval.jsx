@@ -609,8 +609,9 @@ export default function DesktopBidApproval() {
     setForm((prev) => {
       if (name === "margin") {
         const margin = wholeRupees(value);
-        // Clearing the margin takes it back out: the approved price returns to Total Value.
-        if (!margin) return { ...prev, margin: "", total_price: String(Math.round(toPrice(prev.component_total_price ?? calculateTotalPrice(prev)))) };
+        // Clearing the margin clears the price it filled; the admin may type the
+        // approved price by hand (it is only filled automatically from a margin).
+        if (!margin) return { ...prev, margin: "", total_price: "" };
         return applyMargin({ ...prev, margin });
       }
       if (name === "total_price") return { ...prev, total_price: wholeRupees(value) };
