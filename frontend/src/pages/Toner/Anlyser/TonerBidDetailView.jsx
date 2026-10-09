@@ -901,9 +901,8 @@ export default function TonerBidDetailView() {
           <input type="date" name="date" value={form.date || ""} onChange={handleChange} disabled={readOnly} className={inputCls} />
         </VerifiedInputWrapper>
 
-        {/* Same to same as AIO's BidDetailView: Total Approved Price only
-            shows when opened from the "Transfer Catalogue to GeM" tab. */}
-        {showGemUpload && readOnly && isApproved && (
+        {/* Every approved bid shows its Total Approved Price. */}
+        {readOnly && isApproved && (
           <div className="md:col-span-2 lg:col-span-3 rounded-lg border border-slate-300 bg-slate-50 p-4 shadow-sm">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <label className="block text-sm font-semibold text-slate-800">Total Approved Price</label>
@@ -926,7 +925,7 @@ export default function TonerBidDetailView() {
           </div>
         )}
 
-        {readOnly && isApproved && (
+        {showGemUpload && readOnly && isApproved && (
           <div className="md:col-span-2 lg:col-span-3 border border-indigo-200 bg-indigo-50 p-4 rounded-lg">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <div className="flex-1">

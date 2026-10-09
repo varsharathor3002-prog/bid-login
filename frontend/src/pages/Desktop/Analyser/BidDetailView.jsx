@@ -1106,7 +1106,7 @@ export default function BidDetailView({ product = "desktop" }) {
               <textarea name="optional_ports" value={form?.optional_ports || ""} onChange={handleChange} disabled={readOnly} rows={2} className={textareaCls} placeholder="e.g. Serial Port, Display Port, USB Type-C" />
             </VerifiedInputWrapper>
 
-            {showGemUpload && readOnly && isApproved && (
+            {readOnly && isApproved && (
               <div className="col-span-1 relative">
                 <div className="mb-1 h-5" aria-hidden="true" />
                 <div className="relative flex items-center">
