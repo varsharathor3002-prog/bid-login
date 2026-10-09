@@ -324,6 +324,9 @@ export default function WorkstationBidDetailView() {
   const verificationBidId = id || location.state?.bid?.id || location.state?.id || location.state?.bid_id || "unknown";
   const verificationStorageKey = `workstation_bid_verified_fields_${verificationBidId}`;
   const [form, setForm] = useState(location.state?.bid || {});
+  // Layout follows the bid's status when the page opened; saving a model
+  // changes the status and must not move the Assigned Model box.
+  const [openedAsPending, setOpenedAsPending] = useState(null);
   const [readOnly] = useState(!!location.state?.readOnly);
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState("");
@@ -431,7 +434,19 @@ export default function WorkstationBidDetailView() {
     requestAnimationFrame(() => window.scrollTo(scrollX, scrollY));
   };
 
+  // Saving / finding a model re-renders the whole form; keep the page
+  // where it was instead of jumping (same as toggleVerification).
   const saveModelNumberToDB = async (modelNo, createNew = false) => {
+    const scrollX = window.scrollX;
+    const scrollY = window.scrollY;
+    try {
+      return await saveModelNumberToDBInner(modelNo, createNew);
+    } finally {
+      requestAnimationFrame(() => window.scrollTo(scrollX, scrollY));
+    }
+  };
+
+  const saveModelNumberToDBInner = async (modelNo, createNew = false) => {
     const trimmedModelNo = String(modelNo || "").trim();
     if (!trimmedModelNo) {
       alert("Please save a Model Number before proceeding.");
@@ -471,7 +486,19 @@ export default function WorkstationBidDetailView() {
     }
   };
 
+  // Saving / finding a model re-renders the whole form; keep the page
+  // where it was instead of jumping (same as toggleVerification).
   const handleFindModel = async () => {
+    const scrollX = window.scrollX;
+    const scrollY = window.scrollY;
+    try {
+      return await handleFindModelInner();
+    } finally {
+      requestAnimationFrame(() => window.scrollTo(scrollX, scrollY));
+    }
+  };
+
+  const handleFindModelInner = async () => {
     setModelSearching(true);
     setModelMatches([]);
     setShowModelResult(false);
@@ -665,6 +692,8 @@ export default function WorkstationBidDetailView() {
   const isReviewed = form?.status === "reviewed" || form?.review_status === "reviewed";
   const isApproved = form?.status === "approved" || form?.review_status === "approved";
   const isPending = !isReAnalyze && !isReviewed && !isApproved;
+  if (openedAsPending === null) setOpenedAsPending(isPending);
+  const layoutPending = openedAsPending ?? isPending;
   const conditionalRequired = CONDITIONAL_FIELDS.filter((name) => String(form?.[name] || "").trim());
   const activeRequiredFields = [...REQUIRED_FIELDS, ...conditionalRequired];
   const verifiedCount = activeRequiredFields.filter((name) => verifiedFields[name]).length;
@@ -706,7 +735,7 @@ export default function WorkstationBidDetailView() {
 
       {msg && <div className="mb-4 px-4 py-2 rounded bg-red-50 text-red-700 text-sm font-medium border border-red-200">{msg}</div>}
 
-      <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4 ${isPending ? "[&_label]:!font-semibold [&_label]:!text-slate-800 [&_input]:!border-blue-300 [&_input]:!text-slate-900 [&_input]:placeholder:!text-slate-500 [&_select]:!border-blue-300 [&_select]:!text-slate-900 [&_textarea]:!border-blue-300 [&_textarea]:!text-slate-900" : ""} ${readOnly && isApproved ? "[&_select]:!appearance-none" : ""}`}>
+      <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4 ${layoutPending ? "[&_label]:!font-semibold [&_label]:!text-slate-800 [&_input]:!border-blue-300 [&_input]:!text-slate-900 [&_input]:placeholder:!text-slate-500 [&_select]:!border-blue-300 [&_select]:!text-slate-900 [&_textarea]:!border-blue-300 [&_textarea]:!text-slate-900" : ""} ${readOnly && isApproved ? "[&_select]:!appearance-none" : ""}`}>
         {TOP_FIELDS.map(([name, label, type]) => (
           <VerifiedField key={name} name={name} label={label} required verifiedFields={verifiedFields} readOnly={readOnly} onToggle={toggleVerification}>
             <input
@@ -885,9 +914,9 @@ export default function WorkstationBidDetailView() {
           </div>
         )}
       <div className="min-w-0">
-        <div className={`relative flex items-center gap-2 rounded-lg border p-2 ${isPending ? "w-fit border-blue-300 bg-blue-50/60 shadow-sm" : "h-full border-gray-300 bg-gray-50"}`}>
+        <div className={`relative flex items-center gap-2 rounded-lg border p-2 ${layoutPending ? "w-fit border-blue-300 bg-blue-50/60 shadow-sm" : "h-full border-gray-300 bg-gray-50"}`}>
           <div className="flex flex-col">
-            <label className={`mb-1 text-sm font-bold ${isPending ? "text-blue-900" : "text-gray-700"}`}>Assigned Model</label>
+            <label className={`mb-1 text-sm font-bold ${layoutPending ? "text-blue-900" : "text-gray-700"}`}>Assigned Model</label>
             <input
               type="text"
               name="model_number"

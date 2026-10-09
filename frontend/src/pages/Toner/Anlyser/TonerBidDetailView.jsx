@@ -381,6 +381,9 @@ export default function TonerBidDetailView() {
   const showGemUpload = state?.showGemUpload === true;
 
   const [form, setForm] = useState(null);
+  // Layout follows the bid's status when the page opened; saving a model
+  // changes the status and must not move the Assigned Model box.
+  const [openedAsPending, setOpenedAsPending] = useState(null);
   const [gemStarting, setGemStarting] = useState(false);
   const [gemJob, setGemJob] = useState(null);
   const [loadingBid, setLoadingBid] = useState(true);
@@ -486,7 +489,19 @@ export default function TonerBidDetailView() {
 
   const handleModelInputChange = (e) => setModelInputValue(e.target.value);
 
+  // Saving / finding a model re-renders the whole form; keep the page
+  // where it was instead of jumping (same as toggleVerification).
   const handleFindModel = async () => {
+    const scrollX = window.scrollX;
+    const scrollY = window.scrollY;
+    try {
+      return await handleFindModelInner();
+    } finally {
+      requestAnimationFrame(() => window.scrollTo(scrollX, scrollY));
+    }
+  };
+
+  const handleFindModelInner = async () => {
     if (!form) return;
     setModelSearching(true);
     setModelMatches([]);
@@ -523,7 +538,19 @@ export default function TonerBidDetailView() {
     }
   };
 
+  // Saving / finding a model re-renders the whole form; keep the page
+  // where it was instead of jumping (same as toggleVerification).
   const saveModelNumberToDB = async (modelNo, createNew = false) => {
+    const scrollX = window.scrollX;
+    const scrollY = window.scrollY;
+    try {
+      return await saveModelNumberToDBInner(modelNo, createNew);
+    } finally {
+      requestAnimationFrame(() => window.scrollTo(scrollX, scrollY));
+    }
+  };
+
+  const saveModelNumberToDBInner = async (modelNo, createNew = false) => {
     const trimmedModelNo = String(modelNo || "").trim();
     if (!trimmedModelNo) {
       alert("Model number required.");
@@ -695,6 +722,8 @@ export default function TonerBidDetailView() {
   const isAnalyzed = form.status === "analyzed";
   const isApproved = form.status === "approved";
   const isPending = !isReAnalyze && !isAnalyzed && !isApproved;
+  if (openedAsPending === null) setOpenedAsPending(isPending);
+  const layoutPending = openedAsPending ?? isPending;
   const hasExistingModel = !!form?.model_number && form.model_number.trim() !== "";
 
   const inputCls = "w-full border border-gray-300 rounded-md px-3 py-2 text-sm disabled:bg-gray-100 focus:outline-none focus:border-blue-500 bg-white";
@@ -738,7 +767,7 @@ export default function TonerBidDetailView() {
       )}
 
       <div
-        className={`${isPending
+        className={`${layoutPending
           ? "[&_label]:!font-semibold [&_label]:!text-slate-800 [&_input]:!border-blue-300 [&_input]:!text-slate-900 [&_input]:placeholder:!text-slate-500 [&_select]:!border-blue-300 [&_select]:!text-slate-900 [&_textarea]:!border-blue-300 [&_textarea]:!text-slate-900 [&_textarea]:placeholder:!text-slate-500"
           : ""} ${readOnly && isApproved ? "[&_select]:!appearance-none" : ""}`}
       >
@@ -916,10 +945,10 @@ export default function TonerBidDetailView() {
           </div>
         )}
 
-      <div className={isPending ? "min-w-0" : "md:col-start-2 md:row-start-3 lg:col-start-3 lg:row-start-2"}>
-          <div className={`relative flex items-center gap-2 rounded-lg border p-2 ${isPending ? "w-fit border-blue-300 bg-blue-50/60 shadow-sm" : "w-fit border-gray-300 bg-gray-50"}`}>
+      <div className={layoutPending ? "min-w-0" : "md:col-start-2 md:row-start-3 lg:col-start-3 lg:row-start-2"}>
+          <div className={`relative flex items-center gap-2 rounded-lg border p-2 ${layoutPending ? "w-fit border-blue-300 bg-blue-50/60 shadow-sm" : "w-fit border-gray-300 bg-gray-50"}`}>
             <div className="flex flex-col">
-              <label className={`mb-1 text-sm font-bold ${isPending ? "text-blue-900" : "text-gray-700"}`}>Assigned Model</label>
+              <label className={`mb-1 text-sm font-bold ${layoutPending ? "text-blue-900" : "text-gray-700"}`}>Assigned Model</label>
               <input
                 type="text"
                 name="model_number"
@@ -927,7 +956,7 @@ export default function TonerBidDetailView() {
                 onChange={handleModelInputChange}
                 placeholder={readOnly ? "No model assigned" : noMatchFound ? "Enter model number manually..." : "Search model..."}
                 disabled={readOnly || modelSearching || showModelResult}
-                className={`rounded border px-3 py-1.5 text-sm outline-none w-64 font-semibold focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500 ${isPending ? "border-blue-300 bg-white text-slate-900 placeholder:text-slate-500" : "border-gray-300 text-gray-800"}`}
+                className={`rounded border px-3 py-1.5 text-sm outline-none w-64 font-semibold focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500 ${layoutPending ? "border-blue-300 bg-white text-slate-900 placeholder:text-slate-500" : "border-gray-300 text-gray-800"}`}
               />
             </div>
 
