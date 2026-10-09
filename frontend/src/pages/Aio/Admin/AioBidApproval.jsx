@@ -1044,9 +1044,9 @@ export default function AioBidApproval() {
                         <span className="font-semibold text-emerald-800">₹</span>
                         <input type="number" min="0" step="1" name="total_price" value={priceInputValue(form?.total_price ?? "")} onChange={handleChange} required
                           placeholder="Enter approved price"
-                          readOnly={selected?.status === "approved"}
+                          readOnly={selected?.status === "approved" || Boolean(form?.margin)}
                           disabled={selected?.status === "approved"}
-                          className="w-48 rounded-md border border-emerald-300 bg-white px-3 py-2 text-right text-lg font-semibold text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-700 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+                          className="w-48 rounded-md border border-emerald-300 bg-white px-3 py-2 text-right text-lg font-semibold text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 read-only:cursor-not-allowed read-only:bg-slate-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-700 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
                       </div>
                     </div>
                   </div>
