@@ -40,12 +40,15 @@ const toPrice = (value) => {
 
 const calculateTotalPrice = (values) =>
   PRICE_FIELDS.reduce((total, field) => total + toPrice(values?.[field]), 0);
-// Bid Approved Price = Total Value + the admin's margin (in ₹), once a margin
+// Bid Approved Price = Total Value + the admin's margin (whole ₹), once a margin
 // is entered; the admin can still overwrite the approved price by hand.
+// Margin and approved price are whole rupees: no decimal point.
+const wholeRupees = (value) => String(value ?? "").replace(/\D/g, "");
+
 const applyMargin = (values) => {
   if (values?.margin === undefined || String(values.margin).trim() === "") return values;
   const total = toPrice(values.component_total_price ?? calculateTotalPrice(values));
-  return { ...values, total_price: (total + toPrice(values.margin)).toFixed(2) };
+  return { ...values, total_price: String(Math.round(total + toPrice(values.margin))) };
 };
 
 
@@ -604,8 +607,8 @@ export default function DesktopBidApproval() {
   const handleChange = (e) => {
     const { name, value } = e.target;
     setForm((prev) => {
-      if (name === "margin") return applyMargin({ ...prev, margin: value });
-      if (name === "total_price") return { ...prev, total_price: value };
+      if (name === "margin") return applyMargin({ ...prev, margin: wholeRupees(value) });
+      if (name === "total_price") return { ...prev, total_price: wholeRupees(value) };
 
       const next = { ...prev, [name]: value };
       const options = SPEC_OPTIONS[name];
@@ -1079,7 +1082,7 @@ export default function DesktopBidApproval() {
                       <label className="block text-sm font-semibold text-amber-900">Margin</label>
                       <div className="flex items-center gap-2">
                         <span className="font-semibold text-amber-800">₹</span>
-                        <input type="number" min="0" step="0.01" name="margin" value={form?.margin ?? ""} onChange={handleChange} placeholder="Margin" readOnly={selected?.status === "approved" || selected?.review_status === "approved"} disabled={selected?.status === "approved" || selected?.review_status === "approved"}
+                        <input type="number" min="0" step="1" name="margin" value={form?.margin ?? ""} onChange={handleChange} placeholder="Margin" readOnly={selected?.status === "approved" || selected?.review_status === "approved"} disabled={selected?.status === "approved" || selected?.review_status === "approved"}
                           className="w-40 rounded-md border border-amber-300 bg-white px-3 py-2 text-right text-lg font-semibold text-slate-900 outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-700 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
                       </div>
                     </div>
@@ -1094,7 +1097,7 @@ export default function DesktopBidApproval() {
                         <input
                           type="number"
                           min="0"
-                          step="0.01"
+                          step="1"
                           name="total_price"
                           value={priceInputValue(form?.total_price ?? "")}
                           onChange={handleChange}
