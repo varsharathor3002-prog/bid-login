@@ -125,18 +125,7 @@ const getProcessorCategory = (processorName) => {
   return null;
 };
 
-export const getFilteredRams = (processorName) => {
-  const category = getProcessorCategory(processorName);
-  if (!category) return RAMS;
-
-  if (category === "intel_ultra" || category === "amd_new") {
-    return RAMS.filter((r) => r.name.includes("DDR5"));
-  }
-  if (category === "intel_old" || category === "amd_old") {
-    return RAMS.filter((r) => r.name.includes("DDR4"));
-  }
-  return RAMS;
-};
+export const getFilteredRams = () => RAMS;
 
 const getFilteredIntelMotherboards = (processorName) => {
   const category = getProcessorCategory(processorName);
@@ -166,17 +155,8 @@ const getFilteredAmdMotherboards = (processorName) => {
   return [];
 };
 
-export const isRamCompatible = (processorName, ramName) => {
-  const category = getProcessorCategory(processorName);
-  if (!category) return true;
-
-  const isDdr5 = ramName.includes("DDR5");
-  const isDdr4 = ramName.includes("DDR4");
-
-  if (category === "intel_ultra" || category === "amd_new") return isDdr5;
-  if (category === "intel_old" || category === "amd_old") return isDdr4;
-  return true;
-};
+// Processor changes must preserve the user's DDR4 or DDR5 selection.
+export const isRamCompatible = () => true;
 
 export const isMotherboardCompatible = (processorName, mbName) => {
   const category = getProcessorCategory(processorName);
