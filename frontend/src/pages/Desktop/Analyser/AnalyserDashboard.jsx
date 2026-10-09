@@ -540,8 +540,8 @@ export default function AnalyserDashboard({ product = "desktop" }) {
                                         </button>
                                         <span className="hidden">
                                             ₹{Number(bid.total_price || 0).toLocaleString("en-IN", {
-                                                minimumFractionDigits: 2,
-                                                maximumFractionDigits: 2,
+                                                minimumFractionDigits: 0,
+                                                maximumFractionDigits: 0,
                                             })}
                                         </span>
                                     </td>

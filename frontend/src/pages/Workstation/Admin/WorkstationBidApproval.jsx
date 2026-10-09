@@ -916,7 +916,7 @@ export default function WorkstationBidApproval() {
                     <label className="block text-sm font-semibold text-slate-800">Total Value</label>
                     <div className="flex items-center gap-2">
                       <span className="font-semibold text-slate-700">₹</span>
-                      <input type="number" readOnly value={form.component_total_price ?? calculateTotalPrice(form)} className="w-48 rounded-md border border-slate-300 bg-slate-100 px-3 py-2 text-right text-lg font-semibold text-slate-700 outline-none" />
+                      <input type="number" readOnly value={Math.round(toPrice(form.component_total_price ?? calculateTotalPrice(form)))} className="w-48 rounded-md border border-slate-300 bg-slate-100 px-3 py-2 text-right text-lg font-semibold text-slate-700 outline-none" />
                     </div>
                   </div>
                 </div>

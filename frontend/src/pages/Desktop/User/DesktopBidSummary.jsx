@@ -40,7 +40,7 @@ const formatPrice = (val) => {
     return "—";
   }
 
-  return `₹${Number(val).toLocaleString("en-IN")}`;
+  return `₹${Number(val).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
 };
 
 export default function DesktopBidSummary({ bidData, onNext, onBack }) {

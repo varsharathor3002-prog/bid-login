@@ -1013,7 +1013,7 @@ export default function AioBidApproval() {
                       <label className="block text-sm font-semibold text-slate-800">Total Value</label>
                       <div className="flex items-center gap-2">
                         <span className="font-semibold text-slate-700">₹</span>
-                        <input type="number" value={form?.component_total_price ?? calculateTotalPrice(form)} readOnly
+                        <input type="number" value={Math.round(toPrice(form?.component_total_price ?? calculateTotalPrice(form)))} readOnly
                           className="w-48 rounded-md border border-slate-300 bg-slate-100 px-3 py-2 text-right text-lg font-semibold text-slate-700 outline-none" />
                       </div>
                     </div>

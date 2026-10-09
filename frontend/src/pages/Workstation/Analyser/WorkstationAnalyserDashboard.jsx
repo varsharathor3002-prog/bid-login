@@ -370,8 +370,8 @@ export default function WorkstationAnalyserDashboard() {
                         <button type="button" onClick={() => navigate(`/analyser-dashboard/workstation/bid/${bid.id}/approved-details`, { state: { bid } })} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-[11px] font-bold uppercase tracking-widest shadow-sm whitespace-nowrap">
                           Download<span className="hidden">
                           ₹{Number(bid.final_amount || bid.total_price || 0).toLocaleString("en-IN", {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
+                            minimumFractionDigits: 0,
+                            maximumFractionDigits: 0,
                           })}
                           </span>
                         </button>

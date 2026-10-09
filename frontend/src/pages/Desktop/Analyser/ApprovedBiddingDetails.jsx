@@ -125,7 +125,7 @@ export default function ApprovedBiddingDetails() {
               <tr><th>Model No.</th><td>{bid.model_number || bid.model || "-"}</td></tr>
               <tr>
                 <th>Final Price</th>
-                <td>₹{Number(bid.total_price || bid.final_amount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                <td>₹{Number(bid.total_price || bid.final_amount || 0).toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
               </tr>
             </tbody>
           </table>

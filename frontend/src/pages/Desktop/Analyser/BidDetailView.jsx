@@ -1118,14 +1118,14 @@ export default function BidDetailView({ product = "desktop" }) {
                     value={
                       Number(form?.total_price) > 0
                         ? `₹ ${Number(form.total_price).toLocaleString("en-IN", {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
+                            minimumFractionDigits: 0,
+                            maximumFractionDigits: 0,
                           })}`
                         : ""
                     }
                     readOnly
                     disabled
-                    placeholder="0.00"
+                    placeholder="0"
                     className="h-[58px] min-w-0 flex-1 rounded-md border border-gray-300 bg-gray-100 py-2 pl-44 pr-3 text-right text-base font-semibold text-slate-800"
                   />
                 </div>

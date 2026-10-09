@@ -889,7 +889,7 @@ export default function WorkstationBidDetailView() {
               <label className="text-sm font-semibold text-slate-800">Total Approved Price</label>
               <div className="flex items-center gap-2">
                 <span className="font-semibold text-slate-700">₹</span>
-                <input readOnly disabled value={Number(form?.final_amount || form?.total_price || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                <input readOnly disabled value={Number(form?.final_amount || form?.total_price || 0).toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                   className="w-48 rounded-md border border-slate-300 bg-slate-100 px-3 py-2 text-right text-lg font-semibold text-slate-800" />
               </div>
             </div>

@@ -30,7 +30,7 @@ const DESCRIPTION_FIELDS = [
 const value = (item) => item === undefined || item === null || item === "" ? "—" : item;
 const price = (item) => item === undefined || item === null || item === "" || Number.isNaN(Number(item))
   ? "—"
-  : `₹${Number(item).toLocaleString("en-IN")}`;
+  : `₹${Number(item).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
 
 const Section = ({ title, children }) => (
   <div className="mb-6 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">

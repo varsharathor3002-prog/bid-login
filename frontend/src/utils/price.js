@@ -4,5 +4,7 @@ export function priceInputValue(value) {
   if (value === null || value === undefined) return "";
   const text = String(value).trim();
   if (text === "" || (!Number.isNaN(Number(text)) && Number(text) === 0)) return "";
+  // Prices are shown in whole rupees: "104000.00" -> "104000".
+  if (!Number.isNaN(Number(text))) return String(Math.round(Number(text)));
   return value;
 }
