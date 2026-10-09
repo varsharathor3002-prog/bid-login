@@ -44,6 +44,14 @@ const toPrice = (value) => {
 
 const calculateTotalPrice = (values) =>
   PRICE_FIELDS.reduce((total, field) => total + toPrice(values?.[field]), 0);
+// Bid Approved Price = Total Value + the admin's margin (in ₹), once a margin
+// is entered; the admin can still overwrite the approved price by hand.
+const applyMargin = (values) => {
+  if (values?.margin === undefined || String(values.margin).trim() === "") return values;
+  const total = toPrice(values.component_total_price ?? calculateTotalPrice(values));
+  return { ...values, total_price: (total + toPrice(values.margin)).toFixed(2) };
+};
+
 
 const TABS = [
   { id: "pending", label: "Pending", icon: "⏳", color: "text-amber-600", border: "border-amber-600" },
@@ -577,13 +585,14 @@ export default function AioBidApproval() {
   const handleChange = (e) => {
     const { name, value } = e.target;
     setForm((prev) => {
+      if (name === "margin") return applyMargin({ ...prev, margin: value });
       if (name === "total_price") return { ...prev, total_price: value };
       const next = { ...prev, [name]: value };
       const options = SPEC_OPTIONS[name];
       const priceField = name === "screen_size" ? "screen_price" : `${name}_price`;
       if (options) next[priceField] = value === "None" ? 0 : getPrice(options, value);
       if (PRICE_FIELDS.includes(name) || options) next.component_total_price = calculateTotalPrice(next);
-      return next;
+      return applyMargin(next);
     });
   };
 
@@ -995,10 +1004,10 @@ export default function AioBidApproval() {
                   </div>
                 </div>
 
-                <div className="md:col-span-2 lg:col-span-3 grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <div className="md:col-span-2 lg:col-span-3 grid grid-cols-1 gap-4 lg:grid-cols-3">
                   <div className="rounded-lg border border-slate-300 bg-slate-50 p-4 shadow-sm">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <label className="block text-sm font-semibold text-slate-800">Total Value of Components</label>
+                      <label className="block text-sm font-semibold text-slate-800">Total Value</label>
                       <div className="flex items-center gap-2">
                         <span className="font-semibold text-slate-700">₹</span>
                         <input type="number" value={form?.component_total_price ?? calculateTotalPrice(form)} readOnly
@@ -1007,6 +1016,16 @@ export default function AioBidApproval() {
                     </div>
                   </div>
 
+                  <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 shadow-sm">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <label className="block text-sm font-semibold text-amber-900">Margin</label>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-amber-800">₹</span>
+                        <input type="number" min="0" step="0.01" name="margin" value={form?.margin ?? ""} onChange={handleChange} placeholder="Margin" readOnly={selected?.status === "approved"} disabled={selected?.status === "approved"}
+                          className="w-40 rounded-md border border-amber-300 bg-white px-3 py-2 text-right text-lg font-semibold text-slate-900 outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-700 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+                      </div>
+                    </div>
+                  </div>
                   <div className="rounded-lg border border-emerald-300 bg-emerald-50 p-4 shadow-sm">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <label className="block text-sm font-semibold text-emerald-900">
