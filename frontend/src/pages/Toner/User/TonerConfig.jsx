@@ -94,6 +94,22 @@ export default function TonerConfig({ bidData, onBack, onNext }) {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
   const [brandOpen, setBrandOpen] = useState(false);
+  const [catalogueBrands, setCatalogueBrands] = useState(BRANDS);
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${API_BASE}/toner-catalog/toners/?brands=${encodeURIComponent(BRANDS.join(","))}`)
+      .then((response) => {
+        if (!response.ok) throw new Error("Unable to load brands");
+        return response.json();
+      })
+      .then((data) => {
+        if (!cancelled && Array.isArray(data.brands)) {
+          setCatalogueBrands([...new Set([...BRANDS, ...data.brands])]);
+        }
+      })
+      .catch((error) => console.warn("Unable to load toner catalogue brands", error));
+    return () => { cancelled = true; };
+  }, []);
   const brandRef = useRef(null);
   const [tonerModelOpen, setTonerModelOpen] = useState(false);
   const [tonerModelSearch, setTonerModelSearch] = useState("");
@@ -371,7 +387,8 @@ export default function TonerConfig({ bidData, onBack, onNext }) {
         localStorage.removeItem(draftKey);
         onNext({ ...form });
       } else {
-        setMsg("Failed to Save Data");
+        const result = await res.json().catch(() => ({}));
+        setMsg(result.error || "Failed to Save Data. Please try again.");
       }
     } catch (error) {
       console.error(error);
@@ -436,7 +453,7 @@ export default function TonerConfig({ bidData, onBack, onNext }) {
             </button>
             {brandOpen && (
               <div className="absolute z-10 mt-1 w-full max-h-56 overflow-y-auto border border-gray-300 rounded-md bg-white shadow-lg py-1">
-                {BRANDS.map((opt) => (
+                {catalogueBrands.map((opt) => (
                   <label
                     key={opt}
                     className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 cursor-pointer"

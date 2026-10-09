@@ -1,4 +1,4 @@
-import json, logging, os, threading
+import json, logging, os, re, threading
 import openpyxl
 from django.conf import settings
 from django.http import JsonResponse
@@ -12,6 +12,7 @@ DEFAULT_XLSX_PATH = os.path.join(settings.BASE_DIR, "data", "HP_Toner_Printer_Co
 
 _lock = threading.Lock()
 _cache = None  # {"toners_by_brand": {...}, "printers_by_key": {...}} once loaded
+_cache_signature = None
 
 
 def _xlsx_path():
@@ -32,6 +33,8 @@ def _load():
     path = _xlsx_path()
     wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
     try:
+        if "Toner_Master" not in wb.sheetnames:
+            return _load_combined_sheet(wb)
         toner_order = []
         cartridge_type = {}
         part_numbers = {}
@@ -85,13 +88,55 @@ def _load():
         wb.close()
 
 
+def _load_combined_sheet(wb):
+    toners_by_brand, printers_by_key = {}, {}
+    for sheet in wb.sheetnames:
+        rows = wb[sheet].iter_rows(values_only=True)
+        header = next(rows, ())
+        columns = {str(value).strip().casefold(): i for i, value in enumerate(header) if value}
+        required = ("toner model", "printer brand", "compatible printer models")
+        if not all(name in columns for name in required):
+            continue
+        for row in rows:
+            def cell(name):
+                index = columns[name]
+                return str(row[index] or "").strip() if index < len(row) else ""
+            model = cell("toner model")
+            brands = [brand.strip() for brand in cell("printer brand").split("/") if brand.strip()]
+            if not model or not brands:
+                continue
+            printer_models = list(dict.fromkeys(
+                value.strip() for value in re.split(r"[,;\n/]+", cell("compatible printer models")) if value.strip()
+            ))
+            for brand in brands:
+                key = (brand, model)
+                if key not in printers_by_key:
+                    toners_by_brand.setdefault(brand, []).append({
+                        "brand": brand, "tonerModel": model, "cartridgeType": "",
+                        "partNumbers": [{"color": "", "partNo": model}],
+                    })
+                    printers_by_key[key] = []
+                seen = {printer["printerModel"] for printer in printers_by_key[key]}
+                printers_by_key[key].extend(
+                    {"brand": brand, "printerModel": printer, "printerType": ""}
+                    for printer in printer_models if printer not in seen
+                )
+        for printers in printers_by_key.values():
+            printers.sort(key=lambda printer: printer["printerModel"])
+        return {"toners_by_brand": toners_by_brand, "printers_by_key": printers_by_key}
+    raise KeyError("Expected toner model, Printer Brand and Compatible Printer Models columns")
+
+
 def _get_cache():
-    global _cache
-    if _cache is None:
-        with _lock:
-            if _cache is None:
-                _cache = _load()
-    return _cache
+    global _cache, _cache_signature
+    path = _xlsx_path()
+    stat = os.stat(path)
+    signature = (path, stat.st_mtime_ns, stat.st_size)
+    with _lock:
+        if _cache is None or _cache_signature != signature:
+            _cache = _load()
+            _cache_signature = signature
+        return _cache
 
 
 def get_toners_for_brands(brands):
@@ -138,7 +183,7 @@ def toner_catalog_toners(r):
     except Exception:
         logger.exception("Failed to read toner compatibility workbook")
         return JsonResponse({"error": "Toner/printer compatibility data is unavailable"}, status=503)
-    return JsonResponse({"toners": toners})
+    return JsonResponse({"toners": toners, "brands": list(_get_cache()["toners_by_brand"])})
 
 
 def toner_catalog_printers(r):

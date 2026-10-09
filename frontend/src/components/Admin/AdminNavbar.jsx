@@ -57,6 +57,18 @@ const BID_PRODUCTS = [
 ];
 
 const ADMIN_DASHBOARD_API_MAP = {
+  aio: {
+    years: `${ADMIN_API}/aio-bids/dashboard-years/`,
+    monthly: `${ADMIN_API}/aio-bids/monthly-performance/`,
+    daily: `${ADMIN_API}/aio-bids/daily-activity/`,
+    stats: `${ADMIN_API}/aio-bids/stats/`,
+  },
+  toner: {
+    years: `${ADMIN_API}/toner-bids/dashboard-years/`,
+    monthly: `${ADMIN_API}/toner-bids/monthly-performance/`,
+    daily: `${ADMIN_API}/toner-bids/daily-activity/`,
+    stats: `${ADMIN_API}/toner-bids/stats/`,
+  },
   desktop: {
     years:   `${ADMIN_API}/desktop-bids/dashboard-years/`,
     monthly: `${ADMIN_API}/desktop-bids/monthly-performance/`,
@@ -133,6 +145,8 @@ const AdminHome = () => {
   
     const [analysers, setAnalysers] = useState([]);
   const [selectedAnalyser, setSelectedAnalyser] = useState(null);
+  const [bidUsers, setBidUsers] = useState([]);
+  const [selectedUser, setSelectedUser] = useState("");
   const [analyserDropOpen, setAnalyserDropOpen] = useState(false);
   const analyserDropdownRef = useRef(null);
   
@@ -167,7 +181,6 @@ const AdminHome = () => {
       }
 
       if (analysersResult.status === 'fulfilled' && Array.isArray(analysersResult.value)) {
-        setAnalysers(analysersResult.value.map(a => a.username || a.name || a));
         setAnalyserCount(analysersResult.value.length);
       }
     } catch (err) {
@@ -186,11 +199,10 @@ const AdminHome = () => {
     setStatsLoading(true);
     try {
       const api = ADMIN_DASHBOARD_API_MAP[selectedProduct.key];
-      let url = api.stats;
-      
-            if (selectedAnalyser) {
-        url += `?analyser=${encodeURIComponent(selectedAnalyser)}`;
-      }
+      const params = new URLSearchParams();
+      if (selectedAnalyser) params.set("analyser", selectedAnalyser);
+      if (selectedUser) params.set("user", selectedUser);
+      const url = `${api.stats}?${params}`;
       
       const res = await fetch(url);
       if (res.ok) {
@@ -207,7 +219,7 @@ const AdminHome = () => {
     } finally {
       setStatsLoading(false);
     }
-  }, [selectedProduct, selectedAnalyser]);
+  }, [selectedProduct, selectedAnalyser, selectedUser]);
 
   const fetchYears = useCallback(async () => {
     if (!selectedProduct.ready) return;
@@ -234,13 +246,11 @@ const AdminHome = () => {
     setChartsLoading(true);
     try {
       const api = ADMIN_DASHBOARD_API_MAP[selectedProduct.key];
-      let monthlyUrl = `${api.monthly}?year=${selectedYear}`;
-      let dailyUrl = api.daily;
-      
-            if (selectedAnalyser) {
-        monthlyUrl += `&analyser=${encodeURIComponent(selectedAnalyser)}`;
-        dailyUrl += `?analyser=${encodeURIComponent(selectedAnalyser)}`;
-      }
+      const params = new URLSearchParams();
+      if (selectedAnalyser) params.set("analyser", selectedAnalyser);
+      if (selectedUser) params.set("user", selectedUser);
+      const monthlyUrl = `${api.monthly}?year=${selectedYear}&${params}`;
+      const dailyUrl = `${api.daily}?${params}`;
 
       const [monthlyRes, dailyRes] = await Promise.all([
         fetch(monthlyUrl),
@@ -254,7 +264,23 @@ const AdminHome = () => {
     } finally {
       setChartsLoading(false);
     }
-  }, [selectedProduct, selectedYear, selectedAnalyser]);
+  }, [selectedProduct, selectedYear, selectedAnalyser, selectedUser]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setAnalysers([]);
+    setBidUsers([]);
+    fetch(`${ADMIN_API}/dashboard/${selectedProduct.key}/participants/`, { signal: controller.signal })
+      .then(response => response.ok ? response.json() : { users: [], analysers: [] })
+      .then(data => {
+        setAnalysers(data.analysers || []);
+        setBidUsers(data.users || []);
+      })
+      .catch(error => {
+        if (error.name !== "AbortError") console.error("Dashboard participants error:", error);
+      });
+    return () => controller.abort();
+  }, [selectedProduct.key]);
 
   useEffect(() => {
     fetchAccountCounts();
@@ -297,7 +323,7 @@ const AdminHome = () => {
               {BID_PRODUCTS.map((p) => (
                 <div
                   key={p.key}
-                  onClick={() => { setSelectedProduct(p); setDropOpen(false); }}
+                  onClick={() => { setSelectedProduct(p); setSelectedUser(""); setSelectedAnalyser(null); setAnalyserDropOpen(false); setDropOpen(false); }}
                   className="flex items-center gap-3 px-4 py-2.5 hover:bg-blue-50 cursor-pointer font-bold text-slate-600 text-sm transition-colors focus:outline-none select-none"
                 >
                   <span style={{ color: p.color }}>{p.icon}</span>
@@ -314,6 +340,15 @@ const AdminHome = () => {
         </div>
 
         {}
+        <select
+          aria-label="Filter bids by user"
+          value={selectedUser}
+          onChange={event => setSelectedUser(event.target.value)}
+          className="bg-white border-2 border-slate-200 px-4 py-2.5 rounded-xl font-black text-slate-700 text-sm shadow-sm hover:border-blue-500 min-w-[190px]"
+        >
+          <option value="">All Users</option>
+          {bidUsers.map(name => <option key={name} value={name}>{name}</option>)}
+        </select>
         <div ref={analyserDropdownRef} className="relative">
           <button
             onClick={() => setAnalyserDropOpen(!analyserDropOpen)}
