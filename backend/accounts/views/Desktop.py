@@ -6588,8 +6588,9 @@ def _desktop_duplicate_model_block(data, bid, model_number):
     """Error response when a new model number would duplicate a Desktop
     configuration Find Model already matches (same rule as Find Model, but
     only Desktop catalogue entries count), else None."""
+    from .model_duplicates import create_new_requested
     model_number = str(model_number or "").strip().upper()
-    if not model_number or CatalogueProduct.objects.filter(model_no__iexact=model_number).exists():
+    if not model_number or create_new_requested(data) or CatalogueProduct.objects.filter(model_no__iexact=model_number).exists():
         return None
     body = data if isinstance(data, dict) else {}
     existing = next(

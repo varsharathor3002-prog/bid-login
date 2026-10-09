@@ -431,7 +431,7 @@ export default function WorkstationBidDetailView() {
     requestAnimationFrame(() => window.scrollTo(scrollX, scrollY));
   };
 
-  const saveModelNumberToDB = async (modelNo) => {
+  const saveModelNumberToDB = async (modelNo, createNew = false) => {
     const trimmedModelNo = String(modelNo || "").trim();
     if (!trimmedModelNo) {
       alert("Please save a Model Number before proceeding.");
@@ -444,7 +444,7 @@ export default function WorkstationBidDetailView() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...form,
-          model_number: trimmedModelNo,
+          model_number: trimmedModelNo, create_new_model: createNew,
           model: trimmedModelNo,
           model_no: trimmedModelNo,
           modelNo: trimmedModelNo,
@@ -536,7 +536,7 @@ export default function WorkstationBidDetailView() {
       alert("Please enter a model number.");
       return;
     }
-    const updatedData = await saveModelNumberToDB(trimmed);
+    const updatedData = await saveModelNumberToDB(trimmed, true);
     if (!updatedData) return;
     setShowModelResult(false);
     setNoMatchFound(false);

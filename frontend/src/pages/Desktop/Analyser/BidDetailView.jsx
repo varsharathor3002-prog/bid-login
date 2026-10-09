@@ -569,7 +569,7 @@ export default function BidDetailView({ product = "desktop" }) {
     }
   };
 
-  const saveModelNumberToDB = async (modelNo) => {
+  const saveModelNumberToDB = async (modelNo, createNew = false) => {
     const bidId = id || state?.id || state?.bid_id || form?.id || form?.bid_id;
     if (!bidId) { alert("Bid ID not found."); return null; }
     const trimmedModelNo = String(modelNo || "").trim();
@@ -581,7 +581,7 @@ export default function BidDetailView({ product = "desktop" }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model_number: trimmedModelNo,
+          model_number: trimmedModelNo, create_new_model: createNew,
           model: trimmedModelNo,
           model_no: trimmedModelNo,
           modelNo: trimmedModelNo,
@@ -649,7 +649,7 @@ export default function BidDetailView({ product = "desktop" }) {
   const handleCreateNewModel = async () => {
     const trimmed = modelInputValue.trim();
     if (!trimmed) { alert("Please enter a model number."); return; }
-    const updatedData = await saveModelNumberToDB(trimmed);
+    const updatedData = await saveModelNumberToDB(trimmed, true);
     if (!updatedData) return;
     setShowModelResult(false);
     setNoMatchFound(false);

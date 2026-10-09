@@ -523,7 +523,7 @@ export default function TonerBidDetailView() {
     }
   };
 
-  const saveModelNumberToDB = async (modelNo) => {
+  const saveModelNumberToDB = async (modelNo, createNew = false) => {
     const trimmedModelNo = String(modelNo || "").trim();
     if (!trimmedModelNo) {
       alert("Model number required.");
@@ -534,7 +534,7 @@ export default function TonerBidDetailView() {
       const res = await fetch(`${API_BASE}/toner-bids/${id}/save-model-number/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model_number: trimmedModelNo }),
+        body: JSON.stringify({ model_number: trimmedModelNo, create_new_model: createNew }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -583,7 +583,7 @@ export default function TonerBidDetailView() {
       alert("Please enter a model number.");
       return;
     }
-    const saved = await saveModelNumberToDB(trimmed);
+    const saved = await saveModelNumberToDB(trimmed, true);
     if (!saved) return;
     setShowModelResult(false);
     setNoMatchFound(false);

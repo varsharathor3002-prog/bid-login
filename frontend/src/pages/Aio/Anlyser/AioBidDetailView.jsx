@@ -462,7 +462,7 @@ export default function AioBidDetailView() {
     }
   };
 
-  const saveModelNumberToDB = async (modelNo) => {
+  const saveModelNumberToDB = async (modelNo, createNew = false) => {
     const trimmedModelNo = String(modelNo || "").trim();
     if (!trimmedModelNo) {
       alert("Model number required.");
@@ -482,7 +482,7 @@ export default function AioBidDetailView() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model_number: trimmedModelNo,
+          model_number: trimmedModelNo, create_new_model: createNew,
           processor: form?.processor || "", ram: form?.ram || "",
           ssd: form?.ssd || "", hdd: form?.hdd || "", os: form?.os || "",
           screen_size: form?.screen_size || "", wifi: form?.wifi || "",
@@ -542,7 +542,7 @@ export default function AioBidDetailView() {
       alert("Please enter a model number.");
       return;
     }
-    const saved = await saveModelNumberToDB(trimmed);
+    const saved = await saveModelNumberToDB(trimmed, true);
     if (!saved) return;
     setShowModelResult(false);
     setNoMatchFound(false);

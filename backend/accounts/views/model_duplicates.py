@@ -5,6 +5,26 @@ from django.http import JsonResponse
 from ..models import CatalogueProduct
 
 
+def create_new_requested(data):
+    """The analyser chose "Create New Model" / "Save Model" on purpose, so a
+    model number for a configuration Find Model also matches is allowed."""
+    value = data.get("create_new_model") if isinstance(data, dict) else None
+    return value is True or str(value).strip().lower() in ("1", "true", "yes")
+
+
+def _request_data(request):
+    try:
+        body = json.loads(request.body or b"{}")
+        if isinstance(body, dict):
+            return body
+    except Exception:
+        pass
+    try:
+        return request.POST
+    except Exception:
+        return {}
+
+
 def existing_model_for_config(match_view, request, bid_id, model_number):
     """Return the model number Find Model already gives for this bid's
     configuration when a *new* model number is being saved, else None.
@@ -14,7 +34,7 @@ def existing_model_for_config(match_view, request, bid_id, model_number):
     refused exactly when Find Model would have returned an existing one.
     """
     model_number = str(model_number or "").strip()
-    if not model_number:
+    if not model_number or create_new_requested(_request_data(request)):
         return None
     if CatalogueProduct.objects.filter(model_no__iexact=model_number).exists():
         return None
