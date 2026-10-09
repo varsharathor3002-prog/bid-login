@@ -588,7 +588,12 @@ export default function AioBidApproval() {
   const handleChange = (e) => {
     const { name, value } = e.target;
     setForm((prev) => {
-      if (name === "margin") return applyMargin({ ...prev, margin: wholeRupees(value) });
+      if (name === "margin") {
+        const margin = wholeRupees(value);
+        // Clearing the margin takes it back out: the approved price returns to Total Value.
+        if (!margin) return { ...prev, margin: "", total_price: String(Math.round(toPrice(prev.component_total_price ?? calculateTotalPrice(prev)))) };
+        return applyMargin({ ...prev, margin });
+      }
       if (name === "total_price") return { ...prev, total_price: wholeRupees(value) };
       const next = { ...prev, [name]: value };
       const options = SPEC_OPTIONS[name];
