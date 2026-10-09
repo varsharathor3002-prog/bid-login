@@ -258,13 +258,8 @@
     return `${saved} valid in dashboard (${created} new, ${updated} refreshed); ${rejected} invalid not saved`;
   }
 
-  // apiReasons: { reason: [bid numbers] } from the API's rejections, so the
-  // status says why a bid was not saved (e.g. deleted_by_user, already_assigned).
-  function opportunitySaveSummary(saved, created, updated, apiRejected, apiReasons = {}) {
-    const reasons = Object.entries(apiReasons)
-      .map(([reason, bids]) => `${reason} ${bids.length} (${bids.slice(-3).join(", ")})`)
-      .join("; ");
-    return `${saved} frontend-valid (${created} new, ${updated} refreshed); ${apiRejected} rejected by API${reasons ? ` [${reasons}]` : ""}`;
+  function opportunitySaveSummary(saved, created, updated, apiRejected) {
+    return `${saved} frontend-valid (${created} new, ${updated} refreshed); ${apiRejected} rejected by API`;
   }
 
   // Bid numbers read by the last completed opportunity scan, including bids
@@ -1914,7 +1909,6 @@
       product: 0, bunch: 0, quantity: 0, quantity_unread: 0, pac: 0, location: 0, date: 0, expired: 0, over120: 0, inkjet: 0, detail: 0, api: 0,
       ...(resume?.rejected || {}),
     };
-    const apiReasons = {};
     try {
       await progress("running", resume
         ? `Restoring the selected category scan at page ${page} after GeM stopped loading...`
@@ -1975,15 +1969,12 @@
             created += response.created || 0;
             updated += response.updated || 0;
             rejected.api += response.rejected || 0;
-            for (const item of response.rejections || []) {
-              (apiReasons[item.reason] ||= []).push(item.bid_no || bidNo);
-            }
           } else if (row?.reject) rejected[row.reject] += 1;
           // A failed detail download is retried by the next scan.
           if (row?.reject !== "detail") runBids[bidNo] = Date.now();
         }
         await storeBidMap(OPPORTUNITY_RUN_BIDS_KEY, runBids);
-        await progress("running", `Selected category page ${page}: checked ${checked}; ${opportunitySaveSummary(saved, created, updated, rejected.api, apiReasons)}. Rejected before API: detail ${rejected.detail}, product ${rejected.product}, bunch ${rejected.bunch || 0}, qty<5 ${rejected.quantity}, qty unread ${rejected.quantity_unread}, PAC ${rejected.pac}, location ${rejected.location}, date ${rejected.date}, expired ${rejected.expired}, >120d ${rejected.over120}, inkjet-only ${rejected.inkjet}.`, { page, saved, checked });
+        await progress("running", `Selected category page ${page}: checked ${checked}; ${opportunitySaveSummary(saved, created, updated, rejected.api)}. Rejected before API: detail ${rejected.detail}, product ${rejected.product}, bunch ${rejected.bunch || 0}, qty<5 ${rejected.quantity}, qty unread ${rejected.quantity_unread}, PAC ${rejected.pac}, location ${rejected.location}, date ${rejected.date}, expired ${rejected.expired}, >120d ${rejected.over120}, inkjet-only ${rejected.inkjet}.`, { page, saved, checked });
         const advance = await advancePageWithRecovery(signature, page, async (attempt, reason) => {
           await progress(
             "running",
@@ -2024,7 +2015,7 @@
       const recheckSummary = ` Corrigendum re-check of saved bids: ${recheck.checked} checked, ${recheck.found} new corrigendum, ${recheck.notFound} not in this category/list${recheck.error ? ` (${recheck.error})` : ""}.`;
       await progress(
         "complete",
-        `${stoppedAtKnownBids ? `Reached already-read bids on page ${page}; older pages were skipped` : "Selected category scan complete"}. Checked ${checked} bids; ${opportunitySaveSummary(saved, created, updated, rejected.api, apiReasons)}; ${corrigendaFound} with a corrigendum.${recheckSummary} Select the next category manually and scan again.`,
+        `${stoppedAtKnownBids ? `Reached already-read bids on page ${page}; older pages were skipped` : "Selected category scan complete"}. Checked ${checked} bids; ${opportunitySaveSummary(saved, created, updated, rejected.api)}; ${corrigendaFound} with a corrigendum.${recheckSummary} Select the next category manually and scan again.`,
         { page, saved, checked },
       );
       sessionStorage.removeItem("acxxelOpportunityResume");
@@ -2032,7 +2023,7 @@
       if (error.code === "GEM_SYNC_STOPPED") {
         await progress(
           "stopped",
-          `Opportunity scan stopped after ${checked} bids; ${opportunitySaveSummary(saved, created, updated, rejected.api, apiReasons)}. Rejected before API: detail ${rejected.detail}, product ${rejected.product}, bunch ${rejected.bunch || 0}, qty<5 ${rejected.quantity}, qty unread ${rejected.quantity_unread}, PAC ${rejected.pac}, location ${rejected.location}, date ${rejected.date}, expired ${rejected.expired}, >120d ${rejected.over120}, inkjet-only ${rejected.inkjet}.`,
+          `Opportunity scan stopped after ${checked} bids; ${opportunitySaveSummary(saved, created, updated, rejected.api)}. Rejected before API: detail ${rejected.detail}, product ${rejected.product}, bunch ${rejected.bunch || 0}, qty<5 ${rejected.quantity}, qty unread ${rejected.quantity_unread}, PAC ${rejected.pac}, location ${rejected.location}, date ${rejected.date}, expired ${rejected.expired}, >120d ${rejected.over120}, inkjet-only ${rejected.inkjet}.`,
           { page, saved, checked },
         );
         return;
