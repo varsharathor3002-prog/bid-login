@@ -22,7 +22,7 @@ from django.db import IntegrityError, transaction
 # the on-site note, and the technical-compliance/data-sheet tables) get
 # Toner-specific twins further down.
 from .Aio import (
-    _fill_recipient_block, _erase_tender, _force_tender_no_date, _replace_bidder_financial_heading,
+    _fill_recipient_block, _erase_tender, _force_tender_no_date as _shared_force_tender_no_date, _replace_bidder_financial_heading,
     _add_aio_page_numbers as _add_page_numbers, _fill_manufacturer_auth_body,
     _fill_service_support_escalation, _add_service_support_bid_date, _add_service_support_last_page_bid_date,
     _remove_service_support_last_page_signature,
@@ -37,6 +37,14 @@ from .Aio import (
 # own (brand/cartridge_type/... instead of processor/ram/...), everything
 # else (model number split, documents, review workflow, GeM columns) copied
 # field-for-field so Toner can grow through the same lifecycle AIO already has.
+def _force_tender_no_date(page,fitz,bid_no,date,recipient_bottom=None):
+    # The recipient helper also returns a moved signature; tender placement
+    # needs only the recipient's x coordinate and last text baseline.
+    if isinstance(recipient_bottom,tuple):
+        recipient_bottom=recipient_bottom[:2]
+    return _shared_force_tender_no_date(page,fitz,bid_no,date,recipient_bottom)
+
+
 class TonerBid(models.Model):
     user=models.ForeignKey(User,null=True,blank=True,on_delete=models.SET_NULL); username=models.CharField(max_length=150,blank=True,default="")
     bid_no=models.CharField(max_length=150); dept_name=models.CharField(max_length=255,blank=True,default=""); organization=models.CharField(max_length=255,blank=True,default="")
@@ -71,6 +79,8 @@ class TonerBid(models.Model):
     # ---- Documents step + review workflow (same shape as AioBid) ----
     upload_document=models.FileField(upload_to="toner_bid_documents/",null=True,blank=True); atc_special_document=models.FileField(upload_to="toner_bid_documents/special/",null=True,blank=True)
     selected_general_docs=models.TextField(blank=True,default="[]"); verified_fields=models.TextField(blank=True,default="[]"); status=models.CharField(max_length=30,default="draft")
+    selected_yield_standard_docs=models.TextField(blank=True,default="[]")
+    selected_yield_standard_doc_labels=models.TextField(blank=True,default="[]")
     analyser_username=models.CharField(max_length=150,blank=True,default=""); analyser_note=models.TextField(blank=True,default=""); admin_username=models.CharField(max_length=150,blank=True,default=""); admin_note=models.TextField(blank=True,default="")
     # Same fields as AioBid/DesktopBid's own gem_* columns.
     gem_status=models.CharField(max_length=30,default="not_started"); gem_account=models.CharField(max_length=100,blank=True,null=True)
@@ -141,7 +151,7 @@ def _assign(b,d):
             except:continue
         # Same as Desktop: a typed "na" / "no" in a price box counts as 0.
         elif n in PRICES:v=safe_float(v)
-        elif n=="start_date" and not v:v=None
+        elif n in ("date","start_date") and not v:v=None
         setattr(b,n,v)
 
 def _json(b,r=None):
@@ -170,7 +180,7 @@ def _json(b,r=None):
     # "Transfer Catalogue to GeM" tab.
     is_new_product=False
     if model_number:
-        cp=CatalogueProduct.objects.filter(model_no__iexact=model_number,category__iexact="toner").first()
+        cp=CatalogueProduct.objects.only("extra_specs").filter(model_no__iexact=model_number,category__iexact="toner").first()
         if cp:is_new_product=_catalogue_extra_specs(cp).get("_source")=="toner_bid"
     submitted_by=b.username or (b.user.username if b.user else "")
     out.update(model_number=model_number,submitted_by=submitted_by,user_name=submitted_by,is_new_product=is_new_product)
@@ -405,11 +415,38 @@ def update_toner_docs(r,bid_id):
     _ensure_table();b=TonerBid.objects.filter(id=bid_id).first()
     if not b:return JsonResponse({"error":"Toner bid not found"},status=404)
     b.atc_special_document=r.FILES.get("atc_special_document",b.atc_special_document);b.selected_general_docs=r.POST.get("selected_general_docs","[]")
+    b.selected_yield_standard_docs=r.POST.get("selected_yield_standard_docs",b.selected_yield_standard_docs)
+    b.selected_yield_standard_doc_labels=r.POST.get("selected_yield_standard_doc_labels",b.selected_yield_standard_doc_labels)
     if not has_bid_documents(b,b.selected_general_docs):return JsonResponse({"error":MISSING_DOCUMENTS_ERROR},status=400)
     b.status="complete";b.save()
-    from .GemAssignments import complete_user_assignment_for_bid
-    complete_user_assignment_for_bid(b.bid_no,b.user)
+    _complete_toner_user_assignment(b.bid_no,b.user_id)
     return JsonResponse({"message":"Toner documents saved successfully","bid":_json(b,r)})
+
+def _complete_toner_user_assignment(bid_no,user_id=None):
+    """Complete assignments without loading unrelated opportunity columns."""
+    from django.utils import timezone
+    from ..models import GemBidAssignment, GemBidAssignmentHistory
+    normalized_bid_no=str(bid_no or "").strip()
+    if not normalized_bid_no:return 0
+    rows=GemBidAssignment.objects.filter(
+        opportunity__bid_no__iexact=normalized_bid_no,hidden_for_user=False,
+    )
+    if user_id is not None:rows=rows.filter(assigned_to_id=user_id)
+    with transaction.atomic():
+        assignments=list(rows.select_for_update().values("id","assigned_to_id","status"))
+        if not assignments:return 0
+        now=timezone.now()
+        GemBidAssignment.objects.filter(id__in=[row["id"] for row in assignments]).update(
+            status="participated",completed_at=now,hidden_for_user=True,updated_at=now,
+        )
+        GemBidAssignmentHistory.objects.bulk_create([
+            GemBidAssignmentHistory(
+                assignment_id=row["id"],action="auto_completed_after_bid_submission",
+                from_user_id=row["assigned_to_id"],to_user_id=row["assigned_to_id"],
+                old_status=row["status"],new_status="participated",changed_by_id=row["assigned_to_id"],
+            ) for row in assignments
+        ])
+    return len(assignments)
 
 # These narrative certificate pages are shared with Desktop/AIO's own
 # template and default to "desktop computer"/AIO phrasing in a few plain-text

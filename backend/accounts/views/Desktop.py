@@ -7009,6 +7009,8 @@ def admin_desktop_monthly_performance(request):
             })
 
         bids = _get_admin_base_queryset(year)
+        if request.GET.get("user"):
+            bids = bids.filter(user__username=request.GET["user"])
         if analyser:
             bids = bids.filter(analyser_username=analyser)
 
@@ -7067,6 +7069,8 @@ def admin_desktop_daily_activity(request):
         )
         if analyser:
             bids_qs = bids_qs.filter(analyser_username=analyser)
+        if request.GET.get("user"):
+            bids_qs = bids_qs.filter(user__username=request.GET["user"])
 
         date_map = {item["date"]: item for item in result}
 
@@ -7101,6 +7105,8 @@ def admin_desktop_stats(request):
         year = request.GET.get("year")
         analyser = request.GET.get("analyser")
         base_qs = DesktopBid.objects.filter(status="complete")
+        if request.GET.get("user"):
+            base_qs = base_qs.filter(user__username=request.GET["user"])
         if year:
             base_qs = base_qs.filter(created_at__year=int(year))
         if analyser:

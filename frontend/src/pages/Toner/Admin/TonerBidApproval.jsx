@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 // Toner-native dropdown vocabulary — same source used at the User config
 // step (TonerConfig.jsx) and the Analyser's TonerBidDetailView.jsx.
 import {
-  BRANDS, CARTRIDGE_TYPES, PRODUCT_CLASSES, COLOURS, TECHNOLOGIES,
+  BRANDS, CARTRIDGE_TYPES, COLOURS, TECHNOLOGIES,
   PAGE_YIELDS, YIELD_STANDARDS, CHIPS, PRINT_COVERAGES, WARRANTIES,
   WARRANTY_TYPES, QTY_PER_PACKS, COMPLIANCES, REPLACEMENT_POLICIES, YES_NO,
 } from "../User/TonerConfig";
@@ -16,7 +16,7 @@ import { priceInputValue } from "../../../utils/price";
 const API_BASE = import.meta.env.VITE_API_URL;
 
 const SPEC_OPTIONS = {
-  brand: BRANDS, cartridge_type: CARTRIDGE_TYPES, product_class: PRODUCT_CLASSES,
+  brand: BRANDS, cartridge_type: CARTRIDGE_TYPES,
   colour: COLOURS, technology: TECHNOLOGIES, page_yield: PAGE_YIELDS,
   chip: CHIPS, print_coverage: PRINT_COVERAGES,
   warranty: WARRANTIES, warranty_type: WARRANTY_TYPES, refillable: YES_NO,
@@ -190,11 +190,11 @@ function GeneralDocsViewPopup({ form }) {
   };
 
   return (
-    <div ref={dropdownRef} className="relative w-full">
+    <div ref={dropdownRef} className="relative w-full h-full min-w-0">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className={`w-full flex items-center justify-between p-4 rounded-lg border transition-all duration-200 group ${
+        className={`w-full h-full min-h-28 flex items-center justify-between gap-3 p-4 rounded-lg border transition-all duration-200 group ${
           open ? "bg-orange-50 border-orange-500 ring-1 ring-orange-500" : "bg-white border-gray-200 hover:border-orange-400 hover:shadow-md"
         }`}
       >
@@ -205,7 +205,7 @@ function GeneralDocsViewPopup({ form }) {
             <div className="text-xs text-gray-500">{uploadedCount > 0 ? "Selected certificates" : "No documents selected"}</div>
           </div>
         </div>
-        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${uploadedCount > 0 ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"}`}>
+        <span className={`inline-flex shrink-0 whitespace-nowrap items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${uploadedCount > 0 ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"}`}>
           {uploadedCount} Items
         </span>
       </button>
@@ -282,11 +282,11 @@ function YieldDocsViewPopup({ form }) {
   };
 
   return (
-    <div ref={dropdownRef} className="relative w-full">
+    <div ref={dropdownRef} className="relative w-full h-full min-w-0">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className={`w-full flex items-center justify-between p-4 rounded-lg border transition-all duration-200 group ${
+        className={`w-full h-full min-h-28 flex items-center justify-between gap-3 p-4 rounded-lg border transition-all duration-200 group ${
           open ? "bg-emerald-50 border-emerald-500 ring-1 ring-emerald-500" : "bg-white border-gray-200 hover:border-emerald-400 hover:shadow-md"
         }`}
       >
@@ -297,7 +297,7 @@ function YieldDocsViewPopup({ form }) {
             <div className="text-xs text-gray-500">{selectedCount > 0 ? "Selected certificates" : "No certificates selected"}</div>
           </div>
         </div>
-        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${selectedCount > 0 ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"}`}>
+        <span className={`inline-flex shrink-0 whitespace-nowrap items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${selectedCount > 0 ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"}`}>
           {selectedCount} Items
         </span>
       </button>
@@ -346,6 +346,43 @@ function YieldDocsViewPopup({ form }) {
   );
 }
 
+function SingleDocumentCard({ label, hint, icon, children }) {
+  const [open, setOpen] = useState(false);
+  const cardRef = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const closeOutside = (event) => {
+      if (cardRef.current && !cardRef.current.contains(event.target)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOutside);
+    return () => document.removeEventListener("pointerdown", closeOutside);
+  }, [open]);
+  return (
+    <div ref={cardRef} className="relative w-full h-full min-w-0">
+      <button type="button" onClick={() => setOpen((value) => !value)} aria-expanded={open}
+        className={`w-full h-full min-h-28 flex items-center justify-between gap-3 p-4 rounded-lg border transition-all duration-200 ${open ? "bg-emerald-50 border-emerald-500 ring-1 ring-emerald-500" : "bg-white border-gray-200 hover:border-emerald-400 hover:shadow-md"}`}>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-10 h-10 shrink-0 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center">{icon}</div>
+          <div className="text-left min-w-0">
+            <div className="text-sm font-bold text-gray-800">{label}</div>
+            <div className="text-xs text-gray-500 break-words">{hint}</div>
+          </div>
+        </div>
+        <span className="shrink-0 whitespace-nowrap px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">1 Item</span>
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 right-0 mt-2 z-50 bg-white border border-gray-200 rounded-xl shadow-2xl overflow-hidden">
+          <div className="px-4 py-3 bg-emerald-50 border-b border-emerald-100 text-sm font-semibold text-emerald-800">{label}</div>
+          <div className="flex items-center justify-end gap-2 p-4">{children}</div>
+          <div className="px-4 py-2 border-t border-gray-100 bg-gray-50 flex justify-end">
+            <button type="button" onClick={() => setOpen(false)} className="text-xs text-gray-500 hover:text-gray-700 font-medium px-3 py-1 rounded hover:bg-gray-200">Close Panel</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SpecialDocView({ form }) {
   const url = form?.atc_special_document;
   if (!url) return null;
@@ -367,23 +404,19 @@ function SpecialDocView({ form }) {
     }
   };
   return (
-    <div className="w-full p-4 rounded-lg border border-purple-200 bg-purple-50 hover:bg-purple-100 hover:border-purple-300 transition-all duration-200 flex items-center justify-between group">
-      <div className="flex items-center gap-3">
-        <div className="p-2 rounded-full bg-purple-200 text-purple-700">✅</div>
-        <div className="text-left">
-          <div className="text-sm font-bold text-purple-900">Special Document</div>
-          <div className="text-xs text-purple-700">ATC Specific Requirement</div>
-        </div>
-      </div>
-      <div className="flex items-center gap-2">
+    <SingleDocumentCard label="Special Document" hint="ATC Specific Requirement" icon={
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+        <path d="M14 2v6h6M8 13h8M8 17h6" />
+      </svg>
+    }>
         <a href={url} target="_blank" rel="noreferrer" className="px-3 py-1.5 text-xs font-medium text-purple-700 bg-white border border-purple-200 rounded hover:bg-purple-50 transition">
           View File
         </a>
         <button type="button" onClick={handleDownload} className="px-3 py-1.5 text-xs font-medium text-white bg-purple-600 rounded hover:bg-purple-700 shadow-sm transition">
           Download
         </button>
-      </div>
-    </div>
+    </SingleDocumentCard>
   );
 }
 
@@ -450,15 +483,7 @@ function OnDemandDocView({ form, docType, label, hint, icon }) {
   };
 
   return (
-    <div className="w-full p-4 rounded-lg border border-gray-200 bg-gray-50 hover:bg-gray-100 hover:border-gray-300 transition-all duration-200 flex items-center justify-between group">
-      <div className="flex items-center gap-3">
-        <div className="p-2 rounded-full bg-green-100 text-green-600">{icon}</div>
-        <div className="text-left">
-          <div className="text-sm font-bold text-gray-800">{label}</div>
-          <div className="text-xs text-gray-500">{hint}</div>
-        </div>
-      </div>
-      <div className="flex items-center gap-2">
+    <SingleDocumentCard label={label} hint={hint} icon={icon}>
         <button type="button" onClick={handleView} disabled={generating}
           className="px-3 py-1.5 text-xs font-medium text-blue-700 bg-white border border-blue-200 rounded hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed transition">
           {generating ? "Generating..." : "View File"}
@@ -467,8 +492,7 @@ function OnDemandDocView({ form, docType, label, hint, icon }) {
           className="px-3 py-1.5 text-xs font-medium text-white bg-green-600 rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm transition">
           {downloading ? "Downloading..." : "Download"}
         </button>
-      </div>
-    </div>
+    </SingleDocumentCard>
   );
 }
 
@@ -970,7 +994,7 @@ export default function TonerBidApproval() {
                     {form?.atc_special_document ? (
                       <SpecialDocView form={form} />
                     ) : (
-                      <div className="p-4 rounded-lg border border-dashed border-gray-300 bg-gray-50 flex items-center justify-center text-gray-400 text-sm">
+                      <div className="h-full min-h-28 p-4 rounded-lg border border-dashed border-gray-300 bg-white flex items-center justify-center text-gray-400 text-sm">
                         No Special Document
                       </div>
                     )}
@@ -986,10 +1010,15 @@ export default function TonerBidApproval() {
 
                 <SpecField label="Brand" name="brand" options={SPEC_OPTIONS.brand} form={form} handleChange={handleChange} />
                 <SpecField label="Type of Cartridge" name="cartridge_type" options={SPEC_OPTIONS.cartridge_type} form={form} handleChange={handleChange} />
-                <SpecField label="Product Class of Cartridge" name="product_class" options={SPEC_OPTIONS.product_class} form={form} handleChange={handleChange} />
                 <SpecField label="Colour of Ink" name="colour" options={SPEC_OPTIONS.colour} form={form} handleChange={handleChange} />
                 <SpecField label="Technology" name="technology" options={SPEC_OPTIONS.technology} form={form} handleChange={handleChange} />
                 <SpecField label="Compatibility" name="compatibility" isTextArea form={form} handleChange={handleChange} />
+                <div className="md:col-span-2 lg:col-span-3">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Toner Models</label>
+                  <div className="border border-gray-300 rounded-md px-3 py-2 text-sm">
+                    {parseList(form.toner_models).map((toner) => `${toner.brand} ${toner.tonerModel}`).join(", ") || "Not selected"}
+                  </div>
+                </div>
                 <SpecField label="Page Yield" name="page_yield" options={SPEC_OPTIONS.page_yield} form={form} handleChange={handleChange} />
                 <SpecField label="Chip" name="chip" options={SPEC_OPTIONS.chip} form={form} handleChange={handleChange} />
                 <SpecField label="Print Coverage" name="print_coverage" options={SPEC_OPTIONS.print_coverage} optional form={form} handleChange={handleChange} />

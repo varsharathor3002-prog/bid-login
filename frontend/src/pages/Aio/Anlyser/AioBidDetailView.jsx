@@ -969,9 +969,10 @@ export default function AioBidDetailView() {
           (readOnly just disables the input and hides Find Model) — it was
           previously wrapped in `!readOnly &&`, which hid the Assigned Model
           box entirely on the read-only "Transfer Catalogue to GeM" view. */}
-      <div className={layoutPending ? "min-w-0" : "md:col-start-2 md:row-start-3 lg:col-start-3 lg:row-start-2"}>
-          <div className={`relative flex items-center gap-2 rounded-lg border p-2 ${layoutPending ? "w-fit border-blue-300 bg-blue-50/60 shadow-sm" : "w-fit border-gray-300 bg-gray-50"}`}>
-            <div className="flex flex-col">
+      <div className={layoutPending ? "min-w-0" : "min-w-0 md:col-start-2 md:row-start-3 lg:col-start-3 lg:row-start-2"}>
+          <div className={`relative flex w-full min-w-0 flex-col gap-2 rounded-lg border p-2 ${layoutPending ? "border-blue-300 bg-blue-50/60 shadow-sm" : "border-gray-300 bg-gray-50"}`}>
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <div className="flex min-w-0 flex-1 flex-col">
               <label className={`mb-1 text-sm font-bold ${layoutPending ? "text-blue-900" : "text-gray-700"}`}>Assigned Model</label>
               <input
                 type="text"
@@ -980,7 +981,7 @@ export default function AioBidDetailView() {
                 onChange={handleModelInputChange}
                 placeholder={readOnly ? "No model assigned" : noMatchFound ? "Enter model number manually..." : "Search model..."}
                 disabled={readOnly || modelSearching || showModelResult}
-                className={`rounded border px-3 py-1.5 text-sm outline-none w-64 font-semibold focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500 ${layoutPending ? "border-blue-300 bg-white text-slate-900 placeholder:text-slate-500" : "border-gray-300 text-gray-800"}`}
+                className={`rounded border px-3 py-1.5 text-sm outline-none w-full min-w-0 font-semibold focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500 ${layoutPending ? "border-blue-300 bg-white text-slate-900 placeholder:text-slate-500" : "border-gray-300 text-gray-800"}`}
               />
             </div>
 
@@ -995,13 +996,6 @@ export default function AioBidDetailView() {
               </button>
             )}
 
-            {noMatchFound && !readOnly && !showModelResult && (
-              <div className="ml-1 w-52 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs leading-4 text-amber-800">
-                <span className="font-bold">{manualModelChosen ? "Create a new model." : "No matching model found."}</span>{" "}
-                Please create a new model number.
-              </div>
-            )}
-
             {readOnly && isReAnalyze && hasExistingModel && (
               <div className="mt-4 flex items-center gap-2">
                 <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700 border border-green-300">
@@ -1009,9 +1003,17 @@ export default function AioBidDetailView() {
                 </span>
               </div>
             )}
+            </div>
+
+            {noMatchFound && !readOnly && !showModelResult && (
+              <div role="status" className="w-full min-w-0 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs leading-4 text-amber-800">
+                <span className="font-bold">{manualModelChosen ? "Create a new model." : "No matching model found."}</span>{" "}
+                Please create a new model number.
+              </div>
+            )}
 
             {showModelResult && !readOnly && (
-              <div className="absolute left-0 top-full mt-2 w-[420px] bg-white border border-gray-300 rounded-lg shadow-xl z-50 overflow-hidden">
+              <div className="absolute left-0 top-full mt-2 w-full max-w-[420px] bg-white border border-gray-300 rounded-lg shadow-xl z-50 overflow-hidden">
                 <div className="flex items-center justify-between px-4 py-2.5 border-b bg-slate-50">
                   <span className="text-sm font-bold text-gray-700">Catalogue Model</span>
                   <button
