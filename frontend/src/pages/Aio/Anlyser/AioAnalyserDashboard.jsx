@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useAnalyserTab } from "../../../utils/analyserTab";
 import GemUploadButton from "../../../components/analyser/GemUploadButton";
 import { startGemUpload } from "../../../utils/gemUpload";
 import { useNavigate } from "react-router-dom";
@@ -13,7 +14,7 @@ const VISIBLE_PAGES = 5;
 
 export default function AioAnalyserDashboard({ product = "aio" }) {
 
-    const [activeTab, setActiveTab] = useState("pending");
+    const [activeTab, setActiveTab] = useAnalyserTab("aio");
     const [bids, setBids] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");

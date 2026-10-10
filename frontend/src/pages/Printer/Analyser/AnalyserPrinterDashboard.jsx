@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useAnalyserTab } from "../../../utils/analyserTab";
 import { useNavigate } from "react-router-dom";
 import { FaTrash } from "react-icons/fa";
 
@@ -9,10 +10,7 @@ const ITEMS_PER_PAGE = 10;
 const VISIBLE_PAGES = 5;
 
 export default function AnalyserPrinterDashboard() {
-  const [activeTab, setActiveTab] = useState(() => {
-    const status = new URLSearchParams(window.location.search).get("status");
-    return ["pending", "approved", "re-analyze"].includes(status) ? status : "pending";
-  });
+  const [activeTab, setActiveTab] = useAnalyserTab("printer");
   const [bids, setBids] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
